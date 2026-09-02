@@ -41,6 +41,23 @@ button,input{font-family:inherit}button{cursor:pointer}button:disabled{cursor:no
 .product-image::after{content:"";position:absolute;top:0;left:-130%;width:70%;height:100%;background:linear-gradient(105deg,transparent 15%,rgba(255,255,255,.09) 48%,transparent 82%);transform:skewX(-15deg);pointer-events:none}
 .product-card:hover .product-image::after{animation:categoryLight .8s ease forwards}.category-products-view{animation:categoryProductsIn .32s cubic-bezier(.22,1,.36,1)}
 @media(max-width:420px){.product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.category-chip{padding:9px 13px;font-size:11.5px}}
+
+.admin-panel{background:#0f1012;color:#fff}
+.admin-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:#17181b;padding:5px;border:1px solid #25262a;border-radius:14px}
+.admin-nav button{border:0;border-radius:10px;padding:10px 4px;font-size:11px;font-weight:700;color:#8d8f96;background:transparent;transition:.2s}
+.admin-nav button.active{background:#fff;color:#111}
+.admin-section{animation:fadeIn .18s ease}
+.admin-section-title{font-size:17px;font-weight:800;margin-bottom:4px}
+.admin-section-sub{font-size:11px;color:#777;margin-bottom:18px}
+.admin-card{background:#17181b;border:1px solid #25262a;border-radius:14px;padding:14px;margin-bottom:12px}
+.admin-card-title{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8f9198;margin-bottom:12px}
+.admin-danger{background:#2a1113!important;color:#f87171!important}
+.catalog-category{background:#17181b;border:1px solid #25262a;border-radius:14px;overflow:hidden;margin-bottom:10px}
+.catalog-head{display:flex;align-items:center;gap:5px;padding:8px}
+.catalog-head input{min-width:0}
+.catalog-items{padding:0 8px 8px}
+.catalog-item{background:#202125;border-radius:12px;padding:10px;margin-top:7px}
+@media(max-width:420px){.admin-nav button{font-size:10px;padding:9px 2px}}
 </style>
 </head>
 <body><div id="root"></div>
@@ -61,28 +78,46 @@ const THEMES=[
 {id:"goldnight",name:"Antrasit Altın",bg:"#1B1B1F",card:"#242428",accent:"#D4AF37",text:"#F0EFEA"},
 {id:"concrete",name:"Beton Gri",bg:"#EEEEEC",card:"#FFFFFF",accent:"#4A4A4A",text:"#1C1C1C"}];
 const CURRENCIES=[{id:"TRY",symbol:"₺",name:"TL"},{id:"USD",symbol:"$",name:"USD"},{id:"EUR",symbol:"€",name:"EUR"}];
+const LANGUAGES=[{id:"tr",name:"TR",label:"Türkçe"},{id:"en",name:"EN",label:"English"}];
 
 function uid(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36)}
-function createCategory(name){return{id:uid(),name,items:[]}}
+function createCategory(name){return{id:uid(),name,name_en:"",items:[]}}
 function createDefaultCategories(){return CATS.map(createCategory)}
 function defaultData(){return{
  siteName:"Ofischi",subtitle:"Ofis Mobilyaları",eyebrow:"İNEGÖL ÜRETİM",phone:"+90 500 000 00 00",pin:"1234",
  logo:{src:"./ofischi_logo_transparent.png",size:110,position:"left"},
  theme:{...THEMES[0],bgImage:null},cardImgSize:180,
- currency:{selected:"TRY",usdRate:40,eurRate:47},categories:createDefaultCategories()
+ currency:{selected:"TRY",usdRate:40,eurRate:47},language:"TR",categories:createDefaultCategories()
 }}
 function normalizePrice(price){
  if(!price)return{contactOnly:true,amount:null,parts:[]};
- let parts=Array.isArray(price.parts)?price.parts.map(p=>({id:p.id||uid(),name:typeof p.name==="string"?p.name:"Ürün",amount:p.amount===null||p.amount===undefined||p.amount===""?null:Number(p.amount),contactOnly:!!p.contactOnly})): [];
- if(parts.length===0&&price.amount!==null&&price.amount!==undefined&&price.amount!=="")parts.push({id:uid(),name:"Ürün",amount:Number(price.amount),contactOnly:!!price.contactOnly});
+ let parts=Array.isArray(price.parts)?price.parts.map(p=>({id:p.id||uid(),name:typeof p.name==="string"?p.name:"Ürün",dims:typeof p.dims==="string"?p.dims:"",amount:p.amount===null||p.amount===undefined||p.amount===""?null:Number(p.amount),contactOnly:!!p.contactOnly})): [];
+ if(parts.length===0&&price.amount!==null&&price.amount!==undefined&&price.amount!=="")parts.push({id:uid(),name:"Ürün",dims:"",amount:Number(price.amount),contactOnly:!!price.contactOnly});
  return{contactOnly:!!price.contactOnly&&parts.length===0,amount:price.amount??null,parts};
 }
-function normalizeItem(item){item=item||{};return{...item,id:item.id||uid(),name:typeof item.name==="string"?item.name:"Yeni Ürün",desc:typeof item.desc==="string"?item.desc:"",dims:typeof item.dims==="string"?item.dims:"",image:item.image||null,price:normalizePrice(item.price)}}
-function normalizeCategories(categories){return Array.isArray(categories)?categories.map(c=>({id:c.id||uid(),name:typeof c.name==="string"?c.name:(c.name?.tr||"Yeni Kategori"),items:Array.isArray(c.items)?c.items.map(normalizeItem):[]})):createDefaultCategories()}
+function normalizeItem(item){
+      item=item||{};
+      return {
+        ...item,
+        id:item.id||uid(),
+        name:typeof item.name==="string"?item.name:"Yeni Ürün",
+        desc:typeof item.desc==="string"?item.desc:"",
+        name_en:typeof item.name_en==="string"?item.name_en:"",
+        desc_en:typeof item.desc_en==="string"?item.desc_en:"",
+        image:item.image||null,
+        price:normalizePrice(item.price)
+      }
+    }
+function normalizeCategories(categories){return Array.isArray(categories)?categories.map(c=>({id:c.id||uid(),name:typeof c.name==="string"?c.name:(c.name?.tr||"Yeni Kategori"),name_en:typeof c.name_en==="string"?c.name_en:"",items:Array.isArray(c.items)?c.items.map(normalizeItem):[]})):createDefaultCategories()}
+function translateKey(obj,key,lang){return lang==="tr"?obj?.[key]:(obj?.translations?.[lang]?.[key]||obj?.[key]);}
+function translatedItem(item,lang){const t=item?.translations?.[lang]||{};return {...item,name:t.name||item.name,desc:t.desc||item.desc};}
+function translatedDataView(data,lang){if(lang==="tr")return data;const t=data?.translations?.[lang]||{};return {...data,siteName:t.siteName||data.siteName,subtitle:t.subtitle||data.subtitle,eyebrow:t.eyebrow||data.eyebrow,categories:(data.categories||[]).map(c=>{const ct=t.categories?.[c.id]||{};return {...c,name:ct.name||c.name,items:(c.items||[]).map(i=>translatedItem(i,lang))}})};}
+async function translateText(text,target="en"){if(!text||target==="tr")return text;try{const url="https://translate.googleapis.com/translate_a/single?client=gtx&sl=tr&tl="+encodeURIComponent(target)+"&dt=t&q="+encodeURIComponent(text);const r=await fetch(url);const j=await r.json();return Array.isArray(j?.[0])?j[0].map(x=>x?.[0]||"").join(""):text}catch(e){console.warn("Çeviri başarısız",e);return text}}
+async function buildTranslations(source,target="en"){const out={siteName:await translateText(source.siteName,target),subtitle:await translateText(source.subtitle,target),eyebrow:await translateText(source.eyebrow,target),categories:{}};for(const c of source.categories||[]){const ct={name:await translateText(c.name,target),items:{}};for(const i of c.items||[]){ct.items[i.id]={name:await translateText(i.name,target),desc:await translateText(i.desc,target)};}out.categories[c.id]=ct;}return out;}
 function normalizeData(input){
  const base=defaultData(); if(!input||typeof input!=="object")return base;
  const r={...base,...input};r.logo={...base.logo,...(input.logo||{})};r.theme={...base.theme,...(input.theme||{})};r.currency={...base.currency,...(input.currency||{})};
- r.categories=normalizeCategories(input.categories);
+ r.categories=normalizeCategories(input.categories);r.language=input.language==="EN"?"EN":"TR";
  r.siteName=typeof input.siteName==="string"?input.siteName:"Ofischi";r.subtitle=typeof input.subtitle==="string"?input.subtitle:"Ofis Mobilyaları";r.eyebrow=typeof input.eyebrow==="string"?input.eyebrow:"İNEGÖL ÜRETİM";r.phone=typeof input.phone==="string"?input.phone:"";r.pin=typeof input.pin==="string"?input.pin:"1234";r.cardImgSize=Number(input.cardImgSize)||180;
  return r;
 }
@@ -111,24 +146,66 @@ return <svg {...props}>{c}</svg>}
 function AdminLabel({children}){return <div style={{color:"#737373",fontSize:"10px",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",marginBottom:"6px"}}>{children}</div>}
 function ColorInput({label,value,onChange}){return <label className="flex items-center justify-between mb-3"><span className="text-xs text-neutral-400">{label}</span><input type="color" value={value||"#000000"} onChange={e=>onChange(e.target.value)} className="w-9 h-9 rounded-lg border border-neutral-700 bg-transparent cursor-pointer"/></label>}
 
+
+function getLang(data){
+  return data?.language==="EN" ? "EN" : "TR";
+}
+function productName(item,data){
+  const lang=getLang(data);
+  return lang==="EN" && item?.name_en?.trim() ? item.name_en : (item?.name||"");
+}
+function productDesc(item,data){
+  const lang=getLang(data);
+  return lang==="EN" && item?.desc_en?.trim() ? item.desc_en : (item?.desc||"");
+}
+function categoryName(category,data){
+  const lang=getLang(data);
+  return lang==="EN" && category?.name_en?.trim() ? category.name_en : (category?.name||"");
+}
+function uiText(data,tr,en){ return getLang(data)==="EN" ? en : tr; }
+
 function App(){
- const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[saved,setSaved]=useState(false),[toast,setToast]=useState(""),[activeCat,setActiveCat]=useState(null),[openCategories,setOpenCategories]=useState({}),[currencyMenuOpen,setCurrencyMenuOpen]=useState(false),[search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[panelOpen,setPanelOpen]=useState(false),[unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),[pinError,setPinError]=useState(false),[busy,setBusy]=useState(false);
+ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[saved,setSaved]=useState(false),[toast,setToast]=useState(""),[activeCat,setActiveCat]=useState(null),[openCategories,setOpenCategories]=useState({}),[currencyMenuOpen,setCurrencyMenuOpen]=useState(false),[search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[panelOpen,setPanelOpen]=useState(false),[unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),[pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[adminTab,setAdminTab]=useState("general"),[language,setLanguage]=useState("tr"),[translating,setTranslating]=useState(false),[translationStamp,setTranslationStamp]=useState(0);
  const logoRef=useRef(null),bgRef=useRef(null),itemRefs=useRef({}),realtimeChannelRef=useRef(null),toastTimerRef=useRef(null);
  function showToast(message){setToast(message);if(toastTimerRef.current)clearTimeout(toastTimerRef.current);toastTimerRef.current=setTimeout(()=>setToast(""),3000)}
- useEffect(()=>()=>{if(toastTimerRef.current)clearTimeout(toastTimerRef.current)},[]);
+ useEffect(()=>()=>{if(toastTimerRef.current)clearTimeout(toastTimerRef.current);if(autoSaveTimerRef.current)clearTimeout(autoSaveTimerRef.current)},[]);
  function toggleCategory(id){setOpenCategories(p=>({...p,[id]:!p[id]}))}
  function openCategory(id){setOpenCategories(p=>({...p,[id]:true}))}
  useEffect(()=>{let cancelled=false;async function load(){try{const result=await supabase.from("site_data").select("data").eq("id",SITE_ID).maybeSingle();if(result.error)throw result.error;let loaded;if(result.data&&result.data.data)loaded=normalizeData(result.data.data);else{loaded=defaultData();const ins=await supabase.from("site_data").upsert({id:SITE_ID,data:loaded,updated_at:new Date().toISOString()},{onConflict:"id"});if(ins.error)throw ins.error}if(cancelled)return;setData(loaded);setActiveCat(loaded.categories?.[0]?.id||null);setOpenCategories({});
- if(!realtimeChannelRef.current){const channel=supabase.channel("site-data-realtime-"+SITE_ID).on("postgres_changes",{event:"*",schema:"public",table:"site_data",filter:"id=eq."+SITE_ID},payload=>{if(!payload?.new?.data)return;const rd=normalizeData(payload.new.data);setData(rd);setActiveCat(cur=>rd.categories.some(c=>c.id===cur)?cur:(rd.categories[0]?.id||null));setSelectedProduct(cur=>{if(!cur)return null;let found=null;rd.categories.forEach(c=>{const x=c.items.find(i=>i.id===cur.id);if(x)found=x});return found||null});setSaved(false)}).subscribe(status=>console.log("Supabase Realtime:",status));realtimeChannelRef.current=channel}}
+ if(!realtimeChannelRef.current){const channel=supabase.channel("site-data-realtime-"+SITE_ID).on("postgres_changes",{event:"*",schema:"public",table:"site_data",filter:"id=eq."+SITE_ID},payload=>{if(!payload?.new?.data)return;const rd=normalizeData(payload.new.data);setData(rd);setActiveCat(cur=>rd.categories.some(c=>c.id===cur)?cur:(rd.categories[0]?.id||null));setSelectedProduct(cur=>{if(!cur)return null;let found=null;rd.categories.forEach(c=>{const x=c.items.find(i=>i.id===cur.id);if(x)found=x});return found||null});}).subscribe(status=>console.log("Supabase Realtime:",status));realtimeChannelRef.current=channel}}
  catch(e){console.error(e);const f=defaultData();setData(f);setActiveCat(f.categories[0]?.id||null);showToast("Veritabanı bağlantısı kontrol edilmeli")}
  finally{if(!cancelled)setLoading(false)}}load();return()=>{cancelled=true;if(realtimeChannelRef.current){supabase.removeChannel(realtimeChannelRef.current);realtimeChannelRef.current=null}}},[]);
- function updateData(callback){setData(p=>{if(!p)return p;const copy={...p};callback(copy);setSaved(false);return copy})}
+ const autoSaveTimerRef=useRef(null);
+  function scheduleAutoSave(nextData){
+    if(autoSaveTimerRef.current)clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current=setTimeout(async()=>{
+      try{
+        const clean=normalizeData(nextData);
+        const r=await supabase.from("site_data").upsert({id:SITE_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:"id"});
+        if(r.error)throw r.error;
+        setSaved(true);
+        setTimeout(()=>setSaved(false),900);
+      }catch(e){console.error("Otomatik kayıt:",e);}
+    },700);
+  }
+  function updateData(callback){
+    setData(p=>{
+      if(!p)return p;
+      const copy={...p};
+      callback(copy);
+      setSaved(false);
+      scheduleAutoSave(copy);
+      return copy;
+    });
+  }
  function setPath(path,value){updateData(copy=>{let target=copy;for(let i=0;i<path.length-1;i++){const key=path[i];target[key]={...(target[key]||{})};target=target[key]}target[path[path.length-1]]=value})}
  function getCurrency(){return CURRENCIES.find(x=>x.id===(data?.currency?.selected||"TRY"))||CURRENCIES[0]}
  function convertPrice(amount){if(amount===null||amount===undefined||amount==="")return null;const n=Number(amount),c=data?.currency?.selected||"TRY";if(!Number.isFinite(n))return null;if(c==="USD"){const r=Number(data.currency.usdRate);return r>0?n/r:null}if(c==="EUR"){const r=Number(data.currency.eurRate);return r>0?n/r:null}return n}
  function formatAmount(amount){const v=convertPrice(amount);if(v===null)return null;const c=getCurrency(),d=c.id==="TRY"?0:2,s=v.toLocaleString("tr-TR",{minimumFractionDigits:d,maximumFractionDigits:d});return c.id==="USD"?"$"+s:c.id==="EUR"?"€"+s:s+" ₺"}
  async function save(){if(!data||saving)return;setSaving(true);try{const clean=normalizeData(data);const r=await supabase.from("site_data").upsert({id:SITE_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:"id"});if(r.error)throw r.error;setData(clean);setSaved(true);showToast("Başarıyla kaydedildi");setTimeout(()=>{setSaved(false);setPanelOpen(false)},800)}catch(e){console.error(e);showToast("Kaydetme hatası: "+(e?.message||"Bilinmeyen hata"))}finally{setSaving(false)}}
- function openAdmin(){if(unlocked){setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
+ async function runTranslation(){if(!data||translating)return;setTranslating(true);try{const tr=await buildTranslations(data,"en");updateData(x=>{x.translations={...(x.translations||{}),en:tr}});setLanguage("en");;}finally{setTranslating(false)}}
+useEffect(()=>{if(language!=="en"||!data)return;const id=setInterval(()=>{if(!translating)runTranslation()},2000);return()=>clearInterval(id)},[language,data?.siteName,data?.subtitle,data?.eyebrow,JSON.stringify(data?.categories?.map(c=>({id:c.id,name:c.name,items:c.items?.map(i=>({id:i.id,name:i.name,desc:i.desc}))}))),translating]);
+function openAdmin(){if(unlocked){setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
  function tryUnlock(){if(pinInput===String(data?.pin||"1234")){setUnlocked(true);setPinModal(false);setPanelOpen(true);setPinInput("")}else setPinError(true)}
  function addCategory(){const c=createCategory("Yeni Kategori");updateData(x=>{x.categories=[...x.categories,c]});setActiveCat(c.id);openCategory(c.id)}
  function deleteCategory(id){if(!confirm("Bu kategori ve içindeki ürünler silinsin mi?"))return;updateData(x=>{x.categories=x.categories.filter(c=>c.id!==id)});const rem=data.categories.filter(c=>c.id!==id);setActiveCat(rem[0]?.id||null);setOpenCategories(p=>{const x={...p};delete x[id];return x})}
@@ -138,7 +215,7 @@ function App(){
  function updateItem(categoryId,itemId,field,value){updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>i.id===itemId?{...i,[field]:value}:i)})})}
  function deleteItem(categoryId,itemId){if(!confirm("Bu ürün silinsin mi?"))return;updateData(x=>{x.categories=x.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c)})}
  function moveItem(categoryId,itemId,direction){updateData(x=>{x.categories=x.categories.map(c=>{if(c.id!==categoryId)return c;const l=[...c.items],i=l.findIndex(a=>a.id===itemId),t=i+direction;if(i<0||t<0||t>=l.length)return c;[l[i],l[t]]=[l[t],l[i]];return {...c,items:l}})})}
- function addPricePart(categoryId,itemId){const part={id:uid(),name:"Yeni Parça",amount:null,contactOnly:false};updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,contactOnly:false,parts:[...p.parts,part]}}})})})}
+ function addPricePart(categoryId,itemId){const part={id:uid(),name:"Yeni Parça",dims:"",amount:null,contactOnly:false};updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,contactOnly:false,parts:[...p.parts,part]}}})})})}
  function updatePricePart(categoryId,itemId,partId,field,value){updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId?{...part,[field]:value}:part)}}})})})}
  function deletePricePart(categoryId,itemId,partId){updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})})})}
  async function uploadItemImage(categoryId,itemId,event){const file=event.target.files?.[0];if(!file)return;setBusy(true);try{const compressed=await resizeImg(file,1000,.76),blob=dataUrlToBlob(compressed),url=await uploadBlobToStorage(blob,storagePath("products",itemId));updateItem(categoryId,itemId,"image",url);showToast("Görsel yüklendi. Kaydet'e basın.")}catch(e){console.error(e);showToast("Görsel yüklenemedi.")}finally{setBusy(false);if(event.target)event.target.value=""}}
@@ -149,49 +226,50 @@ function App(){
  if(loading)return <div style={{minHeight:"100vh",background:"#141416",color:"#aaa",display:"flex",alignItems:"center",justifyContent:"center"}}>Veriler yükleniyor...</div>;
  if(!data)return <div style={{minHeight:"100vh",background:"#141416",color:"#f87171",display:"flex",alignItems:"center",justifyContent:"center"}}>Site verileri yüklenemedi.</div>;
  const categories=data.categories||[],activeCategory=categories.find(c=>c.id===activeCat)||categories[0]||null;
- const allProducts=categories.flatMap(c=>(c.items||[]).map(i=>({...i,categoryName:c.name}))), normalizedSearch=search.trim().toLocaleLowerCase("tr-TR");
- const visibleProducts=normalizedSearch?allProducts.filter(i=>((i.name||"")+" "+(i.desc||"")+" "+(i.dims||"")+" "+(i.categoryName||"")).toLocaleLowerCase("tr-TR").includes(normalizedSearch)):(activeCategory?.items||[]);
- const theme=data.theme,currency=getCurrency(),currentLogo=data.logo;
+ const theme=data.theme,currency=getCurrency(),currentLogo=data.logo,viewData=translatedDataView(data,language),viewCategories=viewData.categories||[],viewActiveCategory=viewCategories.find(c=>c.id===activeCat)||viewCategories[0]||null;
+ const allProducts=viewCategories.flatMap(c=>(c.items||[]).map(i=>({...i,categoryName:c.name,categoryName_en:c.name_en||""}))), normalizedSearch=search.trim().toLocaleLowerCase("tr-TR");
+ const visibleProducts=normalizedSearch?allProducts.filter(i=>((i.name||"")+" "+(i.desc||"")+" "+(i.dims||"")+" "+(i.categoryName||"")).toLocaleLowerCase("tr-TR").includes(normalizedSearch)):(viewActiveCategory?.items||[]);
  function priceText(part){if(!part||part.contactOnly||part.amount===null||part.amount===undefined||part.amount==="")return"Fiyat için iletişime geçin";return formatAmount(part.amount)||"Fiyat için iletişime geçin"}
  function productMainPrice(item){const p=normalizePrice(item.price);if(p.parts.length){const total=p.parts.filter(a=>!a.contactOnly&&a.amount!==null&&a.amount!==undefined&&a.amount!=="").reduce((s,a)=>s+Number(a.amount),0);return total>0?(formatAmount(total)||"Fiyat için iletişime geçin"):"Fiyat için iletişime geçin"}if(p.amount!==null&&p.amount!==undefined&&p.amount!=="")return formatAmount(p.amount)||"Fiyat için iletişime geçin";return"Fiyat için iletişime geçin"}
 
  return <div style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:theme.bgImage?`linear-gradient(${theme.bg}cc,${theme.bg}f5),url(${theme.bgImage})`:undefined,backgroundSize:"cover",backgroundPosition:"center",color:theme.text,fontFamily:"Inter,system-ui,sans-serif"}}>
  <div className="fixed top-4 left-4 right-4 z-40"><div className="max-w-5xl mx-auto flex justify-end items-center gap-2">
- <div className="relative"><button onClick={()=>setCurrencyMenuOpen(p=>!p)} className="h-10 min-w-[58px] px-3 rounded-full flex items-center justify-center gap-1.5 font-bold text-sm" style={{background:theme.accent,color:"#fff"}}>{currency.symbol}<Icon type={currencyMenuOpen?"up":"down"} size={13}/></button>
+ <button onClick={()=>setPath(["language"],getLang(data)==="TR"?"EN":"TR")} className="h-10 min-w-[58px] px-3 rounded-full flex items-center justify-center gap-1.5 font-bold text-sm" style={{background:theme.accent,color:"#fff"}}>{getLang(data)==="TR"?"🇹🇷":"🇬🇧"}</button><div className="relative"><button onClick={()=>setCurrencyMenuOpen(p=>!p)} className="h-10 min-w-[58px] px-3 rounded-full flex items-center justify-center gap-1.5 font-bold text-sm" style={{background:theme.accent,color:"#fff"}}>{currency.symbol}<Icon type={currencyMenuOpen?"up":"down"} size={13}/></button>
  {currencyMenuOpen&&<div className="currency-menu absolute right-0 mt-2 w-36 rounded-2xl overflow-hidden shadow-2xl border" style={{background:theme.card,borderColor:theme.text+"18",zIndex:1000}}>
  <div className="px-3 py-2 text-[9px] uppercase tracking-widest font-bold opacity-40 border-b">Para Birimi</div>
  {CURRENCIES.map(c=><button key={c.id} onClick={()=>{setPath(["currency","selected"],c.id);setCurrencyMenuOpen(false)}} className="w-full px-3 py-3 flex items-center justify-between text-sm font-semibold" style={{background:currency.id===c.id?theme.accent+"18":"transparent",color:theme.text}}>
  <span className="flex items-center gap-2"><span className="w-8 h-8 rounded-full flex items-center justify-center font-bold" style={{background:currency.id===c.id?theme.accent:theme.accent+"18",color:currency.id===c.id?"#fff":theme.accent}}>{c.symbol}</span><span>{c.name}</span></span>{currency.id===c.id&&<Icon type="check" size={15}/>}</button>)}</div>}
  </div>
- <button onClick={()=>setSearch(search?"":" ")} className="w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.25)",backdropFilter:"blur(15px)",color:theme.text}}><Icon type="search" size={18}/></button>
+ <button onClick={()=>setLanguage(language==="tr"?"en":"tr")} title="Dil" className="h-10 min-w-[48px] px-2 rounded-full flex items-center justify-center gap-1 font-bold text-xs border" style={{background:"rgba(0,0,0,.25)",borderColor:theme.text+"20",color:theme.text}}><span>🌐</span>{language.toUpperCase()}</button>
+  <button onClick={()=>setSearch(search?"":" ")} className="w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.25)",backdropFilter:"blur(15px)",color:theme.text}}><Icon type="search" size={18}/></button>
  </div></div>
 
  {search!==""&&<div className="fixed top-[68px] left-4 right-4 z-40"><div className="max-w-5xl mx-auto relative"><input autoFocus value={search.trim()} onChange={e=>setSearch(e.target.value)} placeholder="Ürün ara..." className="search-input" style={{color:theme.text}}/></div></div>}
 
  <header className="px-6 pt-28 pb-8 max-w-5xl mx-auto"><div style={{width:"100%",display:"flex",justifyContent:currentLogo.position==="left"?"flex-start":currentLogo.position==="right"?"flex-end":"center",marginBottom:18}}>
  {currentLogo.src?<img src={currentLogo.src} alt="Premium" style={{width:currentLogo.size,maxWidth:"70vw",maxHeight:currentLogo.size,objectFit:"contain",display:"block"}}/>:<div style={{fontSize:50,fontWeight:800,color:theme.accent}}>O</div>}
- </div><div className="text-center"><div className="text-[10px] font-bold tracking-[.28em] mb-2" style={{color:theme.accent}}>{data.eyebrow}</div><h1 className="text-3xl font-bold leading-tight">{data.siteName}</h1><p className="text-sm opacity-60 mt-2">Premium Ofis Mobilyaları</p>
+ </div><div className="text-center"><div className="text-[10px] font-bold tracking-[.28em] mb-2" style={{color:theme.accent}}>{viewData.eyebrow}</div><h1 className="text-3xl font-bold leading-tight">{viewData.siteName}</h1><p className="text-sm opacity-60 mt-2">Premium Ofis Mobilyaları</p>
  {data.phone&&<a href={"tel:"+data.phone.replace(/\s/g,"")} className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold" style={{background:theme.accent,color:"#fff"}}><Icon type="phone" size={15}/>{data.phone}</a>}</div></header>
 
- <div className="max-w-5xl mx-auto px-4 mb-2"><div className="flex items-center justify-between"><div><div className="text-xl font-bold">Premium</div><div className="text-[11px] opacity-45 mt-1">{categories.reduce((t,c)=>t+(c.items?.length||0),0)} ürün</div></div>{search.trim()&&<button onClick={()=>setSearch("")} className="text-xs opacity-60">Aramayı temizle</button>}</div></div>
+ <div className="max-w-5xl mx-auto px-4 mb-2"><div className="flex items-center justify-between"><div><div className="text-xl font-bold">Premium</div><div className="text-[11px] opacity-45 mt-1">{viewCategories.reduce((t,c)=>t+(c.items?.length||0),0)} ürün</div></div>{search.trim()&&<button onClick={()=>setSearch("")} className="text-xs opacity-60">Aramayı temizle</button>}</div></div>
 
- {!search.trim()&&<div className="sticky top-[64px] z-20 px-4 pt-3 pb-2 category-bar"><div className="max-w-5xl mx-auto category-scroll">{categories.map((category,index)=>{const active=category.id===activeCat;return <button key={category.id} onClick={()=>{setActiveCat(category.id);setOpenCategories({})}} className={"category-chip "+(active?"active":"")} style={{background:active?`linear-gradient(135deg,${theme.accent},${theme.accent}dd)`:`${theme.accent}14`,color:active?"#fff":theme.text,borderColor:active?theme.accent+"70":theme.text+"12",opacity:active?1:.78,boxShadow:active?`0 6px 18px ${theme.accent}30`:"none",animation:`categoryEnter .4s cubic-bezier(.22,1,.36,1) ${index*45}ms both`}}>{category.name}</button>})}</div></div>}
+ {!search.trim()&&<div className="sticky top-[64px] z-20 px-4 pt-3 pb-2 category-bar"><div className="max-w-5xl mx-auto category-scroll">{viewCategories.map((category,index)=>{const active=category.id===activeCat;return <button key={category.id} onClick={()=>{setActiveCat(category.id);setOpenCategories({})}} className={"category-chip "+(active?"active":"")} style={{background:active?`linear-gradient(135deg,${theme.accent},${theme.accent}dd)`:`${theme.accent}14`,color:active?"#fff":theme.text,borderColor:active?theme.accent+"70":theme.text+"12",opacity:active?1:.78,boxShadow:active?`0 6px 18px ${theme.accent}30`:"none",animation:`categoryEnter .4s cubic-bezier(.22,1,.36,1) ${index*45}ms both`}}>{categoryName(category,data)}</button>})}</div></div>}
 
  <main key={search.trim()?`search-${search}`:activeCat} className="product-grid category-products-view px-4 pt-4 pb-28 max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-3">
  {search.trim()&&<div className="col-span-full mb-1"><div className="text-xs opacity-50">"{search.trim()}" için {visibleProducts.length} ürün bulundu</div></div>}
  {visibleProducts.length===0&&<div className="col-span-full text-center py-16 opacity-50">{search.trim()?"Aradığınız ürün bulunamadı.":"Henüz ürün eklenmedi."}</div>}
  {visibleProducts.map((item,index)=><article key={item.id} onClick={()=>setSelectedProduct(item)} className="product-card rounded-2xl overflow-hidden cursor-pointer" style={{background:theme.card,boxShadow:"0 5px 18px rgba(0,0,0,.14)",animationDelay:`${Math.min(index,8)*45}ms`}}>
  <div className="product-image" style={{height:data.cardImgSize,backgroundColor:theme.accent+"12",backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center",display:item.image?"block":"flex",alignItems:"center",justifyContent:"center"}}>{!item.image&&<Icon type="image" size={28}/>}</div>
- <div className="p-3"><div className="font-semibold text-sm leading-tight">{item.name}</div>{item.desc&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{item.desc}</div>}{item.dims&&<div className="text-[10px] opacity-45 mt-1">{item.dims}</div>}<div className="text-[12px] font-bold mt-2" style={{color:theme.accent}}>{productMainPrice(item)}</div><div className="mt-2 text-[10px] opacity-45 flex items-center gap-1">Detaylı fiyatlar<Icon type="arrow" size={11}/></div></div>
+ <div className="p-3"><div className="font-semibold text-sm leading-tight">{productName(item,data)}</div>{productDesc(item,data)&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{productDesc(item,data)}</div>}<div className="text-[12px] font-bold mt-2" style={{color:theme.accent}}>{productMainPrice(item)}</div><div className="mt-2 text-[10px] opacity-45 flex items-center gap-1">Detaylı fiyatlar<Icon type="arrow" size={11}/></div></div>
  </article>)}</main>
 
  {selectedProduct&&<div className="fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={()=>setSelectedProduct(null)}><div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl" style={{background:theme.card,color:theme.text,animation:"pop .22s ease"}} onClick={e=>e.stopPropagation()}>
- <div className="relative"><div style={{height:270,backgroundColor:theme.accent+"12",backgroundImage:selectedProduct.image?`url(${selectedProduct.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center",display:selectedProduct.image?"block":"flex",alignItems:"center",justifyContent:"center"}}>{!selectedProduct.image&&<Icon type="image" size={40}/>}</div>
+ <div className="relative"><div onClick={()=>selectedProduct.image&&window.open(selectedProduct.image,"_blank")} style={{height:270,backgroundColor:theme.accent+"12",backgroundImage:selectedProduct.image?`url(${selectedProduct.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center",display:selectedProduct.image?"block":"flex",alignItems:"center",justifyContent:"center",cursor:selectedProduct.image?"zoom-in":"default"}}>{!selectedProduct.image&&<Icon type="image" size={40}/>}</div>
  <button onClick={()=>setSelectedProduct(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.55)",color:"#fff"}}><Icon type="x" size={20}/></button></div>
- <div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>PREMIUM</div><h2 className="text-2xl font-bold">{selectedProduct.name}</h2>
- {selectedProduct.desc&&<p className="text-sm opacity-65 mt-2 leading-relaxed">{selectedProduct.desc}</p>}{selectedProduct.dims&&<div className="mt-3 px-3 py-2 rounded-xl text-xs" style={{background:theme.accent+"12"}}>Ölçüler: <strong>{selectedProduct.dims}</strong></div>}
+ <div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>PREMIUM</div><h2 className="text-2xl font-bold">{productName(selectedProduct,data)}</h2>
+ {productDesc(selectedProduct,data)&&<p className="text-sm opacity-65 mt-2 leading-relaxed">{productDesc(selectedProduct,data)}</p>}
  <div className="mt-5"><div className="text-[10px] uppercase tracking-widest font-bold opacity-50 mb-3">Fiyatlar</div>
- {normalizePrice(selectedProduct.price).parts.length>0?<div className="space-y-2">{normalizePrice(selectedProduct.price).parts.map(part=><div key={part.id} className="price-row rounded-xl p-3 flex items-center justify-between gap-3"><div className="text-sm font-medium">{part.name}</div><div className="text-sm font-bold whitespace-nowrap" style={{color:theme.accent}}>{priceText(part)}</div></div>)}</div>:<div className="rounded-xl p-4 text-center" style={{background:theme.accent+"12",color:theme.accent}}>Fiyat için iletişime geçin</div>}</div>
+ {normalizePrice(selectedProduct.price).parts.length>0?<div className="space-y-2">{normalizePrice(selectedProduct.price).parts.map(part=><div key={part.id} className="price-row rounded-xl p-3 flex items-center justify-between gap-3"><div className="min-w-0"><div className="text-sm font-medium">{part.name}</div>{part.dims&&<div className="text-[11px] opacity-55 mt-1">Ölçü: <strong>{part.dims}</strong></div>}</div><div className="text-sm font-bold whitespace-nowrap" style={{color:theme.accent}}>{priceText(part)}</div></div>)}<div className="rounded-xl p-4 mt-3 flex items-center justify-between" style={{background:theme.accent+"12"}}><span className="text-sm font-bold">Toplam Fiyat</span><span className="text-base font-bold" style={{color:theme.accent}}>{productMainPrice(selectedProduct)}</span></div></div>:<div className="rounded-xl p-4 text-center" style={{background:theme.accent+"12",color:theme.accent}}>Fiyat için iletişime geçin</div>}</div>
  {data.phone&&<a href={"tel:"+data.phone.replace(/\s/g,"")} className="mt-5 w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-sm" style={{background:theme.accent,color:"#fff"}}><Icon type="phone" size={16}/>Fiyat / Bilgi İçin Ara</a>}
  </div></div></div>}
 
@@ -200,61 +278,108 @@ function App(){
 
  {pinModal&&<div className="fixed inset-0 z-[200] bg-black/75 flex items-center justify-center p-4"><div className="w-full max-w-xs bg-neutral-950 border border-neutral-800 rounded-2xl p-6"><div className="flex items-center gap-2 mb-4 text-white"><Icon type="lock" size={18}/><h2 className="font-bold">Yönetim Girişi</h2></div><input autoFocus type="password" inputMode="numeric" maxLength="8" value={pinInput} onChange={e=>{setPinInput(e.target.value.replace(/\D/g,""));setPinError(false)}} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="PIN" className="admin-input tracking-[.3em]"/>{pinError&&<div className="text-xs text-red-400 mt-2">Hatalı PIN.</div>}<div className="text-[11px] text-neutral-500 mt-2 mb-4">Varsayılan PIN: 1234</div><div className="flex gap-2"><button onClick={()=>setPinModal(false)} className="flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300">Vazgeç</button><button onClick={tryUnlock} className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white" style={{background:theme.accent}}>Giriş Yap</button></div></div></div>}
 
- {panelOpen&&unlocked&&<div className="fixed inset-0 z-[180] flex justify-end"><div className="flex-1 bg-black/40" onClick={()=>setPanelOpen(false)}/><aside className="w-full sm:w-[460px] h-full bg-neutral-950 text-white overflow-y-auto shadow-2xl">
- <div className="sticky top-0 z-20 bg-neutral-950 border-b border-neutral-800 px-5 pt-5 pb-3"><div className="flex items-center justify-between mb-4"><h2 className="font-bold text-[17px]">Yönetim Paneli</h2><button onClick={()=>setPanelOpen(false)} className="text-neutral-500"><Icon type="x" size={21}/></button></div>
- <div className="flex gap-1 bg-neutral-900 rounded-xl p-1"><button className="flex-1 py-2 rounded-lg text-sm font-semibold" style={{background:theme.accent,color:"#fff"}}>Genel</button><button onClick={()=>document.getElementById("catalog-tab")?.scrollIntoView({behavior:"smooth"})} className="flex-1 py-2 rounded-lg text-sm font-semibold" style={{background:"#transparent",color:"#999"}}>Ürün Kataloğu</button></div></div>
- <div className="p-5">
- <div>
- <label className="block mb-4"><AdminLabel>Site Adı</AdminLabel><input className="admin-input" value={data.siteName} onChange={e=>setPath(["siteName"],e.target.value)}/></label>
- <label className="block mb-4"><AdminLabel>Üst Etiket</AdminLabel><input className="admin-input" value={data.eyebrow} onChange={e=>setPath(["eyebrow"],e.target.value)}/></label>
- <label className="block mb-5"><AdminLabel>Telefon</AdminLabel><input className="admin-input" value={data.phone||""} onChange={e=>setPath(["phone"],e.target.value)} placeholder="+90 5xx xxx xx xx"/></label>
- <div className="h-px bg-neutral-800 my-5"/>
- <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3">Para Birimi</div>
- <div className="bg-neutral-900 rounded-xl p-4 mb-5"><div className="text-xs text-neutral-400 mb-3">Sitedeki fiyatlar TL olarak girilir. Aşağıdaki kurları sen manuel belirlersin.</div>
- <div className="grid grid-cols-3 gap-2 mb-4">{CURRENCIES.map(c=><button key={c.id} onClick={()=>setPath(["currency","selected"],c.id)} className="py-2.5 rounded-lg text-xs font-bold" style={{background:currency.id===c.id?theme.accent:"#171717",color:currency.id===c.id?"#fff":"#999",border:"1px solid "+(currency.id===c.id?theme.accent:"#333")}}>{c.symbol} {c.name}</button>)}</div>
- <label className="block mb-3"><AdminLabel>1 USD = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.usdRate} onChange={e=>setPath(["currency","usdRate"],e.target.value)} placeholder="Örn: 40"/></label>
- <label className="block"><AdminLabel>1 EUR = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.eurRate} onChange={e=>setPath(["currency","eurRate"],e.target.value)} placeholder="Örn: 47"/></label></div>
- <div className="h-px bg-neutral-800 my-5"/>
- <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3">Premium Logo</div>
- <div className="bg-neutral-900 rounded-xl p-4 mb-3 flex items-center justify-center min-h-[120px]">{data.logo.src?<img src={data.logo.src} alt="Premium Logo" style={{maxWidth:"100%",maxHeight:100,objectFit:"contain"}}/>:<div className="text-xs text-neutral-500">Premium logosu eklenmedi</div>}</div>
- <div className="flex gap-2 mb-4"><button disabled={busy} onClick={()=>logoRef.current?.click()} className="flex-1 py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs flex items-center justify-center gap-1.5 disabled:opacity-40"><Icon type="upload" size={14}/>Premium Logo Yükle</button>{data.logo.src&&<button onClick={()=>setPath(["logo","src"],null)} className="px-3 bg-red-950 text-red-400 rounded-lg"><Icon type="trash" size={14}/></button>}<input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo}/></div>
- <AdminLabel>Logo Boyutu — {data.logo.size||110}px</AdminLabel><input type="range" min="40" max="260" value={data.logo.size||110} onChange={e=>setPath(["logo","size"],Number(e.target.value))} className="w-full mb-4"/>
- <AdminLabel>Logo Konumu</AdminLabel><div className="flex gap-2 mb-5">{[["left","Sol"],["center","Orta"],["right","Sağ"]].map(([v,l])=><button key={v} onClick={()=>setPath(["logo","position"],v)} className="flex-1 py-2 rounded-lg text-xs" style={{background:data.logo.position===v?theme.accent:"#1c1917",color:"#fff"}}>{l}</button>)}</div>
- <div className="h-px bg-neutral-800 my-5"/>
- <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3">Hazır Temalar</div>
- <div className="grid grid-cols-3 gap-2 mb-5">{THEMES.map(t=><button key={t.id} onClick={()=>applyTheme(t)} className="rounded-xl overflow-hidden border-2" style={{borderColor:theme.bg===t.bg&&theme.accent===t.accent?t.accent:"#292524"}}><div style={{height:35,background:t.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{width:15,height:15,borderRadius:"50%",background:t.accent}}/></div><div className="bg-neutral-900 py-1 text-[9px]">{t.name}</div></button>)}</div>
- <ColorInput label="Arka Plan Rengi" value={theme.bg} onChange={v=>setPath(["theme","bg"],v)}/><ColorInput label="Kart Rengi" value={theme.card} onChange={v=>setPath(["theme","card"],v)}/><ColorInput label="Vurgu Rengi" value={theme.accent} onChange={v=>setPath(["theme","accent"],v)}/><ColorInput label="Yazı Rengi" value={theme.text} onChange={v=>setPath(["theme","text"],v)}/>
- <div className="flex gap-2 mb-5"><button disabled={busy} onClick={()=>bgRef.current?.click()} className="flex-1 py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs">Arka Plan Görseli</button>{theme.bgImage&&<button onClick={()=>setPath(["theme","bgImage"],null)} className="px-3 bg-red-950 text-red-400 rounded-lg"><Icon type="trash" size={14}/></button>}<input ref={bgRef} type="file" accept="image/*" className="hidden" onChange={uploadBackground}/></div>
- <AdminLabel>Ürün Görsel Yüksekliği — {data.cardImgSize}px</AdminLabel><input type="range" min="100" max="320" value={data.cardImgSize} onChange={e=>setPath(["cardImgSize"],Number(e.target.value))} className="w-full mb-5"/>
- <AdminLabel>Yönetim PIN</AdminLabel><input className="admin-input mb-5" value={data.pin||""} inputMode="numeric" maxLength={8} onChange={e=>setPath(["pin"],e.target.value.replace(/\D/g,""))} style={{letterSpacing:".3em"}}/>
- <button onClick={resetDefault} className="w-full py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs text-neutral-400">Varsayılan Ayarlara Dön</button>
- </div>
+ {panelOpen&&unlocked&&<div className="fixed inset-0 z-[180] flex justify-end">
+  <div className="flex-1 bg-black/55" onClick={()=>setPanelOpen(false)}/>
+  <aside className="admin-panel w-full sm:w-[480px] h-full overflow-y-auto shadow-2xl flex flex-col">
 
- <div id="catalog-tab" className="mt-8 pt-6 border-t border-neutral-800">
- <div className="mb-4 rounded-xl p-3" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"25"}}><div className="text-[10px] uppercase tracking-widest opacity-50">Şu anda düzenleniyor</div><div className="font-bold mt-1" style={{color:theme.accent}}>Premium Mağaza</div><div className="text-[10px] opacity-40 mt-1">Premium ürün kataloğu.</div></div>
- <button onClick={addCategory} className="w-full py-3 rounded-xl text-sm font-bold text-white mb-4 flex items-center justify-center gap-2" style={{background:theme.accent}}><Icon type="plus" size={17}/>Yeni Kategori</button>
- {categories.map((category,categoryIndex)=><div key={category.id} className="bg-neutral-900 border border-neutral-800 rounded-xl mb-3 overflow-hidden">
- <div className="p-2 flex items-center gap-1.5"><input value={category.name} onChange={e=>renameCategory(category.id,e.target.value)} className="admin-input" style={{padding:"9px 10px",fontSize:"13px"}}/>
- <button onClick={()=>moveCategory(category.id,-1)} disabled={categoryIndex===0} className="p-2 bg-neutral-800 rounded-lg disabled:opacity-20"><Icon type="up" size={14}/></button>
- <button onClick={()=>moveCategory(category.id,1)} disabled={categoryIndex===categories.length-1} className="p-2 bg-neutral-800 rounded-lg disabled:opacity-20"><Icon type="down" size={14}/></button>
- <button onClick={()=>deleteCategory(category.id)} className="p-2 bg-red-950 text-red-400 rounded-lg"><Icon type="trash" size={14}/></button>
- <button onClick={()=>toggleCategory(category.id)} className="px-3 py-2 rounded-lg text-[11px] whitespace-nowrap flex items-center gap-1.5 font-semibold" style={{background:openCategories[category.id]?theme.accent:"#262626",color:openCategories[category.id]?"#fff":"#aaa"}}>Ürünler<Icon type={openCategories[category.id]?"up":"down"} size={13}/></button></div>
- {openCategories[category.id]&&<div className="category-products p-2 pt-0">{category.items.length===0&&<div className="bg-neutral-800 rounded-xl p-4 mb-2 text-center text-xs text-neutral-500">Bu kategoride henüz ürün yok.</div>}
- {category.items.map((item,itemIndex)=><div key={item.id} className="bg-neutral-800 rounded-xl p-3 mb-2"><div className="flex gap-2 mb-2"><div onClick={()=>itemRefs.current[item.id]?.click()} className="w-16 h-16 rounded-lg bg-neutral-700 flex-shrink-0 overflow-hidden flex items-center justify-center cursor-pointer" style={{backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center"}}>{!item.image&&<Icon type="image" size={18}/>}</div>
- <input type="file" accept="image/*" className="hidden" ref={el=>{itemRefs.current[item.id]=el}} onChange={e=>uploadItemImage(category.id,item.id,e)}/>
- <div className="flex-1"><input value={item.name} onChange={e=>updateItem(category.id,item.id,"name",e.target.value)} placeholder="Ürün adı" className="admin-input" style={{padding:"8px 9px",fontSize:"12px",marginBottom:"6px"}}/><input value={item.dims} onChange={e=>updateItem(category.id,item.id,"dims",e.target.value)} placeholder="Ölçüler: 200x90x75 cm" className="admin-input" style={{padding:"8px 9px",fontSize:"12px"}}/></div></div>
- <input value={item.desc} onChange={e=>updateItem(category.id,item.id,"desc",e.target.value)} placeholder="Ürün özellikleri" className="admin-input" style={{padding:"8px 9px",fontSize:"12px",marginBottom:"10px"}}/>
- <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 mb-2"><div className="flex items-center justify-between mb-3"><div><div className="text-[10px] uppercase tracking-widest font-bold" style={{color:theme.accent}}>Ayrı Fiyatlar</div><div className="text-[9px] text-neutral-500 mt-1">Ürünün parçalarını ayrı ayrı fiyatlandır.</div></div><button onClick={()=>addPricePart(category.id,item.id)} className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white flex items-center gap-1" style={{background:theme.accent}}><Icon type="plus" size={12}/>Fiyat Ekle</button></div>
- {normalizePrice(item.price).parts.length===0&&<div className="text-[10px] text-neutral-500 py-2 text-center">Henüz fiyat kalemi eklenmedi.</div>}
- {normalizePrice(item.price).parts.map(part=><div key={part.id} className="bg-neutral-800 rounded-lg p-2 mb-2"><div className="flex gap-2"><input value={part.name} onChange={e=>updatePricePart(category.id,item.id,part.id,"name",e.target.value)} placeholder="Örn: Masa" className="admin-input" style={{padding:"8px",fontSize:"11px"}}/><input type="number" value={part.amount??""} disabled={part.contactOnly} onChange={e=>updatePricePart(category.id,item.id,part.id,"amount",e.target.value===""?null:Number(e.target.value))} placeholder="₺" className="admin-input" style={{width:"105px",padding:"8px",fontSize:"11px",opacity:part.contactOnly?.4:1}}/><button onClick={()=>deletePricePart(category.id,item.id,part.id)} className="px-2 bg-red-950 text-red-400 rounded-lg"><Icon type="trash" size={13}/></button></div>
- <label className="flex items-center gap-2 mt-2 text-[10px] text-neutral-400"><input type="checkbox" checked={!!part.contactOnly} onChange={e=>updatePricePart(category.id,item.id,part.id,"contactOnly",e.target.checked)}/>Fiyat için iletişime geçin</label></div>)}</div>
- <div className="flex justify-end gap-1">{item.image&&<button onClick={()=>updateItem(category.id,item.id,"image",null)} className="px-2 py-1 bg-neutral-700 rounded text-[10px]">Görseli Sil</button>}<button onClick={()=>moveItem(category.id,item.id,-1)} disabled={itemIndex===0} className="p-1.5 bg-neutral-700 rounded disabled:opacity-20"><Icon type="up" size={12}/></button><button onClick={()=>moveItem(category.id,item.id,1)} disabled={itemIndex===category.items.length-1} className="p-1.5 bg-neutral-700 rounded disabled:opacity-20"><Icon type="down" size={12}/></button><button onClick={()=>deleteItem(category.id,item.id)} className="p-1.5 bg-red-950 text-red-400 rounded"><Icon type="trash" size={12}/></button></div>
- </div>)}
- <button onClick={()=>addItem(category.id)} className="w-full py-2.5 bg-neutral-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"><Icon type="plus" size={14}/>Ürün Ekle</button></div>}
- </div>)}
- </div></div>
- <div className="sticky bottom-0 bg-neutral-950 border-t border-neutral-800 p-4"><button onClick={save} disabled={saving||busy} className="w-full py-3.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50" style={{background:saved?"#12B76A":theme.accent,animation:saved?"pop .3s ease":saving?"none":"pulse 2.2s infinite"}}>{saved?<Icon type="check" size={17}/>:<Icon type="save" size={17}/>} {saved?"Kaydedildi!":saving?"Kaydediliyor...":"Kaydet ve Kapat"}</button></div>
- </aside></div>}
+    <div className="sticky top-0 z-30 bg-[#0f1012] border-b border-[#25262a] px-4 pt-4 pb-3">
+      <div className="flex items-center justify-between mb-3">
+        <div><div className="text-[10px] uppercase tracking-[.18em] text-neutral-500 font-bold">Ofischi Premium</div><h2 className="font-bold text-[18px] mt-1">Yönetim Paneli</h2></div>
+        <button onClick={()=>setPanelOpen(false)} className="w-9 h-9 rounded-full bg-neutral-800 flex items-center justify-center text-neutral-400"><Icon type="x" size={18}/></button>
+      </div>
+      <div className="admin-nav">
+        {[["general","Genel"],["design","Tasarım"],["catalog","Katalog"],["finance","Fiyat"]].map(([tab,label])=>
+          <button key={tab} onClick={()=>setAdminTab(tab)} className={adminTab===tab?"active":""}>{label}</button>
+        )}
+      </div>
+    </div>
+
+    <div className="p-4 flex-1">
+
+      {adminTab==="general"&&<div className="admin-section">
+        <button onClick={runTranslation} disabled={translating} className="w-full mb-4 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2" style={{background:theme.accent,color:"white",opacity:translating?.6:1}}>{translating?"Çeviri yapılıyor...":"🌐 Çeviri Emri — İngilizceye Çevir"}</button>
+        <div className="admin-section-title">Genel Ayarlar</div><div className="admin-section-sub">Sitenin temel bilgilerini yönetin.</div>
+        <div className="admin-card"><div className="admin-card-title">Site Bilgileri</div>
+          <label className="block mb-4"><AdminLabel>Site Adı</AdminLabel><input className="admin-input" value={data.siteName} onChange={e=>setPath(["siteName"],e.target.value)}/></label>
+          <label className="block mb-4"><AdminLabel>Üst Etiket</AdminLabel><input className="admin-input" value={viewData.eyebrow} onChange={e=>setPath(["eyebrow"],e.target.value)}/></label>
+          <label className="block"><AdminLabel>Telefon</AdminLabel><input className="admin-input" value={data.phone||""} onChange={e=>setPath(["phone"],e.target.value)} placeholder="+90 5xx xxx xx xx"/></label>
+        </div>
+        <div className="admin-card"><div className="admin-card-title">Yönetim Güvenliği</div>
+          <label className="block"><AdminLabel>Yönetim PIN</AdminLabel><input className="admin-input" value={data.pin||""} inputMode="numeric" maxLength={8} onChange={e=>setPath(["pin"],e.target.value.replace(/\D/g,""))} style={{letterSpacing:".3em"}}/></label>
+          <div className="text-[10px] text-neutral-600 mt-2">PIN değişikliğini kaydetmeyi unutmayın.</div>
+        </div>
+        <div className="admin-card"><div className="admin-card-title">Sıfırlama</div><button onClick={resetDefault} className="w-full py-3 rounded-xl bg-neutral-900 border border-neutral-700 text-xs text-neutral-400">Varsayılan Ayarlara Dön</button></div>
+      </div>}
+
+      {adminTab==="design"&&<div className="admin-section">
+        <div className="admin-section-title">Tasarım</div><div className="admin-section-sub">Logo, renkler ve görünüm ayarları.</div>
+        <div className="admin-card"><div className="admin-card-title">Premium Logo</div>
+          <div className="bg-neutral-900 rounded-xl p-4 mb-3 flex items-center justify-center min-h-[110px]">{data.logo.src?<img src={data.logo.src} alt="Premium Logo" style={{maxWidth:"100%",maxHeight:90,objectFit:"contain"}}/>:<div className="text-xs text-neutral-500">Logo eklenmedi</div>}</div>
+          <div className="flex gap-2 mb-4"><button disabled={busy} onClick={()=>logoRef.current?.click()} className="flex-1 py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs flex items-center justify-center gap-1.5 disabled:opacity-40"><Icon type="upload" size={14}/>Logo Yükle</button>{data.logo.src&&<button onClick={()=>setPath(["logo","src"],null)} className="px-3 admin-danger rounded-lg"><Icon type="trash" size={14}/></button>}<input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo}/></div>
+          <AdminLabel>Logo Boyutu — {data.logo.size||110}px</AdminLabel><input type="range" min="40" max="260" value={data.logo.size||110} onChange={e=>setPath(["logo","size"],Number(e.target.value))} className="w-full mb-4"/>
+          <AdminLabel>Logo Konumu</AdminLabel><div className="flex gap-2">{[["left","Sol"],["center","Orta"],["right","Sağ"]].map(([v,l])=><button key={v} onClick={()=>setPath(["logo","position"],v)} className="flex-1 py-2.5 rounded-lg text-xs" style={{background:data.logo.position===v?theme.accent:"#25262a",color:"#fff"}}>{l}</button>)}</div>
+        </div>
+        <div className="admin-card"><div className="admin-card-title">Hazır Temalar</div>
+          <div className="grid grid-cols-3 gap-2 mb-4">{THEMES.map(t=><button key={t.id} onClick={()=>applyTheme(t)} className="rounded-xl overflow-hidden border-2" style={{borderColor:theme.bg===t.bg&&theme.accent===t.accent?t.accent:"#292a2e"}}><div style={{height:35,background:t.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{width:15,height:15,borderRadius:"50%",background:t.accent}}/></div><div className="bg-neutral-900 py-1 text-[9px]">{t.name}</div></button>)}</div>
+          <ColorInput label="Arka Plan Rengi" value={theme.bg} onChange={v=>setPath(["theme","bg"],v)}/><ColorInput label="Kart Rengi" value={theme.card} onChange={v=>setPath(["theme","card"],v)}/><ColorInput label="Vurgu Rengi" value={theme.accent} onChange={v=>setPath(["theme","accent"],v)}/><ColorInput label="Yazı Rengi" value={theme.text} onChange={v=>setPath(["theme","text"],v)}/>
+        </div>
+        <div className="admin-card"><div className="admin-card-title">Arka Plan & Ürün Görselleri</div>
+          <div className="flex gap-2 mb-4"><button disabled={busy} onClick={()=>bgRef.current?.click()} className="flex-1 py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs">Arka Plan Görseli</button>{theme.bgImage&&<button onClick={()=>setPath(["theme","bgImage"],null)} className="px-3 admin-danger rounded-lg"><Icon type="trash" size={14}/></button>}<input ref={bgRef} type="file" accept="image/*" className="hidden" onChange={uploadBackground}/></div>
+          <AdminLabel>Ürün Görsel Yüksekliği — {data.cardImgSize}px</AdminLabel><input type="range" min="100" max="320" value={data.cardImgSize} onChange={e=>setPath(["cardImgSize"],Number(e.target.value))} className="w-full"/>
+        </div>
+      </div>}
+
+      {adminTab==="finance"&&<div className="admin-section">
+        <div className="admin-section-title">Fiyat & Para Birimi</div><div className="admin-section-sub">Fiyatların sitede hangi para biriminde gösterileceğini belirleyin.</div>
+        <div className="admin-card"><div className="admin-card-title">Gösterim Para Birimi</div>
+          <div className="grid grid-cols-3 gap-2 mb-4">{CURRENCIES.map(c=><button key={c.id} onClick={()=>setPath(["currency","selected"],c.id)} className="py-3 rounded-xl text-xs font-bold" style={{background:currency.id===c.id?theme.accent:"#202125",color:currency.id===c.id?"#fff":"#999",border:"1px solid "+(currency.id===c.id?theme.accent:"#333")}}>{c.symbol} {c.name}</button>)}</div>
+          <div className="text-[10px] text-neutral-500 mb-4">Ürün fiyatları TL olarak kaydedilir. USD ve EUR gösterimi manuel kurlara göre hesaplanır.</div>
+          <label className="block mb-3"><AdminLabel>1 USD = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.usdRate} onChange={e=>setPath(["currency","usdRate"],e.target.value)}/></label>
+          <label className="block"><AdminLabel>1 EUR = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.eurRate} onChange={e=>setPath(["currency","eurRate"],e.target.value)}/></label>
+        </div>
+      </div>}
+
+      {adminTab==="catalog"&&<div className="admin-section">
+        <div className="admin-section-title">Ürün Kataloğu</div><div className="admin-section-sub">Kategoriye girin, ürünleri gerektiğinde açın. Gereksiz alanlar ekranda kalmaz.</div>
+        <button onClick={addCategory} className="w-full py-3 rounded-xl text-sm font-bold text-white mb-4 flex items-center justify-center gap-2" style={{background:theme.accent}}><Icon type="plus" size={17}/>Yeni Kategori</button>
+        {categories.map((category,categoryIndex)=><div key={category.id} className="catalog-category">
+          <div className="catalog-head"><input value={category.name} onChange={e=>renameCategory(category.id,e.target.value)} className="admin-input" style={{padding:"9px 10px",fontSize:"12px"}}/>
+            <button onClick={()=>moveCategory(category.id,-1)} disabled={categoryIndex===0} className="p-2 bg-neutral-800 rounded-lg disabled:opacity-20"><Icon type="up" size={13}/></button>
+            <button onClick={()=>moveCategory(category.id,1)} disabled={categoryIndex===categories.length-1} className="p-2 bg-neutral-800 rounded-lg disabled:opacity-20"><Icon type="down" size={13}/></button>
+            <button onClick={()=>deleteCategory(category.id)} className="p-2 admin-danger rounded-lg"><Icon type="trash" size={13}/></button>
+            <button onClick={()=>toggleCategory(category.id)} className="px-2.5 py-2 rounded-lg text-[10px] whitespace-nowrap font-bold" style={{background:openCategories[category.id]?theme.accent:"#26272b",color:"#fff"}}>{openCategories[category.id]?"Kapat":"Ürünler"}</button>
+          </div>
+          {openCategories[category.id]&&<div className="catalog-items">
+            {category.items.length===0&&<div className="bg-neutral-900 rounded-xl p-4 text-center text-xs text-neutral-500">Bu kategoride henüz ürün yok.</div>}
+            {category.items.map((item,itemIndex)=><div key={item.id} className="catalog-item">
+              <div className="flex gap-2"><div onClick={()=>itemRefs.current[item.id]?.click()} className="w-16 h-16 rounded-lg bg-neutral-700 flex-shrink-0 overflow-hidden flex items-center justify-center cursor-pointer" style={{backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center"}}>{!item.image&&<Icon type="image" size={18}/>}</div>
+                <input type="file" accept="image/*" className="hidden" ref={el=>{itemRefs.current[item.id]=el}} onChange={e=>uploadItemImage(category.id,item.id,e)}/>
+                <div className="flex-1 min-w-0"><input value={item.name} onChange={e=>updateItem(category.id,item.id,"name",e.target.value)} placeholder="Ürün adı" className="admin-input mb-1.5" style={{padding:"8px 9px",fontSize:"12px"}}/><input value={item.dims} onChange={e=>updateItem(category.id,item.id,"dims",e.target.value)} placeholder="Ölçüler: 200x90x75 cm" className="admin-input" style={{padding:"8px 9px",fontSize:"11px"}}/></div>
+              </div>
+              <input value={item.desc} onChange={e=>updateItem(category.id,item.id,"desc",e.target.value)} placeholder="Ürün özellikleri" className="admin-input mt-2" style={{padding:"8px 9px",fontSize:"11px"}}/>
+              <div className="mt-2 flex gap-1.5"><button onClick={()=>addPricePart(category.id,item.id)} className="flex-1 py-2 rounded-lg text-[10px] font-bold" style={{background:theme.accent,color:"#fff"}}>+ Fiyat Kalemi</button>{item.image&&<button onClick={()=>updateItem(category.id,item.id,"image",null)} className="px-3 py-2 bg-neutral-700 rounded-lg text-[10px]">Görseli Sil</button>}</div>
+              {normalizePrice(item.price).parts.length>0&&<div className="mt-2 bg-neutral-900 rounded-xl p-2">{normalizePrice(item.price).parts.map(part=><div key={part.id} className="bg-neutral-800 rounded-lg p-2 mb-2 last:mb-0"><div className="grid grid-cols-[1fr_.85fr_95px_auto] gap-1.5 items-center">
+  <input value={part.name} onChange={e=>updatePricePart(category.id,item.id,part.id,"name",e.target.value)} placeholder="Yeni Parça" className="admin-input" style={{padding:"7px",fontSize:"10px"}}/>
+  <input value={part.dims||""} onChange={e=>updatePricePart(category.id,item.id,part.id,"dims",e.target.value)} placeholder="Ölçü" className="admin-input" style={{padding:"7px",fontSize:"10px"}}/>
+  <input type="number" value={part.amount??""} disabled={part.contactOnly} onChange={e=>updatePricePart(category.id,item.id,part.id,"amount",e.target.value===""?null:Number(e.target.value))} placeholder="Fiyat" className="admin-input" style={{padding:"7px",fontSize:"10px",opacity:part.contactOnly?.4:1}}/>
+  <button onClick={()=>deletePricePart(category.id,item.id,part.id)} className="px-2 admin-danger rounded-lg"><Icon type="trash" size={12}/></button>
+</div><label className="flex items-center gap-2 mt-2 text-[10px] text-neutral-400"><input type="checkbox" checked={!!part.contactOnly} onChange={e=>updatePricePart(category.id,item.id,part.id,"contactOnly",e.target.checked)}/>Fiyat için iletişime geçin</label></div>)}</div>}
+              <div className="flex justify-end gap-1 mt-2"><button onClick={()=>moveItem(category.id,item.id,-1)} disabled={itemIndex===0} className="p-1.5 bg-neutral-700 rounded disabled:opacity-20"><Icon type="up" size={12}/></button><button onClick={()=>moveItem(category.id,item.id,1)} disabled={itemIndex===category.items.length-1} className="p-1.5 bg-neutral-700 rounded disabled:opacity-20"><Icon type="down" size={12}/></button><button onClick={()=>deleteItem(category.id,item.id)} className="p-1.5 admin-danger rounded"><Icon type="trash" size={12}/></button></div>
+            </div>)}
+            <button onClick={()=>addItem(category.id)} className="w-full py-2.5 bg-neutral-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 mt-2"><Icon type="plus" size={14}/>Ürün Ekle</button>
+          </div>}
+        </div>)}
+      </div>}
+    </div>
+
+    <div className="sticky bottom-0 z-30 bg-[#0f1012] border-t border-[#25262a] p-3">
+      <button onClick={save} disabled={saving||busy} className="w-full py-3.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50" style={{background:saved?"#12B76A":theme.accent}}>
+        {saved?<Icon type="check" size={17}/>:<Icon type="save" size={17}/>}
+        {saved?"Kaydedildi!":saving?"Kaydediliyor...":"Değişiklikleri Kaydet"}
+      </button>
+    </div>
+  </aside>
+ </div>}
  </div>
 }
 const root=document.getElementById("root");if(root)ReactDOM.createRoot(root).render(<App/>);
