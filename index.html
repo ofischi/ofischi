@@ -1343,7 +1343,6 @@ useEffect(()=>{
     try{await saveLocal(incoming)}catch(e){console.warn("Bulut verisi yerel kayda yazılamadı:",e)}
     setData(incoming);
     setSaved(false);
-    showToast(languageRef.current==="EN"?"Catalog updated from another device.":"Katalog başka bir cihazdan güncellendi.");
     setTimeout(()=>{realtimeApplyingRef.current=false},0);
   };
   const channel=supabaseClient.channel("ofischi-catalog-realtime-v2")
