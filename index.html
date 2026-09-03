@@ -712,35 +712,46 @@ function formatAmountByData(source,amount){
 }
 
 /* -------------------- PDF PRICE LIST -------------------- */
+/*
+   PDF LAYOUT — ORIGINAL OFISCHI GRID
+   A4 portrait, fixed x coordinates, one identical product template.
+   The original reference uses compact stacked product blocks on page 2;
+   this implementation keeps that logic while removing KG / M³ as requested.
+*/
 function pdfText(lang,tr,en,fallback){return getText(lang,tr,en,fallback||tr)}
 function pdfCurrencyInfo(data){
  const id=data?.currency?.selected||"TRY";
  const rate=id==="USD"?Number(data?.currency?.usdRate):id==="EUR"?Number(data?.currency?.eurRate):1;
  return {id,rate:rate>0?rate:1};
 }
-/* PDF ve web sitesi aynı fiyat dönüşüm/formatlama motorunu kullanır. */
 function pdfMoney(data,amount){
  if(amount===null||amount===undefined||amount===""||!Number.isFinite(Number(amount)))return "—";
  return formatAmountByData(data,amount)||"—";
 }
 function pdfTotal(data,item){
- const p=normalizePrice(item.price);
- if(p.parts.length){const n=p.parts.filter(x=>!x.contactOnly&&x.amount!==null&&x.amount!==undefined&&x.amount!=="").reduce((a,x)=>a+Number(x.amount),0);return n>0?pdfMoney(data,n):"—";}
+ const p=normalizePrice(item?.price);
+ if(p.parts.length){
+   const n=p.parts.filter(x=>!x.contactOnly&&x.amount!==null&&x.amount!==undefined&&x.amount!=="").reduce((a,x)=>a+Number(x.amount),0);
+   return n>0?pdfMoney(data,n):(p.parts.some(x=>x.contactOnly)?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):"—");
+ }
  return p.contactOnly?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):pdfMoney(data,p.amount);
 }
 function pdfCleanDims(value){return String(value||"—").replace(/\b(kg|m³|m3)\b/gi,"").replace(/\s{2,}/g," ").trim()||"—"}
-function pdfDimsParts(value){const s=pdfCleanDims(value);const nums=s.match(/[-+]?\d+(?:[.,]\d+)?/g)||[];return [nums[0]||"—",nums[1]||"—",nums[2]||"—"]}
+function pdfDimsParts(value){
+ const s=pdfCleanDims(value),nums=s.match(/[-+]?\d+(?:[.,]\d+)?/g)||[];
+ return [nums[0]||"—",nums[1]||"—",nums[2]||"—"];
+}
 function pdfRowsForItem(item){
- const p=normalizePrice(item.price);
- return p.parts.length?p.parts:[{name:item.name,name_en:item.name_en,dims:item.dims,amount:p.amount,contactOnly:p.contactOnly}];
+ const p=normalizePrice(item?.price);
+ if(p.parts.length)return p.parts;
+ return [{name:item?.name||"",name_en:item?.name_en||"",dims:item?.dims||"",dims_en:item?.dims_en||"",amount:p.amount,contactOnly:p.contactOnly}];
 }
 
-/* PDF VERİ KAYNAĞI: ekranda kullanılan gerçek kategori -> item kayıtlarından gelir.
-   PDF için yeni ürün/kayıt üretilmez; normalizeItem yalnızca doğrulanmış gerçek kayda uygulanır. */
+/* -------------------- STRICT PDF DATA / IMAGE BOUNDARIES -------------------- */
 function pdfImageSource(value){
- if(typeof value==='string')return value.trim();
- if(value&&typeof value==='object')return String(value.src||value.data||value.url||'').trim();
- return '';
+ if(typeof value==="string")return value.trim();
+ if(value&&typeof value==="object")return String(value.src||value.data||value.url||"").trim();
+ return "";
 }
 function pdfValidProductId(item){
  const id=item?.id;
@@ -748,18 +759,12 @@ function pdfValidProductId(item){
 }
 function pdfHasRealProductData(item){
  if(!item||typeof item!=="object")return false;
- const image=pdfImageSource(item.image);
- const dims=String(item.dims??"").trim();
- const desc=String(item.desc??"").trim();
  const price=item.price;
  const hasPrice=!!price&&(
-   (Array.isArray(price.parts)&&price.parts.some(p=>p&&(
-      (p.amount!==null&&p.amount!==undefined&&p.amount!=="") ||
-      String(p.name??"").trim()
-   ))) ||
+   (Array.isArray(price.parts)&&price.parts.some(p=>p&&((p.amount!==null&&p.amount!==undefined&&p.amount!=="")||String(p.name??"").trim()))) ||
    (price.amount!==null&&price.amount!==undefined&&price.amount!=="")
  );
- return !!image||!!dims||!!desc||hasPrice;
+ return !!pdfImageSource(item.image)||!!String(item.dims??"").trim()||!!String(item.desc??"").trim()||hasPrice;
 }
 function pdfIsDemoProduct(item){
  if(!item||typeof item!=="object")return true;
@@ -767,53 +772,53 @@ function pdfIsDemoProduct(item){
  if(item.isDemo===true||item.placeholder===true||item.temporary===true)return true;
  const name=String(item.name??"").trim();
  if(!name)return true;
- /* Eski sürümlerde flag yoksa yalnızca tamamen boş "Yeni Ürün" taslaklarını demo say.
-    Gerçekten adı "Yeni Ürün" olan ve veri içeren ürün korunur. */
+ /* Only an empty legacy placeholder named Yeni Ürün/New Product is removed. */
  if(/^(yeni\s*ürün|new\s*product)$/i.test(name)&&!pdfHasRealProductData(item))return true;
  return false;
 }
 function pdfProductImageSource(item,data){
  const src=pdfImageSource(item?.image);
  if(!src)return "";
- /* Ürün kaydının image alanı dışında hiçbir görsel ürün görseli olarak kullanılmaz.
-    Logo ve kategori kapağı ürün görselinin yerine kesinlikle geçemez. */
- const forbidden=new Set();
- const logo=pdfImageSource(data?.logo?.src);if(logo)forbidden.add(logo);
- for(const c of (data?.categories||[])){const cover=pdfImageSource(c?.coverImage);if(cover)forbidden.add(cover);}
- return forbidden.has(src)?"":src;
+ /* Product image can ONLY come from this exact item's image field. */
+ const logo=pdfImageSource(data?.logo?.src);
+ if(logo&&src===logo)return "";
+ for(const category of (data?.categories||[])){
+   const cover=pdfImageSource(category?.coverImage);
+   if(cover&&src===cover)return "";
+ }
+ return src;
 }
 function pdfRealCategories(rawData){
  const source=rawData&&typeof rawData==="object"?rawData:{};
- const rawCats=Array.isArray(source.categories)?source.categories:[];
- return rawCats.map(rawCat=>{
-   if(!rawCat||typeof rawCat!=="object")return null;
-   const rawItems=Array.isArray(rawCat.items)?rawCat.items:[];
+ const categories=Array.isArray(source.categories)?source.categories:[];
+ return categories.map(category=>{
+   if(!category||typeof category!=="object")return null;
+   const rawItems=Array.isArray(category.items)?category.items:[];
    const items=rawItems.filter(item=>!pdfIsDemoProduct(item)).map(item=>{
-     /* PDF ürünü tek kayıt üzerinden oluşturulur; başka üründen alan birleştirilmez. */
      const normalized=normalizeItem(item);
+     /* One PDF product = one source item. No fields are borrowed from another item. */
      return {
        ...normalized,
        id:item.id,
-       categoryId:rawCat.id,
-       categoryName:rawCat.name,
-       categoryName_en:rawCat.name_en,
+       categoryId:category.id,
+       categoryName:category.name,
+       categoryName_en:category.name_en,
        image:pdfProductImageSource(item,source)||null
      };
    });
-   return {...rawCat,items};
- }).filter(c=>c&&c.items.length>0);
+   return {...category,items};
+ }).filter(Boolean).filter(category=>category.items.length>0);
 }
 async function pdfPrepareImages(data){
- const prepared=pdfRealCategories(data);
- const unique=new Map();
+ const prepared=pdfRealCategories(data),images=new Map();
  for(const category of prepared){
    for(const item of category.items){
      const src=pdfProductImageSource(item,data);
-     if(src&&!unique.has(src))unique.set(src,null);
+     if(src&&!images.has(src))images.set(src,null);
    }
  }
- await Promise.all([...unique.keys()].map(async src=>{unique.set(src,await pdfImageAsset(src))}));
- return {data:{...data,categories:prepared},images:unique};
+ await Promise.all([...images.keys()].map(async src=>images.set(src,await pdfImageAsset(src))));
+ return {data:{...data,categories:prepared},images};
 }
 
 /* Embedded DejaVu Sans: real Unicode text in the PDF, including Ç Ş Ğ İ Ö Ü ı. */
@@ -852,9 +857,10 @@ function pdfTextOp(text,x,y,size,opts={}){
  for(let i=0;i<lines.length;i++){
   const line=lines[i];let xx=x;
   if(align==="center")xx=x-pdfFontWidth(line,size)/2;else if(align==="right")xx=x-pdfFontWidth(line,size);
-  const hex=pdfUnicodeHex(line);
-  out+=`BT /F1 ${size.toFixed(2)} Tf 1 0 0 1 ${xx.toFixed(2)} ${(y-i*leading).toFixed(2)} Tm <${hex}> Tj ET\n`;
-  if(bold){const bx=xx+0.22;out+=`BT /F1 ${size.toFixed(2)} Tf 1 0 0 1 ${bx.toFixed(2)} ${(y-i*leading).toFixed(2)} Tm <${hex}> Tj ET\n`}
+  const hex=pdfUnicodeHex(line),color=Array.isArray(opts.color)?opts.color:[0,0,0];
+  const rgb=`${color[0]} ${color[1]} ${color[2]} rg`;
+  out+=`${rgb}\nBT /F1 ${size.toFixed(2)} Tf 1 0 0 1 ${xx.toFixed(2)} ${(y-i*leading).toFixed(2)} Tm <${hex}> Tj ET\n`;
+  if(bold){const bx=xx+0.22;out+=`${rgb}\nBT /F1 ${size.toFixed(2)} Tf 1 0 0 1 ${bx.toFixed(2)} ${(y-i*leading).toFixed(2)} Tm <${hex}> Tj ET\n`}
  }
  return out;
 }
@@ -934,139 +940,204 @@ async function pdfMakeFontAndToUnicode(objs,usedCids){
  return type0;
 }
 function pdfCollectUsedCids(texts){const set=new Set([PDF_FONT_CMAP[63]||0]);for(const text of texts){for(const ch of String(text??"")){const cp=ch.codePointAt(0);set.add(PDF_FONT_CMAP[cp]??PDF_FONT_CMAP[63]??0)}}return set}
+
 function pdfPageMetrics(){return{width:595.28,height:841.89}}
+
+/* Fixed A4 geometry. All product blocks use these exact x/width values. */
+const PDF_LAYOUT={
+ W:595.28,H:841.89,
+ rail:18,left:27,right:8,top:18,bottom:25,
+ gap:3.2,
+ cardW:560.28,
+ imageW:190,
+ titleH:18,
+ headerH:18,
+ rowH:14.5,
+ categoryH:19
+};
+PDF_LAYOUT.cardW=PDF_LAYOUT.W-PDF_LAYOUT.left-PDF_LAYOUT.right;
+PDF_LAYOUT.tableX=PDF_LAYOUT.left+PDF_LAYOUT.imageW;
+PDF_LAYOUT.tableW=PDF_LAYOUT.cardW-PDF_LAYOUT.imageW;
+PDF_LAYOUT.moduleW=116;
+PDF_LAYOUT.dimW=78;
+PDF_LAYOUT.unitW=82;
+PDF_LAYOUT.setW=PDF_LAYOUT.tableW-PDF_LAYOUT.moduleW-PDF_LAYOUT.dimW-PDF_LAYOUT.unitW;
+PDF_LAYOUT.c1=PDF_LAYOUT.tableX+PDF_LAYOUT.moduleW;
+PDF_LAYOUT.c2=PDF_LAYOUT.c1+PDF_LAYOUT.dimW;
+PDF_LAYOUT.c3=PDF_LAYOUT.c2+PDF_LAYOUT.unitW;
+
 function pdfCardHeight(item){
- const rows=pdfRowsForItem(item).length;
- // Okunabilirlik öncelikli: başlık, tablo başlığı ve satırlar için gerçek alan bırak.
- const rowH=17.8;
- return 18.5+22+Math.max(17.8,rows*rowH)+3;
+ const rows=Math.max(1,pdfRowsForItem(item).length);
+ return PDF_LAYOUT.titleH+PDF_LAYOUT.headerH+(rows*PDF_LAYOUT.rowH)+2.5;
 }
-function pdfCategoryHeight(){return 21}
+function pdfCategoryHeight(){return PDF_LAYOUT.categoryH}
 function pdfPageChrome(data,pageNo){
- const W=595.28,H=841.89,rail=18;let c=pdfRect(0,0,rail,H,[0.05,0.05,0.05]);
+ const L=PDF_LAYOUT,W=L.W,H=L.H;let c=pdfRect(0,0,L.rail,H,[0.05,0.05,0.05]);
  const site=data.pdf?.website||data.pdf?.footer||"www.ofishci.com";
- const hex=pdfUnicodeHex(site);c+=`q\n1 0 0 1 ${(rail/2).toFixed(2)} ${(H/2).toFixed(2)} cm\n0 1 -1 0 0 0 cm\nBT /F1 8.5 Tf 1 0 0 1 0 0 Tm <${hex}> Tj ET\nQ\n`;
- if(data.pdf?.showPageNumbers!==false)c+=pdfTextOp(String(pageNo),rail/2,13,8.5,{align:"center",bold:true});
+ const hex=pdfUnicodeHex(site);
+ c+=`q\n1 0 0 1 ${(L.rail/2).toFixed(2)} ${(H/2).toFixed(2)} cm\n0 1 -1 0 0 0 cm\nBT /F1 8.5 Tf 1 0 0 1 0 0 Tm <${hex}> Tj ET\nQ\n`;
+ if(data.pdf?.showPageNumbers!==false)c+=pdfTextOp(String(pageNo),L.rail/2,13,8.5,{align:"center",bold:true,color:[1,1,1]});
  return c;
 }
 function pdfCategoryBlock(category,lang,x,y,w){
- const h=21;let c=pdfRect(x,y,w,h,[0.05,0.05,0.05]);c+=pdfTextOp(pdfText(lang,category.name,category.name_en,category.name),x+w/2,y+5.7,12.2,{align:"center",bold:true,maxWidth:w-12,maxLines:1});return c;
-}
-function pdfCardContent(ctxParts,data,category,item,lang,x,y,w,h,images){
- const rows=pdfRowsForItem(item), title=pdfText(lang,item.name,item.name_en,item.name);let c="";
- const imageW=Math.min(w*.38,220), tableX=x+imageW, tableW=w-imageW;
- // Outer card + title divider
- c+=pdfRect(x,y,w,h,null,[0.12,0.12,0.12],.65);
- c+=pdfLine(x,y+h-18.5,x+w,y+h-18.5,[0.18,0.18,0.18],.55);
- c+=pdfTextOp(title,x+imageW/2,y+h-5.8,12.4,{align:"center",bold:true,maxWidth:imageW-10,maxLines:1});
- // Image area
- c+=pdfRect(x+0.5,y+0.5,imageW-1,h-19.5,[0.97,0.97,0.96],[0.35,0.35,0.35],.45);
- const productSrc=pdfProductImageSource(item,data);const asset=images.get(productSrc);
- if(asset)c+=pdfDrawImage("Im"+asset.id,asset,x+2,y+2,imageW-4,h-23,true);
- else c+=pdfTextOp(lang==="EN"?"NO PRODUCT IMAGE":"ÜRÜN GÖRSELİ YOK",x+imageW/2,y+(h-19.5)/2+2,8.8,{align:"center",bold:true,maxWidth:imageW-12,maxLines:2});
- // Table columns
- const bodyTop=y+h-18.5;const headerH=22;const moduleW=tableW*.30,dimsW=tableW*.33,unitW=tableW*.18,setW=tableW-moduleW-dimsW-unitW;
- const c1=tableX+moduleW,c2=c1+dimsW,c3=c2+unitW;
- c+=pdfRect(tableX,bodyTop-headerH,tableW,headerH,[0.06,0.06,0.06]);
- c+=pdfTextOp(lang==="EN"?"MODULE":"MODÜL",tableX+moduleW/2,bodyTop-8.2,9.2,{align:"center",bold:true,maxWidth:moduleW-5,maxLines:1});
- c+=pdfTextOp(lang==="EN"?"DIMENSIONS":"ÖLÇÜLER",c1+dimsW/2,bodyTop-8.0,9.0,{align:"center",bold:true,maxWidth:dimsW-5,maxLines:1});
- c+=pdfTextOp("G/W",c1+dimsW/6,bodyTop-16.6,8.6,{align:"center",bold:true,maxWidth:dimsW/3-2,maxLines:1});
- c+=pdfTextOp("D/D",c1+dimsW/2,bodyTop-16.6,8.6,{align:"center",bold:true,maxWidth:dimsW/3-2,maxLines:1});
- c+=pdfTextOp("Y/H",c1+dimsW*5/6,bodyTop-16.6,8.6,{align:"center",bold:true,maxWidth:dimsW/3-2,maxLines:1});
- c+=pdfTextOp(lang==="EN"?"UNIT PRICE":"BİRİM FİYATI",c2+unitW/2,bodyTop-12.3,8.8,{align:"center",bold:true,maxWidth:unitW-4,maxLines:1});
- c+=pdfTextOp(lang==="EN"?"SET PRICE":"TAKIM FİYATI",c3+setW/2,bodyTop-12.3,8.8,{align:"center",bold:true,maxWidth:setW-4,maxLines:1});
- c+=pdfLine(c1,bodyTop,c1,y,[0.25,0.25,0.25],.45)+pdfLine(c2,bodyTop,c2,y,[0.25,0.25,0.25],.45)+pdfLine(c3,bodyTop,c3,y,[0.25,0.25,0.25],.45);
- const bodyH=bodyTop-headerH-y, rowH=bodyH/Math.max(rows.length,1);
- rows.forEach((part,i)=>{
-  const yy=bodyTop-headerH-(i+1)*rowH;
-  if(i%2)c+=pdfRect(tableX,yy,tableW,rowH,[0.985,0.985,0.985]);
-  c+=pdfLine(tableX,yy, c3,yy,[0.76,0.76,0.76],.35);
-  const mod=pdfText(lang,part.name,part.name_en,part.name)||"—";const [dw,dd,dh]=pdfDimsParts(part.dims);
-  c+=pdfTextOp(mod,tableX+4,yy+rowH/2-3.1,9.2,{bold:true,maxWidth:moduleW-7,maxLines:1});
-  c+=pdfTextOp(dw,c1+dimsW/6,yy+rowH/2-3.1,9.2,{align:"center",bold:true,maxWidth:dimsW/3-2,maxLines:1});
-  c+=pdfTextOp(dd,c1+dimsW/2,yy+rowH/2-3.1,9.2,{align:"center",bold:true,maxWidth:dimsW/3-2,maxLines:1});
-  c+=pdfTextOp(dh,c1+dimsW*5/6,yy+rowH/2-3.1,9.2,{align:"center",bold:true,maxWidth:dimsW/3-2,maxLines:1});
-  const price=part.contactOnly?(lang==="EN"?"Contact us":"İletişime geçin"):pdfMoney(data,part.amount);
-  c+=pdfTextOp(price,c2+unitW/2,yy+rowH/2-3.1,9.8,{align:"center",bold:true,maxWidth:unitW-4,maxLines:1});
- });
- // Set price merged cell
- c+=pdfRect(c3,y,setW,bodyH,null,[0.25,0.25,0.25],.45);
- c+=pdfTextOp(pdfTotal(data,item),c3+setW/2,y+bodyH/2-3.2,11.8,{align:"center",bold:true,maxWidth:setW-6,maxLines:2});
+ const h=PDF_LAYOUT.categoryH;
+ let c=pdfRect(x,y,w,h,[0.05,0.05,0.05]);
+ c+=pdfTextOp(pdfText(lang,category.name,category.name_en,category.name),x+w/2,y+5.1,11.8,{align:"center",bold:true,maxWidth:w-10,maxLines:1,color:[1,1,1]});
  return c;
 }
+
+function pdfProductBlock(data,category,item,lang,x,y,w,h,asset,id){
+ const L=PDF_LAYOUT,rows=pdfRowsForItem(item),title=pdfText(lang,item.name,item.name_en,item.name)||"—";
+ let c="";
+ /* Outer rectangle and title strip. */
+ c+=pdfRect(x,y,w,h,[1,1,1],[0.18,0.18,0.18],.55);
+ const titleY=y+h-L.titleH;
+ c+=pdfRect(x,titleY,w,L.titleH,[0.98,0.98,0.98],[0.18,0.18,0.18],.45);
+ c+=pdfTextOp(title,x+w/2,titleY+5.0,11.8,{align:"center",bold:true,maxWidth:w-12,maxLines:1});
+
+ /* Left image panel: fixed width for every product. */
+ const bodyY=y,bodyH=h-L.titleH;
+ c+=pdfRect(x+0.5,bodyY+0.5,L.imageW-1,bodyH-1,[0.97,0.97,0.96],[0.45,0.45,0.45],.45);
+ if(asset){
+   c+=pdfDrawImage("Im"+id,asset,x+2,bodyY+2,L.imageW-4,bodyH-4,true);
+ }else{
+   c+=pdfTextOp(lang==="EN"?"NO PRODUCT IMAGE":"ÜRÜN GÖRSELİ YOK",x+L.imageW/2,bodyY+bodyH/2-3.2,8.7,{align:"center",bold:true,maxWidth:L.imageW-12,maxLines:2});
+ }
+
+ /* Right table: fixed columns for EVERY product. */
+ const tx=L.tableX,tw=L.tableW,headerY=bodyY+bodyH-L.headerH;
+ c+=pdfRect(tx,headerY,tw,L.headerH,[0.05,0.05,0.05],[0.05,0.05,0.05],.4);
+ c+=pdfTextOp(lang==="EN"?"MODULE":"MODÜL",tx+L.moduleW/2,headerY+5.0,8.5,{align:"center",bold:true,maxWidth:L.moduleW-4,maxLines:1,color:[1,1,1]});
+ c+=pdfTextOp(lang==="EN"?"DIMENSIONS":"ÖLÇÜLER",L.c1+L.dimW/2,headerY+5.0,8.3,{align:"center",bold:true,maxWidth:L.dimW-4,maxLines:1,color:[1,1,1]});
+ c+=pdfTextOp(lang==="EN"?"UNIT PRICE":"BİRİM FİYATI",L.c2+L.unitW/2,headerY+5.0,8.1,{align:"center",bold:true,maxWidth:L.unitW-4,maxLines:1,color:[1,1,1]});
+ c+=pdfTextOp(lang==="EN"?"SET PRICE":"TAKIM FİYATI",L.c3+L.setW/2,headerY+5.0,8.1,{align:"center",bold:true,maxWidth:L.setW-4,maxLines:1,color:[1,1,1]});
+
+ /* Dimension sub-labels are printed once directly under the header, keeping the grid stable. */
+ const dimsBandH=0; // Dimensions are three fixed sub-columns in the body.
+ const bodyTableY=bodyY, bodyTableH=bodyH-L.headerH;
+ const rowH=bodyTableH/Math.max(rows.length,1);
+ for(let i=0;i<rows.length;i++){
+   const rowTop=headerY-(i*rowH),rowBottom=rowTop-rowH;
+   if(i%2===1)c+=pdfRect(tx,rowBottom,tw,rowH,[0.985,0.985,0.985]);
+   c+=pdfLine(tx,rowBottom,tx+tw,rowBottom,[0.72,0.72,0.72],.35);
+   const part=rows[i]||{},[dw,dd,dh]=pdfDimsParts(part.dims),mod=pdfText(lang,part.name,part.name_en,part.name)||"—";
+   const cy=rowBottom+rowH/2-3.0;
+   c+=pdfTextOp(mod,tx+4,cy,8.9,{bold:true,maxWidth:L.moduleW-7,maxLines:1});
+   const dx=L.c1,third=L.dimW/3;
+   c+=pdfTextOp(dw,dx+third/2,cy,8.8,{align:"center",bold:true,maxWidth:third-2,maxLines:1});
+   c+=pdfTextOp(dd,dx+third*1.5,cy,8.8,{align:"center",bold:true,maxWidth:third-2,maxLines:1});
+   c+=pdfTextOp(dh,dx+third*2.5,cy,8.8,{align:"center",bold:true,maxWidth:third-2,maxLines:1});
+   const price=part.contactOnly?(lang==="EN"?"Contact us":"İletişime geçin"):pdfMoney(data,part.amount);
+   c+=pdfTextOp(price,L.c2+L.unitW/2,cy,9.0,{align:"center",bold:true,maxWidth:L.unitW-4,maxLines:1});
+ }
+ /* Fixed vertical grid lines. */
+ c+=pdfLine(L.c1,bodyY,L.c1,headerY,[0.35,0.35,0.35],.4);
+ c+=pdfLine(L.c2,bodyY,L.c2,headerY,[0.35,0.35,0.35],.4);
+ c+=pdfLine(L.c3,bodyY,L.c3,headerY,[0.35,0.35,0.35],.4);
+ /* Three dimension sub-columns. */
+ const third=L.dimW/3;
+ c+=pdfLine(L.c1+third,bodyY,L.c1+third,headerY,[0.55,0.55,0.55],.3);
+ c+=pdfLine(L.c1+third*2,bodyY,L.c1+third*2,headerY,[0.55,0.55,0.55],.3);
+ /* Tiny G/W D/D Y/H labels inside the dimension header, without changing the fixed grid. */
+ c+=pdfRect(L.c1,headerY,L.dimW,L.headerH,[0.05,0.05,0.05],null,0);
+ c+=pdfTextOp("G/W",L.c1+third/2,headerY+5.0,7.2,{align:"center",bold:true,maxWidth:third-2,maxLines:1,color:[1,1,1]});
+ c+=pdfTextOp("D/D",L.c1+third*1.5,headerY+5.0,7.2,{align:"center",bold:true,maxWidth:third-2,maxLines:1,color:[1,1,1]});
+ c+=pdfTextOp("Y/H",L.c1+third*2.5,headerY+5.0,7.2,{align:"center",bold:true,maxWidth:third-2,maxLines:1,color:[1,1,1]});
+ /* Set price is a single dedicated vertical cell. */
+ c+=pdfRect(L.c3,bodyY,L.setW,bodyTableH,null,[0.35,0.35,0.35],.45);
+ c+=pdfTextOp(pdfTotal(data,item),L.c3+L.setW/2,bodyY+bodyTableH/2-3.0,10.8,{align:"center",bold:true,maxWidth:L.setW-6,maxLines:2});
+ return c;
+}
+
 async function renderPdfCoverPage(data,lang){
- const W=595.28,H=841.89;let content=pdfRect(0,0,W,H,[0.02,0.02,0.02]);content+=pdfRect(8,8,W-16,H-16,null,[0.55,0.55,0.55],.6);content+=pdfRect(12,12,W-24,H-24,null,[0.22,0.22,0.22],.6);
- const images=new Map();const logoSrc=pdfImageSource(data.logo?.src);const logoLoaded=await pdfImageAsset(logoSrc);const logo=logoLoaded?{...logoLoaded,id:1}:null;if(logo){images.set("__coverLogo__",logo);content+=pdfDrawImage("Im1",logo,80,440,435,145,true)}
- const title=data.pdf?.title||"2026-2 TL FİYAT LİSTESİ";content+=pdfTextOp(title,W-45,55,17.5,{align:"right",bold:true,maxWidth:430,maxLines:2});
+ const L=PDF_LAYOUT,W=L.W,H=L.H;
+ let content=pdfRect(0,0,W,H,[0.02,0.02,0.02]);
+ content+=pdfRect(7,7,W-14,H-14,null,[0.55,0.55,0.55],.55);
+ content+=pdfRect(11,11,W-22,H-22,null,[0.22,0.22,0.22],.55);
+ const images=new Map(),logoSrc=pdfImageSource(data.logo?.src);
+ const loaded=await pdfImageAsset(logoSrc);
+ if(loaded){
+   const logo={...loaded,id:1};images.set("__coverLogo__",logo);
+   content+=pdfDrawImage("Im1",logo,55,365,485,205,true);
+ }
+ const title=data.pdf?.title||(data.currency?.selected==="TRY"?"2026-2 TL FİYAT LİSTESİ":"2026-2 PRICE LIST");
+ content+=pdfTextOp(title,W-42,55,17.5,{align:"right",bold:true,maxWidth:455,maxLines:2,color:[1,1,1]});
  return {content,images,pageNo:null};
 }
-async function renderPdfCatalogPage(data,lang,blocks,pageNo){
- const W=595.28,H=841.89,rail=18,left=27,right=8,top=18,bottom=26,gap=3.2;let content=pdfPageChrome(data,pageNo);const images=new Map();let yTop=top;
- let imageId=1;
+
+async function renderPdfCatalogPage(data,lang,blocks,pageNo,preparedImages){
+ const L=PDF_LAYOUT,W=L.W,H=L.H;
+ let content=pdfPageChrome(data,pageNo),images=new Map(),yTop=L.top,imageId=1;
+ const imageMap=preparedImages||new Map();
  for(const block of blocks){
-  if(block.type==="category"){
-   content+=pdfCategoryBlock(block.category,lang,left,H-yTop-pdfCategoryHeight(),W-left-right);yTop+=pdfCategoryHeight()+gap;
-  }else if(block.type==="categoryCover"){
-   const h=48,x=left,w=W-left-right;content+=pdfRect(x,H-yTop-h,w,h,[0.94,0.94,0.92],[0.15,0.15,0.15],.55);const asset=await pdfImageAsset(block.category.coverImage);if(asset){asset.id=imageId++;images.set(block.category.coverImage,asset);content+=pdfDrawImage("Im"+asset.id,asset,x+1.5,H-yTop-h+1.5,120,h-3,true)}content+=pdfRect(x+122,H-yTop-h,w-122,h,[0.05,0.05,0.05]);content+=pdfTextOp(pdfText(lang,block.category.name,block.category.name_en,block.category.name),x+122+(w-122)/2,H-yTop-h+h/2-4,12.5,{align:"center",bold:true,maxWidth:w-138,maxLines:1});yTop+=h+gap;
-  }else{
-   const h=pdfCardHeight(block.item);if(yTop+h>H-bottom)continue;const y=H-yTop-h;const imageKey=pdfProductImageSource(block.item,data);if(imageKey&&!images.has(imageKey)){const loaded=await pdfImageAsset(imageKey);if(loaded){images.set(imageKey,{...loaded,id:imageId++})}}content+=pdfCardContent(null,data,block.category,block.item,lang,left,y,W-left-right,h,images);yTop+=h+gap;
-  }
+   if(block.type==="category"){
+     const h=L.categoryH;
+     content+=pdfCategoryBlock(block.category,lang,L.left,H-yTop-h,L.cardW);
+     yTop+=h+L.gap;
+     continue;
+   }
+   if(block.type==="categoryCover"){
+     const h=46,x=L.left,w=L.cardW,y=H-yTop-h;
+     content+=pdfRect(x,y,w,h,[0.94,0.94,0.92],[0.18,0.18,0.18],.45);
+     const coverSrc=pdfImageSource(block.category.coverImage),asset=coverSrc?await pdfImageAsset(coverSrc):null;
+     if(asset){const a={...asset,id:imageId++};images.set("__cover_"+String(block.category.id||coverSrc),a);content+=pdfDrawImage("Im"+a.id,a,x+2,y+2,122,h-4,true)}
+     content+=pdfRect(x+126,y,w-126,h,[0.05,0.05,0.05]);
+     content+=pdfTextOp(pdfText(lang,block.category.name,block.category.name_en,block.category.name),x+126+(w-126)/2,y+h/2-4,11.5,{align:"center",bold:true,maxWidth:w-140,maxLines:1,color:[1,1,1]});
+     yTop+=h+L.gap;
+     continue;
+   }
+   const item=block.item,h=pdfCardHeight(item);
+   if(yTop+h>H-L.bottom)continue;
+   const src=pdfProductImageSource(item,data),preparedAsset=src?imageMap.get(src):null;
+   const asset=preparedAsset?{...preparedAsset,id:imageId++}:null;
+   if(asset)images.set(src,asset);
+   const y=H-yTop-h;
+   content+=pdfProductBlock(data,block.category,item,lang,L.left,y,L.cardW,h,asset,asset?.id||imageId++);
+   yTop+=h+L.gap;
  }
- content+=pdfTextOp(data.pdf?.footer||data.pdf?.website||"www.ofishci.com",left,14,7.5,{maxWidth:260,maxLines:1});return{content,images,pageNo};
+ content+=pdfTextOp(data.pdf?.footer||data.pdf?.website||"www.ofishci.com",L.left,14,7.5,{maxWidth:260,maxLines:1});
+ return {content,images,pageNo};
 }
+
 async function buildPriceListPDF(rawData,lang){
- /* Dil para biriminden otomatik belirlenir; dışarıdan gelen lang yalnızca eski çağrılar için yedektir. */
- const source=normalizeData(rawData);
- const currency=source.currency?.selected||'TRY';
- const pdfLang=currency==='TRY'?'TR':'EN';
- const prepared=await pdfPrepareImages(source);
- const data=prepared.data;
+ const source=normalizeData(rawData),currency=source.currency?.selected||"TRY";
+ const pdfLang=currency==="TRY"?"TR":"EN";
+ /* 1 currency/language  2 existing rates  3 real products  4 demo filter  5 images  6 layout */
+ const prepared=await pdfPrepareImages(source),data=prepared.data,preparedImages=prepared.images;
  const pages=[await renderPdfCoverPage(data,pdfLang)];
- const H=841.89,TOP=18,BOTTOM=26,GAP=3.2,MAX_PRODUCTS=6;
- let current=[],used=TOP,productCount=0;
+ const L=PDF_LAYOUT,H=L.H,TOP=L.top,BOTTOM=L.bottom,GAP=L.gap,MAX_PRODUCTS=6;
+ let current=[],used=TOP,productCount=0,currentCategoryId=null;
  const flush=async()=>{
    if(!current.length)return;
-   pages.push(await renderPdfCatalogPage(data,pdfLang,current,pages.length+1));
-   current=[];used=TOP;productCount=0;
+   pages.push(await renderPdfCatalogPage(data,pdfLang,current,pages.length+1,preparedImages));
+   current=[];used=TOP;productCount=0;currentCategoryId=null;
  };
- const categoryBlockH=pdfCategoryHeight();
  const fits=h=>used+h<=H-BOTTOM;
  for(const category of (data.categories||[])){
    const items=Array.isArray(category.items)?category.items:[];
    if(!items.length)continue;
    const useCover=!!(data.pdf?.useCategoryCovers&&category.coverImage);
-   const coverH=48;
-   const firstCardH=pdfCardHeight(items[0]);
-   const firstExtra=(useCover?coverH+GAP:0)+categoryBlockH+GAP;
-   if(current.length&&(!fits(firstExtra+firstCardH)||productCount>=MAX_PRODUCTS))await flush();
+   const coverH=46;
+   /* Category header belongs naturally before the first product, but never causes a giant blank area. */
+   let headerNeed=L.categoryH+GAP;
+   if(useCover)headerNeed+=coverH+GAP;
+   if(current.length&&(!fits(headerNeed+pdfCardHeight(items[0]))||productCount>=MAX_PRODUCTS))await flush();
    if(useCover){
      if(!fits(coverH+GAP))await flush();
-     current.push({type:'categoryCover',category});
-     used+=coverH+GAP;
+     current.push({type:"categoryCover",category});used+=coverH+GAP;
    }
-   if(!fits(categoryBlockH+firstCardH+GAP)&&current.length)await flush();
-   if(!fits(categoryBlockH+firstCardH+GAP)&&!current.length){
-     /* Kategori başlığı + ilk ürün birlikte başlayamıyorsa başlık yine de yeni sayfada başlar. */
-   }
-   current.push({type:'category',category});
-   used+=categoryBlockH+GAP;
+   if(!fits(L.categoryH+GAP)&&current.length)await flush();
+   current.push({type:"category",category});used+=L.categoryH+GAP;currentCategoryId=category.id;
    for(const item of items){
      const h=pdfCardHeight(item);
      if(productCount>=MAX_PRODUCTS||!fits(h)){
        await flush();
-       current.push({type:'category',category});
-       used+=categoryBlockH+GAP;
+       current.push({type:"category",category});used+=L.categoryH+GAP;currentCategoryId=category.id;
      }
-     current.push({type:'product',category,item});
-     used+=h+GAP;
-     productCount++;
+     current.push({type:"product",category,item});used+=h+GAP;productCount++;
    }
  }
  await flush();
- /* Gerçek ürün yoksa sahte "Yeni Ürün" kartı üretme. */
- if(pages.length===1){
-   return await pdfCreateVectorDocument(pages);
- }
  return await pdfCreateVectorDocument(pages);
 }
 
