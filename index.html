@@ -1074,7 +1074,7 @@ function pdfPageMetrics(){return{width:595.28,height:841.89}}
 /* Fixed A4 geometry. All product blocks use these exact x/width values. */
 const PDF_LAYOUT={
  W:595.28,H:841.89,
- rail:18,left:27,right:8,top:18,bottom:25,
+ rail:18,left:27,right:8,top:34,bottom:25,
  gap:2.5,
  cardW:560.28,
  imageW:190,
@@ -1103,6 +1103,12 @@ function pdfCardHeight(item){
 function pdfCategoryHeight(){return PDF_LAYOUT.categoryH}
 function pdfPageChrome(data,pageNo){
  const L=PDF_LAYOUT,W=L.W,H=L.H;let c=pdfRect(0,0,L.rail,H,[0.05,0.05,0.05]);
+ /* Elegant double frame around every catalog sheet. */
+ c+=pdfRect(7,7,W-14,H-14,null,[0.18,0.18,0.18],.7);
+ c+=pdfRect(11,11,W-22,H-22,null,[0.68,0.68,0.68],.35);
+ /* Logolu lüks katalog çerçevesi: üst/alt ince marka şeritleri. */
+ c+=pdfRect(18,H-22,W-36,1.2,[0.12,0.12,0.12]);
+ c+=pdfRect(18,20,W-36,1.2,[0.12,0.12,0.12]);
  const site=data.pdf?.website||data.pdf?.footer||"www.ofishci.com";
  const hex=pdfUnicodeHex(site);
  c+=`q\n1 0 0 1 ${(L.rail/2).toFixed(2)} ${(H/2).toFixed(2)} cm\n0 1 -1 0 0 0 cm\nBT /F1 8.5 Tf 1 0 0 1 0 0 Tm <${hex}> Tj ET\nQ\n`;
@@ -1119,13 +1125,8 @@ function pdfCategoryBlock(category,lang,x,y,w){
 function pdfProductBlock(data,category,item,lang,x,y,w,h,asset,id){
  const L=PDF_LAYOUT,rows=pdfRowsForItem(item),title=pdfText(lang,item.name,item.name_en,item.name)||"—";
  let c="";
- /* Outer rectangle and title strip. */
+ /* Outer rectangle. Product name is placed directly over the photograph. */
  c+=pdfRect(x,y,w,h,[1,1,1],[0.18,0.18,0.18],.55);
- const titleY=y+h-L.titleH;
- c+=pdfRect(x,titleY,w,L.titleH,[0.98,0.98,0.98],[0.18,0.18,0.18],.45);
- c+=pdfTextOp(title,x+w/2,titleY+5.0,11.8,{align:"center",bold:true,maxWidth:w-12,maxLines:1});
-
- /* Left image panel: identical dimensions for every product sheet. */
  const bodyY=y,bodyH=h-L.titleH;
  c+=pdfRect(x+0.5,bodyY+0.5,L.imageW-1,bodyH-1,[0.97,0.97,0.96],[0.45,0.45,0.45],.45);
  const imageBoxH=Math.min(L.imageH,bodyH-4),imageBoxY=bodyY+(bodyH-imageBoxH)/2;
@@ -1134,6 +1135,10 @@ function pdfProductBlock(data,category,item,lang,x,y,w,h,asset,id){
  }else{
    c+=pdfTextOp(lang==="EN"?"NO PRODUCT IMAGE":"ÜRÜN GÖRSELİ YOK",x+L.imageW/2,bodyY+bodyH/2-3.2,8.7,{align:"center",bold:true,maxWidth:L.imageW-12,maxLines:2});
  }
+ /* Product name directly on the photo, with a clean black title band. */
+ c+=pdfRect(x+2,bodyY+bodyH-21,L.imageW-4,19,[0.03,0.03,0.03],[0.03,0.03,0.03],.25);
+ /* Ürün adı fotoğrafın üzerinde, doğrudan sol hizalı ve okunaklı. */
+ c+=pdfTextOp(title,x+8,bodyY+bodyH-15.2,10.2,{align:"left",bold:true,maxWidth:L.imageW-18,maxLines:1,color:[1,1,1]});
 
  /* Right table: fixed columns for EVERY product. */
  const tx=L.tableX,tw=L.tableW,headerY=bodyY+bodyH-L.headerH;
@@ -1225,6 +1230,10 @@ async function renderPdfCatalogPage(data,lang,blocks,pageNo,preparedImages){
  const L=PDF_LAYOUT,W=L.W,H=L.H;
  let content=pdfPageChrome(data,pageNo),images=new Map(),yTop=L.top,imageId=1;
  const imageMap=preparedImages||new Map();
+ /* Same Ofischi logo on every catalog sheet. */
+ const pageLogoSrc=pdfImageSource(data.pdf?.coverLogo?.src);
+ const pageLogo=pageLogoSrc?await pdfLogoImageAsset(pageLogoSrc):null;
+ if(pageLogo){ const logo={...pageLogo,id:imageId++}; images.set("__pageLogo",logo); content+=pdfDrawImage("Im"+logo.id,logo,W-150,H-28,115,24,true); }
  for(const block of blocks){
    if(block.type==="category"){
      const h=L.categoryH;
@@ -1318,7 +1327,7 @@ function App(){
 const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[saved,setSaved]=useState(false),
 [toast,setToast]=useState(""),[activeCat,setActiveCat]=useState(null),[openCategories,setOpenCategories]=useState({}),
 [currencyMenuOpen,setCurrencyMenuOpen]=useState(false),[language,setLanguage]=useState(()=>localStorage.getItem(LANG_KEY)==="EN"?"EN":"TR"),
-[adminSection,setAdminSection]=useState("genel"),
+[adminSection,setAdminSection]=useState("genel"),[adminSearch,setAdminSearch]=useState(""),
 [search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[fullScreenImage,setFullScreenImage]=useState(null),[panelOpen,setPanelOpen]=useState(false),
 [unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[pdfBusy,setPdfBusy]=useState(false),[pdfPreviewUrl,setPdfPreviewUrl]=useState(null),
@@ -1936,6 +1945,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div><div className={adminSection==="katalog"?"":"hidden"}><div id="catalog-tab" className="mt-8 pt-6 border-t border-neutral-800">
 <div className="mb-4 rounded-xl p-3" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"25"}}><div className="text-[10px] uppercase tracking-widest opacity-50">Şu anda düzenleniyor</div><div className="font-bold mt-1" style={{color:theme.accent}}>Premium Mağaza</div><div className="text-[10px] opacity-40 mt-1">Mevcut ürünler korunur.</div></div>
 <button onClick={addCategory} className="w-full py-3 rounded-xl text-sm font-bold text-white mb-4 flex items-center justify-center gap-2" style={{background:theme.accent}}><Icon type="plus" size={17}/>{t("TR","newCategory")}</button>
+<div className="mb-4"><AdminLabel>Ürün Ara ve Düzenle</AdminLabel><div className="relative"><input value={adminSearch} onChange={e=>{const v=e.target.value;setAdminSearch(v);const q=v.trim().toLocaleLowerCase("tr-TR");if(q){const found={};categories.forEach(c=>{if((c.items||[]).some(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(q)))found[c.id]=true});setOpenCategories(prev=>({...prev,...found}))}}} placeholder="Ürün adını yazın..." className="admin-input" style={{paddingRight:"40px"}}/><span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500"><Icon type="search" size={16}/></span></div>{adminSearch.trim()&&<div className="text-[10px] text-neutral-500 mt-2">Arama: {categories.reduce((n,c)=>n+(c.items||[]).filter(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(adminSearch.trim().toLocaleLowerCase("tr-TR"))).length,0)} ürün bulundu</div>}</div>
 
 {categories.map((category,categoryIndex)=><div key={category.id} className="bg-neutral-900 border border-neutral-800 rounded-xl mb-3 overflow-hidden">
 <div className="p-2 flex items-center gap-1.5">
@@ -1948,7 +1958,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 
 {openCategories[category.id]&&<div className="p-2 pt-0">
 {category.items.length===0&&<div className="bg-neutral-800 rounded-xl p-4 mb-2 text-center text-xs text-neutral-500">Bu kategoride henüz ürün yok.</div>}
-{category.items.map((item,itemIndex)=><div key={item.id} className="bg-neutral-800 rounded-xl p-3 mb-2">
+{category.items.map((item,itemIndex)=>{const q=adminSearch.trim().toLocaleLowerCase("tr-TR");if(q&&!(item.name||"").toLocaleLowerCase("tr-TR").includes(q))return null;return <div key={item.id} className="bg-neutral-800 rounded-xl p-3 mb-2">
 <div className="flex gap-2 mb-2">
 <div className="w-16 h-16 rounded-lg bg-neutral-700 flex-shrink-0 overflow-hidden flex items-center justify-center" style={{backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center"}}>{!item.image&&<Icon type="image" size={18}/>}</div>
 <div className="flex flex-col gap-1 flex-shrink-0">
@@ -1990,7 +2000,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <button onClick={()=>moveItem(category.id,item.id,1)} disabled={itemIndex===category.items.length-1} className="p-1.5 bg-neutral-700 rounded disabled:opacity-20"><Icon type="down" size={12}/></button>
 <button onClick={()=>deleteItem(category.id,item.id)} className="p-1.5 bg-red-950 text-red-400 rounded"><Icon type="trash" size={12}/></button>
 </div>
-</div>)}
+</div>})}
 <button onClick={()=>addItem(category.id)} className="w-full py-2.5 bg-neutral-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"><Icon type="plus" size={14}/>{t("TR","addProduct")}</button>
 </div>}
 </div>)}
