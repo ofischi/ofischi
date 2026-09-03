@@ -147,13 +147,13 @@ function normalizeData(input){
 const base=defaultData();
 if(!input||typeof input!=="object")return base;
 const r={...base,...input};
-/* Eski sürümlerde ana sayfa başlık alanları eksik kalmış olabilir. */
-if(!String(r.siteName||"").trim())r.siteName=base.siteName;
-if(!String(r.siteName_en||"").trim())r.siteName_en=base.siteName_en;
-if(!String(r.subtitle||"").trim())r.subtitle=base.subtitle;
-if(!String(r.subtitle_en||"").trim())r.subtitle_en=base.subtitle_en;
-if(!String(r.eyebrow||"").trim())r.eyebrow=base.eyebrow;
-if(!String(r.eyebrow_en||"").trim())r.eyebrow_en=base.eyebrow_en;
+/* Varsayılanlar yalnızca alan hiç yoksa uygulanır. Boş değerler kullanıcı tarafından silinebilir/değiştirilebilir. */
+if(typeof r.siteName!=="string")r.siteName=base.siteName;
+if(typeof r.siteName_en!=="string")r.siteName_en=base.siteName_en;
+if(typeof r.subtitle!=="string")r.subtitle=base.subtitle;
+if(typeof r.subtitle_en!=="string")r.subtitle_en=base.subtitle_en;
+if(typeof r.eyebrow!=="string")r.eyebrow=base.eyebrow;
+if(typeof r.eyebrow_en!=="string")r.eyebrow_en=base.eyebrow_en;
 r.logo={...base.logo,...(input.logo||{})};
 r.logo.size=Number(r.logo.size)||110;r.logo.width=Number(r.logo.width)||r.logo.size;r.logo.height=Number(r.logo.height)||r.logo.size;
 r.theme={...base.theme,...(input.theme||{})};
@@ -557,6 +557,8 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [importRef,setImportRef]=useState(null);
 useEffect(()=>{document.documentElement.lang=language.toLowerCase()},[language]);
 const translationDrafts=useRef({});
+const generalTranslationTimers=useRef({});
+const generalTranslationSeq=useRef({});
 const toastTimerRef=useRef(null);
 
 useEffect(()=>{
@@ -603,13 +605,36 @@ function showToast(message){setToast(message);if(toastTimerRef.current)clearTime
 function updateData(callback){
 setData(p=>{
 if(!p)return p;
-const copy=normalizeData(p);
+/* Her değişiklikte normalizeData çalıştırmıyoruz; aksi halde kullanıcı alanı boşalttığında
+   normalizeData tekrar varsayılan değeri yazar ve input sabitmiş gibi görünür. */
+const copy=JSON.parse(JSON.stringify(p));
 callback(copy);
 setSaved(false);
 return copy;
 });
 }
 function setPath(path,value){updateData(copy=>{let target=copy;for(let i=0;i<path.length-1;i++){const key=path[i];target[key]={...(target[key]||{})};target=target[key]}target[path[path.length-1]]=value})}
+
+/* Genel TR alanları EN alanlarını otomatik takip eder.
+   Kullanıcı Türkçe metni yazmayı bıraktığında kısa bir gecikmeyle çeviri yapılır;
+   Türkçe alan tamamen silinirse EN alanı da anında temizlenir. */
+function editGeneralTurkishField(field,value){
+  const enField=field+"_en";
+  if(generalTranslationTimers.current[field])clearTimeout(generalTranslationTimers.current[field]);
+  generalTranslationSeq.current[field]=(generalTranslationSeq.current[field]||0)+1;
+  const seq=generalTranslationSeq.current[field];
+  updateData(copy=>{copy[field]=value;if(!value.trim())copy[enField]=""});
+  if(!value.trim())return;
+  generalTranslationTimers.current[field]=setTimeout(async()=>{
+    try{
+      const en=await translateCached(value,"general_"+field);
+      if(generalTranslationSeq.current[field]!==seq)return;
+      updateData(copy=>{
+        if(copy[field]===value)copy[enField]=en||"";
+      });
+    }catch(e){console.warn("Otomatik genel alan çevirisi başarısız:",e)}
+  },650);
+}
 function toggleCategory(id){setOpenCategories(p=>({...p,[id]:!p[id]}))}
 function openCategory(id){setOpenCategories(p=>({...p,[id]:true}))}
 function getCurrency(){return CURRENCIES.find(x=>x.id===(data?.currency?.selected||"TRY"))||CURRENCIES[0]}
@@ -660,10 +685,17 @@ const c=createCategory("Yeni Kategori");
 updateData(x=>{x.categories=[...x.categories,c]});
 setActiveCat(c.id);openCategory(c.id);
 }
-function deleteCategory(id){
+async function deleteCategory(id){
 if(!confirm(t(language,"catDelete")))return;
-updateData(x=>{x.categories=x.categories.filter(c=>c.id!==id)});
-setActiveCat(prev=>{const rem=data.categories.filter(c=>c.id!==id);return rem[0]?.id||null});
+const next=normalizeData(data);
+next.categories=next.categories.filter(c=>c.id!==id);
+try{
+  await saveLocal(next);
+  setData(next);
+  setOpenCategories(prev=>{const copy={...prev};delete copy[id];return copy});
+  setActiveCat(prev=>prev===id?(next.categories[0]?.id||null):prev);
+  showToast(language==="EN"?"Category deleted.":"Kategori silindi.");
+}catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
 }
 function renameCategory(id,value){
 updateData(x=>{x.categories=x.categories.map(c=>c.id===id?{...c,name:value}:c)})
@@ -756,9 +788,16 @@ showToast(t(language,"translateReady"));
 }catch(e){console.error(e);showToast(t(language,"translateError"))}
 finally{setTranslationBusy(false)}
 }
-function deleteItem(categoryId,itemId){
+async function deleteItem(categoryId,itemId){
 if(!confirm(t(language,"deleteConfirm")))return;
-updateData(x=>{x.categories=x.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c)})
+const next=normalizeData(data);
+next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
+try{
+  await saveLocal(next);
+  setData(next);
+  setSelectedProduct(prev=>prev?.id===itemId?null:prev);
+  showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
+}catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
 }
 function moveItem(categoryId,itemId,direction){
 updateData(x=>{x.categories=x.categories.map(c=>{if(c.id!==categoryId)return c;const l=[...c.items],i=l.findIndex(a=>a.id===itemId),j=i+direction;if(i<0||j<0||j>=l.length)return c;[l[i],l[j]]=[l[j],l[i]];return {...c,items:l}})})
@@ -770,8 +809,13 @@ updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:
 function updatePricePart(categoryId,itemId,partId,field,value){
 updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId?{...part,[field]:value}:part)}}})})})
 }
-function deletePricePart(categoryId,itemId,partId){
-updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})})})
+async function deletePricePart(categoryId,itemId,partId){
+const next=normalizeData(data);
+next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})});
+try{
+  await saveLocal(next);
+  setData(next);
+}catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
 }
 async function save(){
 if(!data||saving)return;
@@ -955,8 +999,9 @@ return <div style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:t
 </div>
 
 <div className="p-5">
-<div className={adminSection==="genel"?"":"hidden"}><label className="block mb-4"><AdminLabel>{t(language,"siteName")}</AdminLabel><input className="admin-input" value={data.siteName} onChange={e=>setPath(["siteName"],e.target.value)}/></label>
-<label className="block mb-4"><AdminLabel>{t(language,"eyebrow")}</AdminLabel><input className="admin-input" value={data.eyebrow} onChange={e=>setPath(["eyebrow"],e.target.value)}/></label>
+<div className={adminSection==="genel"?"":"hidden"}>
+<label className="block mb-4"><AdminLabel>{t(language,"siteName")}</AdminLabel><input className="admin-input" value={language==="EN"?(data.siteName_en??""):(data.siteName??"")} onChange={e=>{const v=e.target.value;if(language==="TR"){editGeneralTurkishField("siteName",v)}else{setPath(["siteName_en"],v)}}} /></label>
+<label className="block mb-4"><AdminLabel>{t(language,"eyebrow")}</AdminLabel><input className="admin-input" value={language==="EN"?(data.eyebrow_en??""):(data.eyebrow??"")} onChange={e=>{const v=e.target.value;if(language==="TR"){editGeneralTurkishField("eyebrow",v)}else{setPath(["eyebrow_en"],v)}}} /></label>
 <label className="block mb-5"><AdminLabel>{t(language,"phone")}</AdminLabel><input className="admin-input" value={data.phone||""} onChange={e=>setPath(["phone"],e.target.value)} placeholder="+90 5xx xxx xx xx"/></label>
 
 <div className="h-px bg-neutral-800 my-5"/>
