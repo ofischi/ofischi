@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
@@ -17,7 +17,7 @@
 <script defer crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-*{box-sizing:border-box}html,body,#root{margin:0;padding:0;width:100%;min-height:100%}
+*{box-sizing:border-box}html,body,#root{margin:0;padding:0;width:100%;min-height:100%;touch-action:pan-x pan-y}
 body{background:#141416;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 button,input,textarea{font-family:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed}
 ::-webkit-scrollbar{display:none}
@@ -1337,7 +1337,7 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [toast,setToast]=useState(""),[activeCat,setActiveCat]=useState(null),[openCategories,setOpenCategories]=useState({}),
 [currencyMenuOpen,setCurrencyMenuOpen]=useState(false),[language,setLanguage]=useState(()=>localStorage.getItem(LANG_KEY)==="EN"?"EN":"TR"),
 [adminSection,setAdminSection]=useState("genel"),
-[search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[detailGalleryIndex,setDetailGalleryIndex]=useState(0),[fullScreenImage,setFullScreenImage]=useState(null),[lightboxZoom,setLightboxZoom]=useState(1),[galleryIndex,setGalleryIndex]=useState({}),[panelOpen,setPanelOpen]=useState(false),
+[search,setSearch]=useState(""),[adminSearch,setAdminSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[detailGalleryIndex,setDetailGalleryIndex]=useState(0),[fullScreenImage,setFullScreenImage]=useState(null),[lightboxZoom,setLightboxZoom]=useState(1),[galleryIndex,setGalleryIndex]=useState({}),[panelOpen,setPanelOpen]=useState(false),
 [unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[pdfBusy,setPdfBusy]=useState(false),[pdfPreviewUrl,setPdfPreviewUrl]=useState(null),
 [importRef,setImportRef]=useState(null);
@@ -1972,7 +1972,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div>
 
 </div><div className={adminSection==="katalog"?"":"hidden"}><div id="catalog-tab" className="mt-8 pt-6 border-t border-neutral-800">
-<div className="mb-4 rounded-xl p-3" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"25"}}><div className="text-[10px] uppercase tracking-widest opacity-50">Şu anda düzenleniyor</div><div className="font-bold mt-1" style={{color:theme.accent}}>Premium Mağaza</div><div className="text-[10px] opacity-40 mt-1">Mevcut ürünler korunur.</div></div>
+<div className="mb-4 rounded-xl p-3" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"25"}}><div className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Ürün Ara ve Düzenle</div><div className="relative"><Icon type="search" size={15}/><input value={adminSearch} onChange={e=>{const v=e.target.value;setAdminSearch(v);if(v.trim()){const next={...openCategories};categories.forEach(c=>{if(c.items.some(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(v.trim().toLocaleLowerCase("tr-TR"))))next[c.id]=true});setOpenCategories(next)}}} placeholder="Ürün adını yazın..." className="admin-input" style={{padding:"10px 10px 10px 34px",fontSize:"12px"}}/></div>{adminSearch.trim()&&<div className="text-[10px] opacity-50 mt-2">{categories.reduce((n,c)=>n+c.items.filter(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(adminSearch.trim().toLocaleLowerCase("tr-TR"))).length,0)} ürün bulundu</div>}</div>
 <button onClick={addCategory} className="w-full py-3 rounded-xl text-sm font-bold text-white mb-4 flex items-center justify-center gap-2" style={{background:theme.accent}}><Icon type="plus" size={17}/>{t("TR","newCategory")}</button>
 
 {categories.map((category,categoryIndex)=><div key={category.id} className="bg-neutral-900 border border-neutral-800 rounded-xl mb-3 overflow-hidden">
@@ -1986,7 +1986,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 
 {openCategories[category.id]&&<div className="p-2 pt-0">
 {category.items.length===0&&<div className="bg-neutral-800 rounded-xl p-4 mb-2 text-center text-xs text-neutral-500">Bu kategoride henüz ürün yok.</div>}
-{category.items.map((item,itemIndex)=><div key={item.id} className="bg-neutral-800 rounded-xl p-3 mb-2">
+{category.items.filter(item=>!adminSearch.trim()||(item.name||"").toLocaleLowerCase("tr-TR").includes(adminSearch.trim().toLocaleLowerCase("tr-TR"))).map((item,itemIndex)=><div key={item.id} className="bg-neutral-800 rounded-xl p-3 mb-2">
 <div className="flex gap-2 mb-2">
 <div className="w-16 h-16 rounded-lg bg-neutral-700 flex-shrink-0 overflow-hidden flex items-center justify-center" style={{backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center"}}>{!item.image&&<Icon type="image" size={18}/>}</div>
 <div className="flex flex-col gap-1 flex-shrink-0">
@@ -2083,6 +2083,17 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 
 </div>
 }
+// Prevent accidental browser pinch-zoom from changing the page viewport on touch devices.
+// Product image zoom remains available through the dedicated lightbox controls/gestures.
+(function(){
+  const preventMultiTouch=function(e){
+    if(e.touches&&e.touches.length>1)e.preventDefault();
+  };
+  document.addEventListener("touchmove",preventMultiTouch,{passive:false});
+  document.addEventListener("gesturestart",function(e){e.preventDefault();},{passive:false});
+  document.addEventListener("gesturechange",function(e){e.preventDefault();},{passive:false});
+  document.addEventListener("gestureend",function(e){e.preventDefault();},{passive:false});
+})();
 const root=document.getElementById("root");
 if(root)ReactDOM.createRoot(root).render(<App/>);
 </script>
