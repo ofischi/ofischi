@@ -208,7 +208,7 @@ logo:{src:"./ofischi_logo_transparent.png",size:110,width:110,height:110,positio
 theme:{...THEMES[0],bgImage:null},cardImgSize:180,
 currency:{selected:"TRY",usdRate:40,eurRate:47},
 categories:createDefaultCategories(),language:"TR",
-pdf:{title:"2026-2 TL FİYAT LİSTESİ",footer:"www.ofishci.com",showPageNumbers:true,website:"www.ofishci.com",useCategoryCovers:false}
+pdf:{title:"2026-2 TL FİYAT LİSTESİ",footer:"www.ofishci.com",showPageNumbers:true,website:"www.ofishci.com",useCategoryCovers:false,coverLogo:null}
 }}
 function normalizePrice(price){
 if(!price)return{contactOnly:true,amount:null,parts:[]};
@@ -1054,7 +1054,7 @@ async function renderPdfCoverPage(data,lang){
  let content=pdfRect(0,0,W,H,[0.02,0.02,0.02]);
  content+=pdfRect(7,7,W-14,H-14,null,[0.55,0.55,0.55],.55);
  content+=pdfRect(11,11,W-22,H-22,null,[0.22,0.22,0.22],.55);
- const images=new Map(),logoSrc=pdfImageSource(data.logo?.src);
+ const images=new Map(),logoSrc=pdfImageSource(data.pdf?.coverLogo?.src);
  const loaded=await pdfImageAsset(logoSrc);
  if(loaded){
    const logo={...loaded,id:1};images.set("__coverLogo__",logo);
@@ -1421,6 +1421,8 @@ function closeAdminPanel(discard=true){
   setSaved(false);setPanelOpen(false);
 }
 function uploadLogoLocal(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{updateData(x=>{x.logo={...x.logo,src:reader.result}});showToast("Logo yüklendi. Kaydet'e basın.")};reader.onerror=()=>showToast("Logo yüklenemedi.");reader.readAsDataURL(file);e.target.value=""}
+function uploadPdfCoverLogo(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{updateData(x=>{x.pdf={...x.pdf,coverLogo:{src:reader.result}}});showToast("PDF kapak logosu yüklendi. Kaydet'e basın.")};reader.onerror=()=>showToast("PDF kapak logosu yüklenemedi.");reader.readAsDataURL(file);e.target.value=""}
+function removePdfCoverLogo(){if(!confirm("PDF kapak logosu kaldırılsın mı?"))return;setPath(["pdf","coverLogo"],null)}
 async function fileToOptimizedDataURL(file,maxSize=1800,quality=.82){
   if(!file||!file.type.startsWith("image/"))throw new Error("Geçersiz görsel");
   return new Promise((resolve,reject)=>{
@@ -1753,6 +1755,16 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <label className="block mb-4"><AdminLabel>PDF Alt Bilgisi</AdminLabel><input className="admin-input" value={data.pdf?.footer||""} onChange={e=>setPath(["pdf","footer"],e.target.value)}/></label>
 <label className="flex items-center gap-2 text-xs text-neutral-300 mb-5"><input type="checkbox" checked={data.pdf?.showPageNumbers!==false} onChange={e=>setPath(["pdf","showPageNumbers"],e.target.checked)}/> Sayfa numarası göster</label>
 <label className="flex items-center gap-2 text-xs text-neutral-300 mb-5"><input type="checkbox" checked={!!data.pdf?.useCategoryCovers} onChange={e=>setPath(["pdf","useCategoryCovers"],e.target.checked)}/> Kategori kapak görsellerini PDF içinde kompakt banner olarak kullan</label>
+<div className="border-t border-neutral-800 pt-4 mb-5">
+<div className="text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-2">PDF Kapak Logosu</div>
+<div className="text-[10px] text-neutral-500 mb-3">Bu logo sadece PDF'nin ilk kapağında kullanılır. Web sitesindeki logo ve ürün görsellerinden bağımsızdır.</div>
+<div className="h-32 rounded-lg bg-black border border-neutral-800 overflow-hidden flex items-center justify-center mb-3">{data.pdf?.coverLogo?.src?<img src={data.pdf.coverLogo.src} alt="PDF Kapak Logosu" className="max-w-[90%] max-h-[90%] object-contain"/>:<span className="text-[10px] text-neutral-600">PDF KAPAK LOGOSU EKLENMEDİ</span>}</div>
+<div className="grid grid-cols-2 gap-2">
+<button onClick={()=>document.getElementById("pdf-cover-logo-input")?.click()} className="py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-[10px] font-bold">{data.pdf?.coverLogo?.src?"Logoyu Değiştir":"Logo Ekle"}</button>
+<button disabled={!data.pdf?.coverLogo?.src} onClick={removePdfCoverLogo} className="py-2.5 rounded-lg bg-red-950 text-red-400 text-[10px] font-bold disabled:opacity-30">Logoyu Sil</button>
+</div>
+<input id="pdf-cover-logo-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={uploadPdfCoverLogo}/>
+</div>
 <div className="border-t border-neutral-800 pt-4">
 <div className="text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-3">Kategori Kapakları</div>
 <div className="text-[10px] text-neutral-500 mb-3">Kapak görselleri ayrı tutulur. İstersen PDF içinde tam sayfa açmadan kompakt kategori bannerı olarak kullanılabilir.</div>
