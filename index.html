@@ -1252,6 +1252,38 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[pdfBusy,setPdfBusy]=useState(false),[pdfPreviewUrl,setPdfPreviewUrl]=useState(null),
 [importRef,setImportRef]=useState(null),[supabaseLogin,setSupabaseLogin]=useState(false),[sbEmail,setSbEmail]=useState(""),[sbPassword,setSbPassword]=useState(""),[sbBusy,setSbBusy]=useState(false);
 useEffect(()=>{document.documentElement.lang=language.toLowerCase()},[language]);
+
+/* SUPABASE REALTIME: başka cihazlarda yapılan katalog değişikliklerini anında al. */
+useEffect(()=>{
+  if(!SUPABASE_ENABLED||!supabaseClient||!data)return;
+  let active=true;
+  const channel=supabaseClient.channel("ofischi-catalog-realtime")
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:SUPABASE_TABLE,filter:`id=eq.${SUPABASE_ROW_ID}`},async payload=>{
+      if(!active||!payload.new?.data||typeof payload.new.data!=="object")return;
+      /* Admin panelinde kullanıcı yazarken gelen veriyi ezme. */
+      if(panelSnapshot.current && panelOpen){
+        showToast(language==="EN"?"Cloud update received. Save your changes before switching devices.":"Bulut güncellemesi geldi. Cihazlar arası geçişten önce değişikliklerinizi kaydedin.");
+        return;
+      }
+      const incoming=normalizeData(payload.new.data);
+      try{await saveLocal(incoming)}catch(e){console.warn("Realtime yerel kayıt başarısız:",e)}
+      setData(incoming);
+      setSaved(false);
+      showToast(language==="EN"?"Catalog updated from another device.":"Katalog başka bir cihazdan güncellendi.");
+    })
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:SUPABASE_TABLE,filter:`id=eq.${SUPABASE_ROW_ID}`},async payload=>{
+      if(!active||!payload.new?.data||typeof payload.new.data!=="object")return;
+      if(panelSnapshot.current && panelOpen)return;
+      const incoming=normalizeData(payload.new.data);
+      try{await saveLocal(incoming)}catch(e){}
+      setData(incoming);
+    })
+    .subscribe(status=>{
+      if(status==="SUBSCRIBED")console.info("Ofischi Supabase Realtime aktif.");
+      if(status==="CHANNEL_ERROR")console.warn("Supabase Realtime kanal hatası. SQL'de supabase_realtime yayını kontrol edin.");
+    });
+  return()=>{active=false;supabaseClient.removeChannel(channel)};
+},[!!data,panelOpen,language]);
 const productTranslationTimers=useRef({});
 const productTranslationSeq=useRef({});
 const generalTranslationTimers=useRef({});
