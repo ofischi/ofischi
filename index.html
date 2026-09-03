@@ -243,7 +243,7 @@ desc:typeof item.desc==="string"?item.desc:"",
 desc_en:typeof item.desc_en==="string"?item.desc_en:"",
 dims:typeof item.dims==="string"?item.dims:"",
 dims_en:typeof item.dims_en==="string"?item.dims_en:"",
-image:item.image||null,price:normalizePrice(item.price)}
+image:item.image||null,images:Array.isArray(item.images)?item.images.filter(Boolean):(item.image?[item.image]:[]),price:normalizePrice(item.price)}
 }
 function normalizeCategories(categories){
 if(!Array.isArray(categories))return createDefaultCategories();
@@ -347,8 +347,11 @@ async function prepareDataForCloud(data){
       tasks.push(uploadDataImageToSupabase(category.coverImage,storagePathFor('category',category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
     }
     for(const item of (category.items||[])){
-      if(isDataImageSource(item?.image)){
-        tasks.push(uploadDataImageToSupabase(item.image,storagePathFor('product',category.id,item.id,item.image)).then(url=>{item.image=url}));
+      const gallery=Array.isArray(item?.images)?item.images.filter(Boolean):(item?.image?[item.image]:[]);
+      if(gallery.length){
+        tasks.push(Promise.all(gallery.map((src,index)=>isDataImageSource(src)?uploadDataImageToSupabase(src,storagePathFor('product',category.id,item.id,src)+"-"+index):Promise.resolve(src))).then(urls=>{item.images=urls.filter(Boolean);item.image=item.images[0]||null}));
+      } else if(isDataImageSource(item?.image)){
+        tasks.push(uploadDataImageToSupabase(item.image,storagePathFor('product',category.id,item.id,item.image)).then(url=>{item.image=url;item.images=[url]}));
       }
     }
   }
@@ -1328,7 +1331,7 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [toast,setToast]=useState(""),[activeCat,setActiveCat]=useState(null),[openCategories,setOpenCategories]=useState({}),
 [currencyMenuOpen,setCurrencyMenuOpen]=useState(false),[language,setLanguage]=useState(()=>localStorage.getItem(LANG_KEY)==="EN"?"EN":"TR"),
 [adminSection,setAdminSection]=useState("genel"),[adminSearch,setAdminSearch]=useState(""),
-[search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[fullScreenImage,setFullScreenImage]=useState(null),[panelOpen,setPanelOpen]=useState(false),
+[search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[fullScreenImage,setFullScreenImage]=useState(null),[lightboxZoom,setLightboxZoom]=useState(1),[galleryIndex,setGalleryIndex]=useState({}),[galleryZoom,setGalleryZoom]=useState({}),[panelOpen,setPanelOpen]=useState(false),
 [unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[pdfBusy,setPdfBusy]=useState(false),[pdfPreviewUrl,setPdfPreviewUrl]=useState(null),
 [importRef,setImportRef]=useState(null);
@@ -1539,7 +1542,7 @@ async function moveCategory(id,direction){
 updateData(x=>{const l=[...x.categories],i=l.findIndex(a=>a.id===id),j=i+direction;if(i<0||j<0||j>=l.length)return;[l[i],l[j]]=[l[j],l[i]];x.categories=l})
 }
 function addItem(categoryId){
-const item={id:uid(),isDemo:true,name:"Yeni Ürün",name_en:"New Product",desc:"",desc_en:"",dims:"",dims_en:"",image:null,price:{contactOnly:true,amount:null,parts:[]}};
+const item={id:uid(),isDemo:true,name:"Yeni Ürün",name_en:"New Product",desc:"",desc_en:"",dims:"",dims_en:"",image:null,images:[],price:{contactOnly:true,amount:null,parts:[]}};
 updateData(x=>{x.categories=x.categories.map(c=>c.id===categoryId?{...c,items:[...c.items,item]}:c)});
 openCategory(categoryId);
 }
@@ -1690,18 +1693,33 @@ async function fileToOptimizedDataURL(file,maxSize=1800,quality=.82){
   });
 }
 async function uploadProductImage(categoryId,itemId,e){
-  const file=e.target.files?.[0];if(!file)return;
+  const files=Array.from(e.target.files||[]);if(!files.length)return;
   try{
-    if(!file.type.startsWith("image/"))throw new Error("Lütfen JPG, PNG, WEBP veya başka bir görsel dosyası seçin.");
-    const src=await fileToOptimizedDataURL(file,1800,.82);
-    updateItem(categoryId,itemId,"image",src);
-    showToast("Ürün fotoğrafı yüklendi. Kaydet'e basın.");
+    if(files.some(f=>!f.type.startsWith("image/")))throw new Error("Lütfen yalnızca görsel dosyaları seçin.");
+    const added=[];
+    for(const file of files)added.push(await fileToOptimizedDataURL(file,1800,.82));
+    updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{
+      if(i.id!==itemId)return i;
+      const gallery=Array.isArray(i.images)?i.images.filter(Boolean):(i.image?[i.image]:[]);
+      const images=[...gallery,...added];
+      return {...i,images,image:images[0]||null,isDemo:false};
+    })})});
+    showToast(added.length+" fotoğraf eklendi. Kaydet'e basın.");
   }catch(err){console.error(err);showToast("Fotoğraf yüklenemedi: "+(err.message||"Dosya hatası"));}
   finally{e.target.value=""}
 }
 function removeProductImage(categoryId,itemId){
-  if(!confirm("Ürün fotoğrafı kaldırılsın mı?"))return;
-  updateItem(categoryId,itemId,"image",null);
+  if(!confirm("Ürünün tüm fotoğrafları kaldırılsın mı?"))return;
+  updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>i.id===itemId?{...i,image:null,images:[]}:i)})});
+  showToast("Ürün fotoğrafları kaldırıldı. Kaydet'e basın.");
+}
+function removeProductGalleryImage(categoryId,itemId,index){
+  updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{
+    if(i.id!==itemId)return i;
+    const gallery=Array.isArray(i.images)?i.images.filter(Boolean):(i.image?[i.image]:[]);
+    const images=gallery.filter((_,n)=>n!==index);
+    return {...i,images,image:images[0]||null};
+  })})});
   showToast("Fotoğraf kaldırıldı. Kaydet'e basın.");
 }
 
@@ -1854,13 +1872,14 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 {search.trim()&&<div className="col-span-full mb-1"><div className="text-xs opacity-50">"{search.trim()}" {t(language,"found").replace("products","")}{visibleProducts.length} {t(language,"products")}</div></div>}
 {visibleProducts.length===0&&<div className="col-span-full text-center py-16 opacity-50">{search.trim()?t(language,"notFound"):t(language,"empty")}</div>}
 {visibleProducts.map((item,index)=><article key={item.id} onClick={()=>setSelectedProduct(item)} className="product-card rounded-2xl overflow-hidden cursor-pointer" style={{background:theme.card,boxShadow:"0 5px 18px rgba(0,0,0,.14)",animationDelay:`${Math.min(index,8)*45}ms`}}>
-<div className="product-image" style={{height:data.cardImgSize,backgroundColor:theme.accent+"12",backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center",display:item.image?"block":"flex",alignItems:"center",justifyContent:"center"}}>{!item.image&&<Icon type="image" size={28}/>}</div>
+<div className="product-image" style={{height:data.cardImgSize,backgroundColor:theme.accent+"12",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>{(()=>{const imgs=Array.isArray(item.images)&&item.images.length?item.images:(item.image?[item.image]:[]);const idx=Math.min(galleryIndex[item.id]||0,Math.max(0,imgs.length-1));const src=imgs[idx];return <>{src?<img src={src} alt={productDisplay(item)} style={{width:"100%",height:"100%",objectFit:"cover",display:"block",transform:`scale(${galleryZoom[item.id]||1})`,transition:"transform .2s ease"}}/>:<Icon type="image" size={28}/>} {imgs.length>1&&<><button onClick={e=>{e.stopPropagation();setGalleryIndex(x=>({...x,[item.id]:(idx-1+imgs.length)%imgs.length}))}} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center text-white" style={{background:"rgba(0,0,0,.5)"}}>‹</button><button onClick={e=>{e.stopPropagation();setGalleryIndex(x=>({...x,[item.id]:(idx+1)%imgs.length}))}} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center text-white" style={{background:"rgba(0,0,0,.5)"}}>›</button><div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full text-[9px] text-white" style={{background:"rgba(0,0,0,.55)"}}>{idx+1}/{imgs.length}</div></>}
+{src&&<div className="absolute top-2 right-2 flex gap-1" onClick={e=>e.stopPropagation()}><button type="button" onClick={()=>setGalleryZoom(x=>({...x,[item.id]:Math.max(1,(x[item.id]||1)-.15)}))} className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm" style={{background:"rgba(0,0,0,.55)"}}>−</button><button type="button" onClick={()=>setGalleryZoom(x=>({...x,[item.id]:Math.min(1.5,(x[item.id]||1)+.15)}))} className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm" style={{background:"rgba(0,0,0,.55)"}}>+</button></div>}</>})()}</div>
 <div className="p-3 flex flex-col"><div className="font-semibold text-sm leading-tight">{productDisplay(item)}</div>{productDesc(item)&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{productDesc(item)}</div>}<div className="mt-3 pt-3 border-t" style={{borderColor:theme.text+"12"}}><div className="flex items-center justify-between gap-2"><span className="text-[9px] uppercase tracking-widest font-bold opacity-45">{t(language,"total")}</span><span className="text-[13px] font-bold" style={{color:theme.accent}}>{productMainPrice(item)}</span></div><div className="mt-1 text-[9px] opacity-40 flex items-center gap-1">{t(language,"detailedPrices")}<Icon type="arrow" size={10}/></div></div></div>
 </article>)}</main>
 
 {selectedProduct&&<div className="fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={()=>setSelectedProduct(null)}>
 <div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl" style={{background:theme.card,color:theme.text,animation:"pop .22s ease"}} onClick={e=>e.stopPropagation()}>
-<div className="relative"><div onClick={()=>selectedProduct.image&&setFullScreenImage(selectedProduct.image)} title={selectedProduct.image?"Fotoğrafı tam ekran aç":""} style={{height:270,backgroundColor:theme.accent+"12",backgroundImage:selectedProduct.image?`url(${selectedProduct.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center",display:selectedProduct.image?"block":"flex",alignItems:"center",justifyContent:"center",cursor:selectedProduct.image?"zoom-in":"default"}}>{!selectedProduct.image&&<Icon type="image" size={40}/>}</div>
+<div className="relative">{(()=>{const imgs=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);const idx=Math.min(galleryIndex[selectedProduct.id]||0,Math.max(0,imgs.length-1));const src=imgs[idx];return <div style={{position:"relative",height:270,backgroundColor:theme.accent+"12",display:"flex",alignItems:"center",justifyContent:"center"}}>{src?<img onClick={()=>setFullScreenImage(src)} src={src} alt={productDisplay(selectedProduct)} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/>:<Icon type="image" size={40}/>} {imgs.length>1&&<><button onClick={()=>setGalleryIndex(x=>({...x,[selectedProduct.id]:(idx-1+imgs.length)%imgs.length}))} className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white" style={{background:"rgba(0,0,0,.55)"}}>‹</button><button onClick={()=>setGalleryIndex(x=>({...x,[selectedProduct.id]:(idx+1)%imgs.length}))} className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-white" style={{background:"rgba(0,0,0,.55)"}}>›</button><div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] text-white" style={{background:"rgba(0,0,0,.55)"}}>{idx+1}/{imgs.length}</div></>}</div>})()}
 <button onClick={()=>setSelectedProduct(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.55)",color:"#fff"}}><Icon type="x" size={20}/></button></div>
 <div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>PREMIUM</div>
 <h2 className="text-2xl font-bold">{productDisplay(selectedProduct)}</h2>
@@ -1874,7 +1893,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <button onClick={openAdmin} className="fixed bottom-5 right-[18px] z-30 rounded-full shadow-xl flex items-center justify-center" style={{width:52,height:52,background:theme.text,color:theme.bg}}><Icon type="settings" size={20}/></button>
 {toast&&<div className="fixed bottom-24 right-[18px] z-[150] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2"><Icon type="check" size={15}/>{toast}</div>}
 
-{fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-5 sm:p-8" onClick={()=>setFullScreenImage(null)}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()}><img src={fullScreenImage} alt="Ürün fotoğrafı"/><button onClick={()=>setFullScreenImage(null)} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
+{fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-5 sm:p-8" onClick={()=>{setFullScreenImage(null);setLightboxZoom(1)}}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()}><img src={fullScreenImage} alt="Ürün fotoğrafı" style={{transform:`scale(${lightboxZoom})`,transition:"transform .2s ease"}}/><div className="absolute top-3 left-3 flex gap-1.5"><button onClick={e=>{e.stopPropagation();setLightboxZoom(z=>Math.max(.5,z-.25))}} className="w-9 h-9 rounded-full bg-black/65 text-white text-lg">−</button><button onClick={e=>{e.stopPropagation();setLightboxZoom(z=>Math.min(3,z+.25))}} className="w-9 h-9 rounded-full bg-black/65 text-white text-lg">+</button><button onClick={e=>{e.stopPropagation();setLightboxZoom(1)}} className="px-3 h-9 rounded-full bg-black/65 text-white text-xs">100%</button></div><button onClick={()=>setFullScreenImage(null)} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
 
 {pinModal&&<div className="fixed inset-0 z-[200] bg-black/75 flex items-center justify-center p-4"><div className="w-full max-w-xs bg-neutral-950 border border-neutral-800 rounded-2xl p-6"><div className="flex items-center gap-2 mb-4 text-white"><Icon type="lock" size={18}/><h2 className="font-bold">{t("TR","admin")}</h2></div><input autoFocus type="password" inputMode="numeric" maxLength="8" value={pinInput} onChange={e=>{setPinInput(e.target.value.replace(/\D/g,""));setPinError(false)}} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="PIN" className="admin-input tracking-[.3em]"/>{pinError&&<div className="text-xs text-red-400 mt-2">{t("TR","wrongPin")}</div>}<div className="text-[11px] text-neutral-500 mt-2 mb-4">Varsayılan PIN: 1234</div><div className="flex gap-2"><button onClick={()=>setPinModal(false)} className="flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300">{t("TR","cancel")}</button><button onClick={tryUnlock} className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white" style={{background:theme.accent}}>{t("TR","login")}</button></div></div></div>}
 
@@ -1962,9 +1981,9 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <div className="flex gap-2 mb-2">
 <div className="w-16 h-16 rounded-lg bg-neutral-700 flex-shrink-0 overflow-hidden flex items-center justify-center" style={{backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center"}}>{!item.image&&<Icon type="image" size={18}/>}</div>
 <div className="flex flex-col gap-1 flex-shrink-0">
-<button type="button" onClick={()=>document.getElementById("product-image-"+category.id+"-"+item.id)?.click()} className="px-2.5 py-1.5 rounded-lg bg-neutral-700 border border-neutral-600 text-[10px] font-bold flex items-center gap-1"><Icon type="upload" size={12}/>Fotoğraf</button>
+<button type="button" onClick={()=>document.getElementById("product-image-"+category.id+"-"+item.id)?.click()} className="px-2.5 py-1.5 rounded-lg bg-neutral-700 border border-neutral-600 text-[10px] font-bold flex items-center gap-1"><Icon type="upload" size={12}/>Fotoğraf Ekle</button>
 {item.image&&<button type="button" onClick={()=>removeProductImage(category.id,item.id)} className="px-2.5 py-1.5 rounded-lg bg-red-950 text-red-400 text-[10px] font-bold">Sil</button>}
-<input id={"product-image-"+category.id+"-"+item.id} type="file" accept="image/*" className="hidden" onChange={e=>uploadProductImage(category.id,item.id,e)}/>
+<input id={"product-image-"+category.id+"-"+item.id} type="file" accept="image/*" multiple className="hidden" onChange={e=>uploadProductImage(category.id,item.id,e)}/>{(Array.isArray(item.images)?item.images:(item.image?[item.image]:[])).length>0&&<div className="col-span-full flex gap-1.5 flex-wrap mt-1">{(Array.isArray(item.images)?item.images:(item.image?[item.image]:[])).map((src,pi)=><div key={pi} className="relative w-12 h-12 rounded-md overflow-hidden border border-neutral-700"><img src={src} className="w-full h-full object-cover"/><button type="button" onClick={()=>removeProductGalleryImage(category.id,item.id,pi)} className="absolute top-0 right-0 w-4 h-4 rounded-bl bg-black/75 text-white text-[10px]">×</button></div>)}</div>}
 </div>
 <div className="flex-1 grid gap-2">
 <div>
