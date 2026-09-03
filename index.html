@@ -147,6 +147,13 @@ function normalizeData(input){
 const base=defaultData();
 if(!input||typeof input!=="object")return base;
 const r={...base,...input};
+/* Eski sürümlerde ana sayfa başlık alanları eksik kalmış olabilir. */
+if(!String(r.siteName||"").trim())r.siteName=base.siteName;
+if(!String(r.siteName_en||"").trim())r.siteName_en=base.siteName_en;
+if(!String(r.subtitle||"").trim())r.subtitle=base.subtitle;
+if(!String(r.subtitle_en||"").trim())r.subtitle_en=base.subtitle_en;
+if(!String(r.eyebrow||"").trim())r.eyebrow=base.eyebrow;
+if(!String(r.eyebrow_en||"").trim())r.eyebrow_en=base.eyebrow_en;
 r.logo={...base.logo,...(input.logo||{})};
 r.logo.size=Number(r.logo.size)||110;r.logo.width=Number(r.logo.width)||r.logo.size;r.logo.height=Number(r.logo.height)||r.logo.size;
 r.theme={...base.theme,...(input.theme||{})};
@@ -420,7 +427,6 @@ if(result&&result.trim())return preserveTechnicalTokens(source,result.trim());
 const exact={
 "VIP Makam Takımları":"VIP Executive Office Sets",
 "ETAJERLİ MASA":"DESK WITH RETURN",
-"ETAJERLİ MASA":"DESK WITH RETURN",
 "DOLAP":"CABINET",
 "SEHPA":"COFFEE TABLE",
 "ÜNİTE":"UNIT",
@@ -549,6 +555,7 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[translationBusy,setTranslationBusy]=useState(false),
 [importRef,setImportRef]=useState(null);
+useEffect(()=>{document.documentElement.lang=language.toLowerCase()},[language]);
 const translationDrafts=useRef({});
 const toastTimerRef=useRef(null);
 
@@ -634,9 +641,19 @@ if(p.amount!==null&&p.amount!==undefined&&p.amount!=="")return formatAmount(p.am
 return t(language,"contactPrice");
 }
 function switchLanguage(next){
-setLanguage(next);
-localStorage.setItem(LANG_KEY,next);
-setData(p=>p?{...p,language:next}:p);
+  /* TR ve EN kesin olarak aynı ana sayfa JSX'ini kullanır; yalnızca metin dili değişir. */
+  document.documentElement.lang=next.toLowerCase();
+  setLanguage(next);
+  localStorage.setItem(LANG_KEY,next);
+  setSearch("");
+  setSelectedProduct(null);
+  setFullScreenImage(null);
+  setCurrencyMenuOpen(false);
+  setOpenCategories({});
+  setActiveCat(prev=>{
+    if(prev)return prev;
+    return data?.categories?.[0]?.id||null;
+  });
 }
 function addCategory(){
 const c=createCategory("Yeni Kategori");
@@ -851,7 +868,6 @@ if(p.name_en&&String(p.name_en).trim())return p.name_en;
 /* Price components must never remain Turkish in EN mode. Use the same
    deterministic catalog translator as the admin translation tools. */
 const exactPart={
-"ETAJERLİ MASA":"DESK WITH RETURN",
 "ETAJERLİ MASA":"DESK WITH RETURN",
 "DOLAP":"CABINET",
 "SEHPA":"COFFEE TABLE",
