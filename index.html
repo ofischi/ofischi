@@ -2,7 +2,10 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#141416">
 <title>Ofischi Premium</title>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -43,7 +46,74 @@ textarea.admin-input{min-height:78px;resize:vertical}
 .image-lightbox-card{width:min(88vw,760px);max-height:84vh;padding:10px;border:1px solid rgba(255,255,255,.14);border-radius:24px;background:rgba(24,24,27,.82);box-shadow:0 24px 80px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.04) inset;display:flex;align-items:center;justify-content:center}
 .image-lightbox-card img{display:block;width:auto;height:auto;max-width:100%;max-height:78vh;object-fit:contain;border-radius:17px}
 .price-row{border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.12)}
-@media(max-width:420px){.product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.category-chip{padding:9px 13px;font-size:11.5px}}
+
+/* RESPONSIVE / MOBILE / TABLET / DESKTOP */
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{min-width:320px;overscroll-behavior-x:none;touch-action:pan-y}
+button,a,input,textarea,select{-webkit-tap-highlight-color:transparent}
+button,a{touch-action:manipulation}
+.safe-top{padding-top:env(safe-area-inset-top)}
+.safe-bottom{padding-bottom:env(safe-area-inset-bottom)}
+.product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(min-width:640px){
+  .product-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .product-image{min-height:210px}
+}
+@media(min-width:1024px){
+  .product-grid{grid-template-columns:repeat(4,minmax(0,1fr));max-width:1200px}
+  .category-scroll,.max-w-5xl{max-width:1200px}
+  .product-card:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(0,0,0,.20)!important}
+  .product-image{min-height:230px}
+}
+@media(max-width:639px){
+  .product-grid{gap:10px;padding-left:12px!important;padding-right:12px!important}
+  .category-scroll{gap:7px;padding-left:2px;padding-right:2px}
+  .category-chip{padding:9px 12px;font-size:11px;border-radius:13px}
+  .product-card{border-radius:16px}
+  .product-card .p-3{padding:10px}
+  .product-card .font-semibold{font-size:12px}
+  .product-card .product-image{height:clamp(150px,42vw,210px)!important}
+  header{padding-left:14px!important;padding-right:14px!important}
+  header img{max-width:58vw!important}
+  .image-lightbox{padding:10px!important}
+  .image-lightbox-card{width:96vw;max-height:88vh;padding:6px;border-radius:18px}
+  .image-lightbox-card img{max-height:82vh;border-radius:13px}
+}
+@media(max-width:420px){
+  .product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .product-card .product-image{height:clamp(132px,39vw,175px)!important}
+  .product-card .p-3{padding:9px}
+  .product-card .text-\[13px\]{font-size:12px}
+  .product-card .text-\[9px\]{font-size:8px}
+}
+@media(max-width:360px){
+  .product-grid{gap:7px;padding-left:8px!important;padding-right:8px!important}
+  .category-chip{padding:8px 10px;font-size:10px}
+  .product-card .product-image{height:128px!important}
+}
+@media(min-width:640px) and (max-width:1023px){
+  .product-grid{padding-left:18px!important;padding-right:18px!important;gap:14px}
+  .category-scroll{padding-left:4px;padding-right:4px}
+}
+/* Admin panel: full width on phones, comfortable drawer on tablets/desktops */
+@media(max-width:639px){
+  .admin-panel-scroll{width:100%!important;max-width:none!important}
+  .admin-panel-scroll .px-5{padding-left:14px!important;padding-right:14px!important}
+  .admin-panel-scroll .grid.grid-cols-2{grid-template-columns:1fr!important}
+  .admin-panel-scroll .grid.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .admin-panel-scroll .grid.grid-cols-\[1fr_105px_auto\]{grid-template-columns:minmax(0,1fr) 88px auto!important}
+  .admin-panel-scroll input,.admin-panel-scroll textarea{font-size:16px!important;min-height:44px}
+  .admin-panel-scroll textarea{min-height:96px}
+  .admin-panel-scroll button{min-height:42px}
+}
+@media(min-width:640px){
+  .admin-panel-scroll{width:min(520px,92vw)!important}
+}
+/* Prevent iOS Safari input zoom and horizontal overflow */
+@supports (-webkit-touch-callout:none){
+  input,textarea,select{font-size:16px}
+}
+
 </style>
 
 <style id="admin-clean-final">
