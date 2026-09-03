@@ -1685,18 +1685,38 @@ async function createPDF(openPreview=false){
  if(pdfBusy||!data)return;
  setPdfBusy(true);
  let win=null;
+ const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"");
  try{
-  if(openPreview)win=window.open("about:blank","_blank");
+  /* Mobile browsers often ignore blob downloads triggered after an async
+     operation. Open a user-initiated tab first, then navigate it to the PDF. */
+  if(openPreview||isMobile)win=window.open("about:blank","_blank");
   const pdfCurrency=data.currency?.selected||"TRY";
   const pdfLang=pdfCurrency==="TRY"?"TR":"EN";
   const blob=await buildPriceListPDF(data,pdfLang);
   const url=URL.createObjectURL(blob);
   const fileName=pdfCurrency==="TRY"?"OFISCHI-2026-2-TL-FIYAT-LISTESI.pdf":pdfCurrency==="USD"?"OFISCHI-2026-2-USD-PRICE-LIST.pdf":"OFISCHI-2026-2-EUR-PRICE-LIST.pdf";
-  if(openPreview){if(win){win.location.href=url}else window.open(url,"_blank");setTimeout(()=>URL.revokeObjectURL(url),120000)}
-  else{const a=document.createElement("a");a.href=url;a.download=fileName;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000)}
-  showToast(openPreview?(language==="EN"?"PDF preview opened.":"PDF önizlemesi açıldı."):(language==="EN"?"PDF created.":"PDF oluşturuldu."));
- }catch(e){console.error(e);if(win)win.close();showToast("PDF oluşturulamadı: "+(e.message||"Kütüphane yüklenemedi"))}
- finally{setPdfBusy(false)}
+  if(openPreview||isMobile){
+    if(win){
+      win.location.href=url;
+      try{win.document.title=fileName}catch(_){}
+    }else{
+      window.location.href=url;
+    }
+    /* Keep the object URL alive long enough for iOS/Android PDF viewers. */
+    setTimeout(()=>URL.revokeObjectURL(url),180000);
+    showToast(language==="EN"?"PDF opened. Use Share/Save to save the file.":"PDF açıldı. Kaydetmek için Paylaş / Dosyalara Kaydet seçeneğini kullanın.");
+  }else{
+    const a=document.createElement("a");
+    a.href=url;a.download=fileName;a.target="_blank";
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+    showToast(language==="EN"?"PDF created.":"PDF oluşturuldu.");
+  }
+ }catch(e){
+  console.error(e);
+  if(win&&!win.closed)try{win.close()}catch(_){}
+  showToast("PDF oluşturulamadı: "+(e?.message||"PDF oluşturma hatası"));
+ }finally{setPdfBusy(false)}
 }
 async function uploadCategoryCover(categoryId,e){
  const file=e.target.files?.[0];if(!file)return;
