@@ -560,6 +560,11 @@ const translationDrafts=useRef({});
 const generalTranslationTimers=useRef({});
 const generalTranslationSeq=useRef({});
 const toastTimerRef=useRef(null);
+const categoryTranslationTimers=useRef({});
+const categoryTranslationSeq=useRef({});
+const pricePartTranslationTimers=useRef({});
+const pricePartTranslationSeq=useRef({});
+const panelSnapshot=useRef(null);
 
 useEffect(()=>{
 let cancelled=false;
@@ -698,7 +703,19 @@ try{
 }catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
 }
 function renameCategory(id,value){
-updateData(x=>{x.categories=x.categories.map(c=>c.id===id?{...c,name:value}:c)})
+  const key=String(id);
+  if(categoryTranslationTimers.current[key])clearTimeout(categoryTranslationTimers.current[key]);
+  categoryTranslationSeq.current[key]=(categoryTranslationSeq.current[key]||0)+1;
+  const seq=categoryTranslationSeq.current[key];
+  updateData(x=>{x.categories=x.categories.map(c=>c.id===id?{...c,name:value,...(!value.trim()?{name_en:""}:{})}:c)});
+  if(!value.trim())return;
+  categoryTranslationTimers.current[key]=setTimeout(async()=>{
+    try{
+      const en=await translateCached(value,"category");
+      if(categoryTranslationSeq.current[key]!==seq)return;
+      updateData(x=>{x.categories=x.categories.map(c=>c.id===id&&c.name===value?{...c,name_en:en||""}:c)});
+    }catch(e){console.warn("Kategori otomatik çevirisi başarısız:",e)}
+  },650);
 }
 async function translateCategory(id){
 if(translationBusy)return;
@@ -807,7 +824,23 @@ const part={id:uid(),name:"Yeni Parça",name_en:"",dims:"",dims_en:"",amount:nul
 updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,contactOnly:false,parts:[...p.parts,part]}}})})})
 }
 function updatePricePart(categoryId,itemId,partId,field,value){
-updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId?{...part,[field]:value}:part)}}})})})
+  if(field!=="name"){
+    updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId?{...part,[field]:value}:part)}}})})});
+    return;
+  }
+  const key=categoryId+"::"+itemId+"::"+partId;
+  if(pricePartTranslationTimers.current[key])clearTimeout(pricePartTranslationTimers.current[key]);
+  pricePartTranslationSeq.current[key]=(pricePartTranslationSeq.current[key]||0)+1;
+  const seq=pricePartTranslationSeq.current[key];
+  updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId?{...part,name:value,...(!value.trim()?{name_en:""}:{})}:part)}}})})});
+  if(!value.trim())return;
+  pricePartTranslationTimers.current[key]=setTimeout(async()=>{
+    try{
+      const en=await translateCached(value,"price_part");
+      if(pricePartTranslationSeq.current[key]!==seq)return;
+      updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId&&part.name===value?{...part,name_en:en||""}:part)}}})})});
+    }catch(e){console.warn("Fiyat parçası otomatik çevirisi başarısız:",e)}
+  },650);
 }
 async function deletePricePart(categoryId,itemId,partId){
 const next=normalizeData(data);
@@ -823,13 +856,18 @@ setSaving(true);
 try{
 const clean=await saveLocal(data);
 setData(clean);setSaved(true);showToast(t(language,"saved"));
-setTimeout(()=>{setSaved(false);setPanelOpen(false)},800);
+setTimeout(()=>{panelSnapshot.current=null;setSaved(false);setPanelOpen(false)},800);
 }catch(e){
 console.error(e);
 showToast("Kaydetme hatası: Tarayıcı depolaması kullanılamıyor.");
 }finally{setSaving(false)}
 }
-function openAdmin(){if(unlocked){setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
+function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
+function closeAdminPanel(discard=true){
+  if(discard && panelSnapshot.current){setData(panelSnapshot.current)}
+  panelSnapshot.current=null;
+  setSaved(false);setPanelOpen(false);
+}
 function uploadLogoLocal(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{updateData(x=>{x.logo={...x.logo,src:reader.result}});showToast("Logo yüklendi. Kaydet'e basın.")};reader.onerror=()=>showToast("Logo yüklenemedi.");reader.readAsDataURL(file);e.target.value=""}
 async function fileToOptimizedDataURL(file,maxSize=1800,quality=.82){
   if(!file||!file.type.startsWith("image/"))throw new Error("Geçersiz görsel");
@@ -870,13 +908,19 @@ function removeProductImage(categoryId,itemId){
 
 function removeLogo(){if(!confirm("Logo kaldırılsın mı?"))return;setPath(["logo","src"],null)}
 function tryUnlock(){
-if(pinInput===String(data?.pin||"1234")){setUnlocked(true);setPinModal(false);setPanelOpen(true);setPinInput("")}
+if(pinInput===String(data?.pin||"1234")){setUnlocked(true);setPinModal(false);panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);setPinInput("")}
 else setPinError(true);
 }
 async function resetDefault(){
-if(!confirm("Tüm ayarlar varsayılana döndürülsün mü? Bu işlem mevcut ürünleri silebilir. Emin misiniz?"))return;
-const f=defaultData();
-try{await saveLocal(f);setData(f);setActiveCat(f.categories[0]?.id||null);setOpenCategories({});showToast("Varsayılan ayarlar yüklendi.")}catch(e){console.error(e);showToast("Varsayılan ayarlar kaydedilemedi.")}
+if(!confirm("Genel site ayarları varsayılana döndürülsün mü? Ürünler ve kategoriler korunacaktır."))return;
+const base=defaultData();
+const next=normalizeData(data);
+next.siteName=base.siteName;next.siteName_en=base.siteName_en;
+next.subtitle=base.subtitle;next.subtitle_en=base.subtitle_en;
+next.eyebrow=base.eyebrow;next.eyebrow_en=base.eyebrow_en;
+next.phone=base.phone;next.logo={...base.logo};next.theme={...base.theme};
+next.cardImgSize=base.cardImgSize;next.currency={...base.currency};
+try{const clean=await saveLocal(next);setData(clean);showToast("Genel ayarlar varsayılana döndürüldü. Ürünler korunuyor.")}catch(e){console.error(e);showToast("Varsayılan ayarlar kaydedilemedi.")}
 }
 async function handleImport(e){
 const file=e.target.files?.[0];if(!file)return;
@@ -988,9 +1032,9 @@ return <div style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:t
 {fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-5 sm:p-8" onClick={()=>setFullScreenImage(null)}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()}><img src={fullScreenImage} alt="Ürün fotoğrafı"/><button onClick={()=>setFullScreenImage(null)} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
 {pinModal&&<div className="fixed inset-0 z-[200] bg-black/75 flex items-center justify-center p-4"><div className="w-full max-w-xs bg-neutral-950 border border-neutral-800 rounded-2xl p-6"><div className="flex items-center gap-2 mb-4 text-white"><Icon type="lock" size={18}/><h2 className="font-bold">{t(language,"admin")}</h2></div><input autoFocus type="password" inputMode="numeric" maxLength="8" value={pinInput} onChange={e=>{setPinInput(e.target.value.replace(/\D/g,""));setPinError(false)}} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="PIN" className="admin-input tracking-[.3em]"/>{pinError&&<div className="text-xs text-red-400 mt-2">{t(language,"wrongPin")}</div>}<div className="text-[11px] text-neutral-500 mt-2 mb-4">Varsayılan PIN: 1234</div><div className="flex gap-2"><button onClick={()=>setPinModal(false)} className="flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300">{t(language,"cancel")}</button><button onClick={tryUnlock} className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white" style={{background:theme.accent}}>{t(language,"login")}</button></div></div></div>}
 
-{panelOpen&&unlocked&&<div className="fixed inset-0 z-[180] flex justify-end"><div className="flex-1 bg-black/40" onClick={()=>setPanelOpen(false)}/><aside className="w-full sm:w-[500px] h-full bg-neutral-950 text-white overflow-y-auto shadow-2xl admin-panel-scroll">
+{panelOpen&&unlocked&&<div className="fixed inset-0 z-[180] flex justify-end"><div className="flex-1 bg-black/40" onClick={()=>closeAdminPanel(true)}/><aside className="w-full sm:w-[500px] h-full bg-neutral-950 text-white overflow-y-auto shadow-2xl admin-panel-scroll">
 <div className="sticky top-0 z-20 bg-neutral-950 border-b border-neutral-800 px-5 pt-5 pb-3">
-<div className="flex items-center justify-between mb-4"><h2 className="font-bold text-[17px]">{t(language,"adminPanel")}</h2><button onClick={()=>setPanelOpen(false)} className="text-neutral-500"><Icon type="x" size={21}/></button></div>
+<div className="flex items-center justify-between mb-4"><h2 className="font-bold text-[17px]">{t(language,"adminPanel")}</h2><button onClick={()=>closeAdminPanel(true)} className="text-neutral-500"><Icon type="x" size={21}/></button></div>
 <div className="grid grid-cols-4 gap-1 bg-neutral-900 rounded-xl p-1">
 {[["genel","Genel"],["katalog","Katalog"],["dil","Dil / Çeviri"],["fiyat","Fiyat"]].map(([id,label])=>
 <button key={id} onClick={()=>setAdminSection(id)} className="py-2 rounded-lg text-[11px] font-semibold" style={{background:adminSection===id?theme.accent:"transparent",color:adminSection===id?"#fff":"#888"}}>{label}</button>
