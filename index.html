@@ -40,16 +40,22 @@ button,input,textarea{font-family:inherit}button{cursor:pointer}button:disabled{
 .category-chip:active{transform:scale(.94)}
 .category-chip.active{transform:translateY(-2px);box-shadow:0 7px 20px rgba(0,0,0,.18),0 0 0 1px rgba(255,255,255,.08) inset}
 .category-chip.active::after{content:"";position:absolute;left:22%;right:22%;bottom:2px;height:2px;border-radius:999px;background:rgba(255,255,255,.72);filter:blur(1px);animation:categoryGlow 2s ease-in-out infinite}
-.product-gallery-frame{position:relative;overflow:hidden;height:100%;width:100%;background:rgba(0,0,0,.03)}
-.product-gallery-img{width:100%;height:100%;object-fit:cover;display:block;animation:galleryFade .65s cubic-bezier(.22,1,.36,1)}
-@keyframes galleryFade{from{opacity:.2;transform:scale(1.035)}to{opacity:1;transform:scale(1)}}
-.gallery-arrow{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:999px;background:rgba(15,15,18,.58);backdrop-filter:blur(10px);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.82;transition:all .25s ease;z-index:3}
-.gallery-arrow:hover{opacity:1;background:rgba(15,15,18,.78);transform:translateY(-50%) scale(1.05)}
-.gallery-dots{position:absolute;left:50%;bottom:9px;transform:translateX(-50%);display:flex;gap:4px;z-index:3;padding:4px 7px;border-radius:999px;background:rgba(10,10,12,.38);backdrop-filter:blur(8px)}
-.gallery-dot{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.5);transition:all .25s ease}.gallery-dot.active{width:15px;border-radius:4px;background:#fff}
 .product-card{position:relative;overflow:hidden;transform:translateZ(0);will-change:transform;animation:productEnter .45s cubic-bezier(.22,1,.36,1) both;transition:transform .28s cubic-bezier(.22,1,.36,1),box-shadow .28s ease;-webkit-tap-highlight-color:transparent}
 .product-card:active{transform:scale(.965) translateY(1px)}
 .product-image{position:relative;overflow:hidden}
+.product-gallery-frame{position:relative;width:100%;height:100%;overflow:hidden}
+.product-gallery-img,.detail-gallery-img{width:100%;height:100%;object-fit:cover;display:block;animation:galleryFade .55s cubic-bezier(.22,1,.36,1)}
+@keyframes galleryFade{from{opacity:.25;transform:scale(1.02)}to{opacity:1;transform:scale(1)}}
+.gallery-arrow,.detail-gallery-arrow,.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(10,10,12,.52);backdrop-filter:blur(10px);color:#fff;display:flex;align-items:center;justify-content:center;z-index:5;transition:.2s ease}
+.gallery-arrow:hover,.detail-gallery-arrow:hover,.lightbox-nav:hover{background:rgba(10,10,12,.8);transform:translateY(-50%) scale(1.05)}
+.gallery-dots,.detail-gallery-dots{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:5px;padding:5px 8px;border-radius:999px;background:rgba(10,10,12,.42);backdrop-filter:blur(8px);z-index:5}
+.gallery-dot,.detail-gallery-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.55);transition:.25s}.gallery-dot.active,.detail-gallery-dot.active{width:18px;border-radius:5px;background:#fff}
+.detail-gallery{position:relative;width:100%;height:270px;overflow:hidden;touch-action:pan-y;cursor:zoom-in}
+.image-lightbox{background:rgba(8,8,10,.42);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.image-lightbox-card{max-width:min(96vw,1100px);max-height:92vh;position:relative;display:flex;align-items:center;justify-content:center}
+.image-lightbox-card img{max-width:92vw;max-height:88vh;object-fit:contain;user-select:none;-webkit-user-drag:none}
+.lightbox-count{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);padding:5px 10px;border-radius:999px;background:rgba(10,10,12,.62);color:#fff;font-size:11px;z-index:6}
+
 .product-image::after{content:"";position:absolute;top:0;left:-130%;width:70%;height:100%;background:linear-gradient(105deg,transparent 15%,rgba(255,255,255,.09) 48%,transparent 82%);transform:skewX(-15deg);pointer-events:none}
 .product-card:hover .product-image::after{animation:categoryLight .8s ease forwards}
 .search-input{width:100%;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.12);color:inherit;border-radius:14px;padding:12px 42px;outline:none;backdrop-filter:blur(14px)}
@@ -767,8 +773,6 @@ else if(type==="upload")c=<><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d=
 else if(type==="download")c=<><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></>;
 else if(type==="up")c=<path d="m18 15-6-6-6 6"/>;
 else if(type==="down")c=<path d="m6 9 6 6 6-6"/>;
-else if(type==="chevronLeft")c=<path d="m15 18-6-6 6-6"/>;
-else if(type==="chevronRight")c=<path d="m9 18 6-6-6-6"/>;
 else if(type==="save")c=<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></>;
 else if(type==="image")c=<><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></>;
 else if(type==="lock")c=<><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>;
@@ -1328,22 +1332,20 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [toast,setToast]=useState(""),[activeCat,setActiveCat]=useState(null),[openCategories,setOpenCategories]=useState({}),
 [currencyMenuOpen,setCurrencyMenuOpen]=useState(false),[language,setLanguage]=useState(()=>localStorage.getItem(LANG_KEY)==="EN"?"EN":"TR"),
 [adminSection,setAdminSection]=useState("genel"),
-[search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[fullScreenImage,setFullScreenImage]=useState(null),[galleryIndex,setGalleryIndex]=useState({}),[panelOpen,setPanelOpen]=useState(false),
+[search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[detailGalleryIndex,setDetailGalleryIndex]=useState(0),[fullScreenImage,setFullScreenImage]=useState(null),[lightboxZoom,setLightboxZoom]=useState(1),[galleryIndex,setGalleryIndex]=useState({}),[panelOpen,setPanelOpen]=useState(false),
 [unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[pdfBusy,setPdfBusy]=useState(false),[pdfPreviewUrl,setPdfPreviewUrl]=useState(null),
 [importRef,setImportRef]=useState(null);
 useEffect(()=>{document.documentElement.lang=language.toLowerCase()},[language]);
 useEffect(()=>{
- const timer=setInterval(()=>{
-  setGalleryIndex(prev=>{
-   const next={...prev};
-   (data?.categories||[]).forEach(c=>(c.items||[]).forEach(i=>{
-    const g=Array.isArray(i.images)&&i.images.length?i.images:(i.image?[i.image]:[]);
-    if(g.length>1)next[i.id]=((prev[i.id]||0)+1)%g.length;
-   }));
-   return next;
-  });
- },4200);
+ const timer=setInterval(()=>setGalleryIndex(prev=>{
+  const next={...prev};
+  (data?.categories||[]).forEach(c=>(c.items||[]).forEach(i=>{
+   const g=Array.isArray(i.images)&&i.images.length?i.images:(i.image?[i.image]:[]);
+   if(g.length>1)next[i.id]=((prev[i.id]||0)+1)%g.length;
+  }));
+  return next;
+ }),4200);
  return()=>clearInterval(timer);
 },[data?.categories]);
 
@@ -1713,7 +1715,7 @@ async function uploadProductImage(categoryId,itemId,e){
     const images=[...current,...srcs];
     updateItem(categoryId,itemId,"images",images);
     updateItem(categoryId,itemId,"image",images[0]||null);
-    showToast(srcs.length>1?`${srcs.length} fotoğraf eklendi. Kaydet'e basın.`:"Ürün fotoğrafı yüklendi. Kaydet'e basın.");
+    showToast(srcs.length>1?`${srcs.length} fotoğraf eklendi. Kaydet'e basın.`:"Fotoğraf eklendi. Kaydet'e basın.");
   }catch(err){console.error(err);showToast("Fotoğraf yüklenemedi: "+(err.message||"Dosya hatası"));}
   finally{e.target.value=""}
 }
@@ -1876,15 +1878,14 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <main key={search.trim()?`search-${search}`:activeCat} className="product-grid px-4 pt-4 pb-28 max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-3">
 {search.trim()&&<div className="col-span-full mb-1"><div className="text-xs opacity-50">"{search.trim()}" {t(language,"found").replace("products","")}{visibleProducts.length} {t(language,"products")}</div></div>}
 {visibleProducts.length===0&&<div className="col-span-full text-center py-16 opacity-50">{search.trim()?t(language,"notFound"):t(language,"empty")}</div>}
-{visibleProducts.map((item,index)=><article key={item.id} onClick={()=>setSelectedProduct(item)} className="product-card rounded-2xl overflow-hidden cursor-pointer" style={{background:theme.card,boxShadow:"0 5px 18px rgba(0,0,0,.14)",animationDelay:`${Math.min(index,8)*45}ms`}}>
-<div className="product-image" style={{height:data.cardImgSize,backgroundColor:theme.accent+"12",display:"block",position:"relative"}}>{(()=>{const gallery=Array.isArray(item.images)&&item.images.length?item.images:(item.image?[item.image]:[]);const idx=(galleryIndex[item.id]||0)%Math.max(gallery.length,1);if(!gallery.length)return <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon type="image" size={28}/></div>;return <div className="product-gallery-frame"><img key={`${item.id}-${idx}`} className="product-gallery-img" src={gallery[idx]} alt={productDisplay(item)}/>{gallery.length>1&&<><button className="gallery-arrow left-2" onClick={e=>{e.stopPropagation();setGalleryIndex(p=>({...p,[item.id]:(idx-1+gallery.length)%gallery.length}))}}><Icon type="chevronLeft" size={15}/></button><button className="gallery-arrow right-2" onClick={e=>{e.stopPropagation();setGalleryIndex(p=>({...p,[item.id]:(idx+1)%gallery.length}))}}><Icon type="chevronRight" size={15}/></button><div className="gallery-dots">{gallery.slice(0,7).map((_,i)=><span key={i} className={'gallery-dot '+(i===idx?'active':'')}/>)}</div></>}</div>})()}</div>
+{visibleProducts.map((item,index)=><article key={item.id} onClick={()=>{setSelectedProduct(item);setDetailGalleryIndex(0)}} className="product-card rounded-2xl overflow-hidden cursor-pointer" style={{background:theme.card,boxShadow:"0 5px 18px rgba(0,0,0,.14)",animationDelay:`${Math.min(index,8)*45}ms`}}>
+<div className="product-image" style={{height:data.cardImgSize,backgroundColor:theme.accent+"12",display:"block",position:"relative"}}>{(()=>{const g=Array.isArray(item.images)&&item.images.length?item.images:(item.image?[item.image]:[]);const idx=(galleryIndex[item.id]||0)%Math.max(g.length,1);if(!g.length)return <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon type="image" size={28}/></div>;return <div className="product-gallery-frame" onPointerDown={e=>{if(g.length<2)return;e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{if(g.length<2)return;const el=e.currentTarget,sx=Number(el.dataset.sx||0),sy=Number(el.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy;if(Math.abs(dx)>35&&Math.abs(dx)>Math.abs(dy)){el.dataset.swiped="1";setGalleryIndex(p=>({...p,[item.id]:(idx+(dx<0?1:-1)+g.length)%g.length}))}}} onClick={e=>{if(e.currentTarget.dataset.swiped==="1"){e.stopPropagation();delete e.currentTarget.dataset.swiped}}} style={{touchAction:"pan-y"}}><img key={`${item.id}-${idx}`} className="product-gallery-img" src={g[idx]} alt={productDisplay(item)}/>{g.length>1&&<div className="gallery-dots">{g.slice(0,7).map((_,i)=><span key={i} className={'gallery-dot '+(i===idx?'active':'')}/>)}</div>}</div>})()}</div>
 <div className="p-3 flex flex-col"><div className="font-semibold text-sm leading-tight">{productDisplay(item)}</div>{productDesc(item)&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{productDesc(item)}</div>}<div className="mt-3 pt-3 border-t" style={{borderColor:theme.text+"12"}}><div className="flex items-center justify-between gap-2"><span className="text-[9px] uppercase tracking-widest font-bold opacity-45">{t(language,"total")}</span><span className="text-[13px] font-bold" style={{color:theme.accent}}>{productMainPrice(item)}</span></div><div className="mt-1 text-[9px] opacity-40 flex items-center gap-1">{t(language,"detailedPrices")}<Icon type="arrow" size={10}/></div></div></div>
 </article>)}</main>
 
 {selectedProduct&&<div className="fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={()=>setSelectedProduct(null)}>
 <div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl" style={{background:theme.card,color:theme.text,animation:"pop .22s ease"}} onClick={e=>e.stopPropagation()}>
-<div className="relative"><div onClick={()=>selectedProduct.image&&setFullScreenImage(selectedProduct.image)} title={selectedProduct.image?"Fotoğrafı tam ekran aç":""} style={{height:270,backgroundColor:theme.accent+"12",backgroundImage:selectedProduct.image?`url(${selectedProduct.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center",display:selectedProduct.image?"block":"flex",alignItems:"center",justifyContent:"center",cursor:selectedProduct.image?"zoom-in":"default"}}>{!selectedProduct.image&&<Icon type="image" size={40}/>}</div>
-<button onClick={()=>setSelectedProduct(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.55)",color:"#fff"}}><Icon type="x" size={20}/></button></div>
+<div className="relative"><div className="detail-gallery" onPointerDown={e=>{e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{const sx=Number(e.currentTarget.dataset.sx||0),sy=Number(e.currentTarget.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy,g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);if(g.length>1&&Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy))setDetailGalleryIndex(v=>(v+(dx<0?1:-1)+g.length)%g.length)}} style={{backgroundColor:theme.accent+"12",touchAction:"pan-y"}}>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);const idx=(detailGalleryIndex||0)%Math.max(g.length,1);return g.length?<img key={`detail-${selectedProduct.id}-${idx}`} src={g[idx]} alt={productDisplay(selectedProduct)} className="detail-gallery-img" onClick={()=>{setFullScreenImage({images:g,index:idx});setLightboxZoom(1)}}/>:<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon type="image" size={40}/></div>})()}</div>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);return g.length>1&&<div className="detail-gallery-dots">{g.map((_,i)=><span key={i} className={'detail-gallery-dot '+(i===detailGalleryIndex?'active':'')}/>)}</div>})()}<button type="button" onClick={()=>setSelectedProduct(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.55)",color:"#fff"}}><Icon type="x" size={20}/></button></div>
 <div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>PREMIUM</div>
 <h2 className="text-2xl font-bold">{productDisplay(selectedProduct)}</h2>
 {productDesc(selectedProduct)&&<p className="text-sm opacity-65 mt-2 leading-relaxed">{productDesc(selectedProduct)}</p>}
@@ -1897,7 +1898,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <button onClick={openAdmin} className="fixed bottom-5 right-[18px] z-30 rounded-full shadow-xl flex items-center justify-center" style={{width:52,height:52,background:theme.text,color:theme.bg}}><Icon type="settings" size={20}/></button>
 {toast&&<div className="fixed bottom-24 right-[18px] z-[150] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2"><Icon type="check" size={15}/>{toast}</div>}
 
-{fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-5 sm:p-8" onClick={()=>setFullScreenImage(null)}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()}><img src={fullScreenImage} alt="Ürün fotoğrafı"/><button onClick={()=>setFullScreenImage(null)} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
+{fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-3 sm:p-8" onClick={()=>{setFullScreenImage(null);setLightboxZoom(1)}}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()} onWheel={e=>{e.preventDefault();setLightboxZoom(z=>Math.min(3,Math.max(.75,z+(e.deltaY<0?.15:-.15))))}} onPointerDown={e=>{e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{const sx=Number(e.currentTarget.dataset.sx||0),sy=Number(e.currentTarget.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy,imgs=fullScreenImage.images||[];if(imgs.length>1&&Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){setFullScreenImage(prev=>({...prev,index:(prev.index+(dx<0?1:-1)+imgs.length)%imgs.length}));setLightboxZoom(1)}}} style={{touchAction:"pan-y"}}><img src={fullScreenImage.images?.[fullScreenImage.index]||fullScreenImage.images?.[0]} alt="Ürün fotoğrafı" style={{transform:`scale(${lightboxZoom})`,transition:"transform .22s cubic-bezier(.22,1,.36,1)",cursor:lightboxZoom>1?"grab":"zoom-in"}} onDoubleClick={()=>setLightboxZoom(z=>z>1?1:2)}/>{(fullScreenImage.images||[]).length>1&&<div className="lightbox-count">{fullScreenImage.index+1} / {fullScreenImage.images.length}</div>}<button type="button" onClick={()=>{setFullScreenImage(null);setLightboxZoom(1)}} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
 
 {pinModal&&<div className="fixed inset-0 z-[200] bg-black/75 flex items-center justify-center p-4"><div className="w-full max-w-xs bg-neutral-950 border border-neutral-800 rounded-2xl p-6"><div className="flex items-center gap-2 mb-4 text-white"><Icon type="lock" size={18}/><h2 className="font-bold">{t("TR","admin")}</h2></div><input autoFocus type="password" inputMode="numeric" maxLength="8" value={pinInput} onChange={e=>{setPinInput(e.target.value.replace(/\D/g,""));setPinError(false)}} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="PIN" className="admin-input tracking-[.3em]"/>{pinError&&<div className="text-xs text-red-400 mt-2">{t("TR","wrongPin")}</div>}<div className="text-[11px] text-neutral-500 mt-2 mb-4">Varsayılan PIN: 1234</div><div className="flex gap-2"><button onClick={()=>setPinModal(false)} className="flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300">{t("TR","cancel")}</button><button onClick={tryUnlock} className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white" style={{background:theme.accent}}>{t("TR","login")}</button></div></div></div>}
 
