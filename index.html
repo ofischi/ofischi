@@ -697,17 +697,15 @@ function pdfCurrencyInfo(data){
  const rate=id==="USD"?Number(data?.currency?.usdRate):id==="EUR"?Number(data?.currency?.eurRate):1;
  return {id,rate:rate>0?rate:1};
 }
+/* PDF ve web sitesi aynı fiyat dönüşüm/formatlama motorunu kullanır. */
 function pdfMoney(data,amount){
  if(amount===null||amount===undefined||amount===""||!Number.isFinite(Number(amount)))return "—";
- const {id,rate}=pdfCurrencyInfo(data); const v=Number(amount)/rate;
- if(id==="USD")return "$"+v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
- if(id==="EUR")return "€"+v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
- return v.toLocaleString("tr-TR",{maximumFractionDigits:0})+" ₺";
+ return formatAmountByData(data,amount)||"—";
 }
 function pdfTotal(data,item){
  const p=normalizePrice(item.price);
  if(p.parts.length){const n=p.parts.filter(x=>!x.contactOnly&&x.amount!==null&&x.amount!==undefined&&x.amount!=="").reduce((a,x)=>a+Number(x.amount),0);return n>0?pdfMoney(data,n):"—";}
- return p.contactOnly?pdfText(data?.language||"TR","İletişime geçin","Contact us","Contact us"):pdfMoney(data,p.amount);
+ return p.contactOnly?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):pdfMoney(data,p.amount);
 }
 function pdfCleanDims(value){return String(value||"—").replace(/\b(kg|m³|m3)\b/gi,"").replace(/\s{2,}/g," ").trim()||"—"}
 function pdfDimsParts(value){const s=pdfCleanDims(value);const nums=s.match(/[-+]?\d+(?:[.,]\d+)?/g)||[];return [nums[0]||"—",nums[1]||"—",nums[2]||"—"]}
@@ -723,30 +721,63 @@ function pdfImageSource(value){
  if(value&&typeof value==='object')return String(value.src||value.data||value.url||'').trim();
  return '';
 }
+function pdfValidProductId(item){
+ const id=item?.id;
+ return (typeof id==="string"&&id.trim().length>=4)||(typeof id==="number"&&Number.isFinite(id));
+}
+function pdfHasRealProductData(item){
+ if(!item||typeof item!=="object")return false;
+ const image=pdfImageSource(item.image);
+ const dims=String(item.dims??"").trim();
+ const desc=String(item.desc??"").trim();
+ const price=item.price;
+ const hasPrice=!!price&&(
+   (Array.isArray(price.parts)&&price.parts.some(p=>p&&(
+      (p.amount!==null&&p.amount!==undefined&&p.amount!=="") ||
+      String(p.name??"").trim()
+   ))) ||
+   (price.amount!==null&&price.amount!==undefined&&price.amount!=="")
+ );
+ return !!image||!!dims||!!desc||hasPrice;
+}
 function pdfIsDemoProduct(item){
- if(!item||typeof item!=='object')return true;
- const name=String(item.name??'').trim();
+ if(!item||typeof item!=="object")return true;
+ if(!pdfValidProductId(item))return true;
+ if(item.isDemo===true||item.placeholder===true||item.temporary===true)return true;
+ const name=String(item.name??"").trim();
  if(!name)return true;
- return /^(yeni\s*ürün|new\s*product)$/i.test(name);
+ /* Eski sürümlerde flag yoksa yalnızca tamamen boş "Yeni Ürün" taslaklarını demo say.
+    Gerçekten adı "Yeni Ürün" olan ve veri içeren ürün korunur. */
+ if(/^(yeni\s*ürün|new\s*product)$/i.test(name)&&!pdfHasRealProductData(item))return true;
+ return false;
 }
 function pdfProductImageSource(item,data){
  const src=pdfImageSource(item?.image);
- if(!src)return '';
- /* Logo, kapak veya site görseli ürün görseli olarak kullanılamaz. */
+ if(!src)return "";
+ /* Ürün kaydının image alanı dışında hiçbir görsel ürün görseli olarak kullanılmaz.
+    Logo ve kategori kapağı ürün görselinin yerine kesinlikle geçemez. */
  const forbidden=new Set();
  const logo=pdfImageSource(data?.logo?.src);if(logo)forbidden.add(logo);
  for(const c of (data?.categories||[])){const cover=pdfImageSource(c?.coverImage);if(cover)forbidden.add(cover);}
- return forbidden.has(src)?'':src;
+ return forbidden.has(src)?"":src;
 }
 function pdfRealCategories(rawData){
- const source=rawData&&typeof rawData==='object'?rawData:{};
+ const source=rawData&&typeof rawData==="object"?rawData:{};
  const rawCats=Array.isArray(source.categories)?source.categories:[];
  return rawCats.map(rawCat=>{
-   if(!rawCat||typeof rawCat!=='object')return null;
+   if(!rawCat||typeof rawCat!=="object")return null;
    const rawItems=Array.isArray(rawCat.items)?rawCat.items:[];
    const items=rawItems.filter(item=>!pdfIsDemoProduct(item)).map(item=>{
+     /* PDF ürünü tek kayıt üzerinden oluşturulur; başka üründen alan birleştirilmez. */
      const normalized=normalizeItem(item);
-     return {...normalized,image:pdfProductImageSource(item,source)||null};
+     return {
+       ...normalized,
+       id:item.id,
+       categoryId:rawCat.id,
+       categoryName:rawCat.name,
+       categoryName_en:rawCat.name_en,
+       image:pdfProductImageSource(item,source)||null
+     };
    });
    return {...rawCat,items};
  }).filter(c=>c&&c.items.length>0);
@@ -843,7 +874,9 @@ async function pdfImageAsset(src){
    cctx.drawImage(asset.im,0,0,c.width,c.height);
    data=c.toDataURL('image/jpeg',.96);
  }
- const result={data,width:asset.width,height:asset.height,source:key};
+ const outWidth=/^data:image\/jpe?g(?:;|,)/i.test(data)?asset.width:Math.max(1,Math.round(asset.width*Math.min(1,2400/Math.max(asset.width,asset.height))));
+ const outHeight=/^data:image\/jpe?g(?:;|,)/i.test(data)?asset.height:Math.max(1,Math.round(asset.height*Math.min(1,2400/Math.max(asset.width,asset.height))));
+ const result={data,width:outWidth,height:outHeight,source:key};
  pdfImageAsset.cache.set(key,result);
  return result;
 }
@@ -942,7 +975,7 @@ function pdfCardContent(ctxParts,data,category,item,lang,x,y,w,h,images){
 }
 async function renderPdfCoverPage(data,lang){
  const W=595.28,H=841.89;let content=pdfRect(0,0,W,H,[0.02,0.02,0.02]);content+=pdfRect(8,8,W-16,H-16,null,[0.55,0.55,0.55],.6);content+=pdfRect(12,12,W-24,H-24,null,[0.22,0.22,0.22],.6);
- const images=new Map();const logoSrc=pdfImageSource(data.logo?.src);const logoLoaded=await pdfImageAsset(logoSrc);const logo=logoLoaded?{...logoLoaded,id:1}:null;if(logo){images.set("__coverLogo__",logo);content+=pdfDrawImage("Im1",logo,80,440,435,145,true)}else content+=pdfTextOp(pdfText(lang,data.siteName,data.siteName_en,"Ofischi Premium"),W/2,500,34,{align:"center",bold:true,maxWidth:480,maxLines:1});
+ const images=new Map();const logoSrc=pdfImageSource(data.logo?.src);const logoLoaded=await pdfImageAsset(logoSrc);const logo=logoLoaded?{...logoLoaded,id:1}:null;if(logo){images.set("__coverLogo__",logo);content+=pdfDrawImage("Im1",logo,80,440,435,145,true)}
  const title=data.pdf?.title||"2026-2 TL FİYAT LİSTESİ";content+=pdfTextOp(title,W-45,55,17.5,{align:"right",bold:true,maxWidth:430,maxLines:2});
  return {content,images,pageNo:null};
 }
@@ -1134,21 +1167,28 @@ function editGeneralTurkishField(field,value){
 }
 function toggleCategory(id){setOpenCategories(p=>({...p,[id]:!p[id]}))}
 function openCategory(id){setOpenCategories(p=>({...p,[id]:true}))}
-function getCurrency(){return CURRENCIES.find(x=>x.id===(data?.currency?.selected||"TRY"))||CURRENCIES[0]}
-function convertPrice(amount){
-if(amount===null||amount===undefined||amount==="")return null;
-const n=Number(amount),c=data?.currency?.selected||"TRY";
-if(!Number.isFinite(n))return null;
-if(c==="USD"){const r=Number(data.currency.usdRate);return r>0?n/r:null}
-if(c==="EUR"){const r=Number(data.currency.eurRate);return r>0?n/r:null}
-return n;
+function getCurrencyByData(source){
+ const id=source?.currency?.selected||"TRY";
+ return CURRENCIES.find(x=>x.id===id)||CURRENCIES[0];
 }
-function formatAmount(amount){
-const v=convertPrice(amount);if(v===null)return null;
-const c=getCurrency(),d=c.id==="TRY"?0:2;
-const s=v.toLocaleString("tr-TR",{minimumFractionDigits:d,maximumFractionDigits:d});
-return c.id==="USD"?"$"+s:c.id==="EUR"?"€"+s:s+" ₺";
+function convertPriceByData(source,amount){
+ if(amount===null||amount===undefined||amount==="")return null;
+ const n=Number(amount),c=source?.currency?.selected||"TRY";
+ if(!Number.isFinite(n))return null;
+ if(c==="USD"){const r=Number(source?.currency?.usdRate);return r>0?n/r:null}
+ if(c==="EUR"){const r=Number(source?.currency?.eurRate);return r>0?n/r:null}
+ return n;
 }
+function formatAmountByData(source,amount){
+ const v=convertPriceByData(source,amount);if(v===null)return null;
+ const c=getCurrencyByData(source),d=c.id==="TRY"?0:2;
+ const locale=c.id==="TRY"?"tr-TR":"en-US";
+ const s=v.toLocaleString(locale,{minimumFractionDigits:d,maximumFractionDigits:d});
+ return c.id==="USD"?"$"+s:c.id==="EUR"?"€"+s:s+" ₺";
+}
+function getCurrency(){return getCurrencyByData(data)}
+function convertPrice(amount){return convertPriceByData(data,amount)}
+function formatAmount(amount){return formatAmountByData(data,amount)}
 function priceText(part){
 if(!part||part.contactOnly||part.amount===null||part.amount===undefined||part.amount==="")return t(language,"contactPrice");
 return formatAmount(part.amount)||t(language,"contactPrice");
@@ -1213,12 +1253,20 @@ async function moveCategory(id,direction){
 updateData(x=>{const l=[...x.categories],i=l.findIndex(a=>a.id===id),j=i+direction;if(i<0||j<0||j>=l.length)return;[l[i],l[j]]=[l[j],l[i]];x.categories=l})
 }
 function addItem(categoryId){
-const item={id:uid(),name:"Yeni Ürün",name_en:"New Product",desc:"",desc_en:"",dims:"",dims_en:"",image:null,price:{contactOnly:true,amount:null,parts:[]}};
+const item={id:uid(),isDemo:true,name:"Yeni Ürün",name_en:"New Product",desc:"",desc_en:"",dims:"",dims_en:"",image:null,price:{contactOnly:true,amount:null,parts:[]}};
 updateData(x=>{x.categories=x.categories.map(c=>c.id===categoryId?{...c,items:[...c.items,item]}:c)});
 openCategory(categoryId);
 }
 function updateItem(categoryId,itemId,field,value){
-updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>i.id===itemId?{...i,[field]:value}:i)})});
+updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{
+ if(i.id!==itemId)return i;
+ const next={...i,[field]:value};
+ if(["name","desc","dims","image","price"].includes(field)){
+   const meaningful=field==="image"?!!value:field==="price"?pdfHasRealProductData({...i,price:value}):String(value??"").trim().length>0;
+   if(meaningful)next.isDemo=false;
+ }
+ return next;
+})})});
 }
 function editTurkishField(categoryId,item,field,value){
 const key=categoryId+"::"+item.id+"::"+field;
