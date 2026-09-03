@@ -1316,37 +1316,51 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [importRef,setImportRef]=useState(null),[supabaseLogin,setSupabaseLogin]=useState(false),[sbEmail,setSbEmail]=useState(""),[sbPassword,setSbPassword]=useState(""),[sbBusy,setSbBusy]=useState(false);
 useEffect(()=>{document.documentElement.lang=language.toLowerCase()},[language]);
 
-/* SUPABASE REALTIME: başka cihazlarda yapılan katalog değişikliklerini anında al. */
+/* SUPABASE REALTIME + POLLING YEDEĞİ: diğer cihazlardaki değişiklikleri al. */
+const panelOpenRef=useRef(false), languageRef=useRef(language), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0);
+useEffect(()=>{panelOpenRef.current=panelOpen},[panelOpen]);
+useEffect(()=>{languageRef.current=language},[language]);
 useEffect(()=>{
-  if(!SUPABASE_ENABLED||!supabaseClient||!data)return;
+  if(!SUPABASE_ENABLED||!supabaseClient)return;
   let active=true;
-  const channel=supabaseClient.channel("ofischi-catalog-realtime")
-    .on("postgres_changes",{event:"UPDATE",schema:"public",table:SUPABASE_TABLE,filter:`id=eq.${SUPABASE_ROW_ID}`},async payload=>{
-      if(!active||!payload.new?.data||typeof payload.new.data!=="object")return;
-      /* Admin panelinde kullanıcı yazarken gelen veriyi ezme. */
-      if(panelSnapshot.current && panelOpen){
-        showToast(language==="EN"?"Cloud update received. Save your changes before switching devices.":"Bulut güncellemesi geldi. Cihazlar arası geçişten önce değişikliklerinizi kaydedin.");
-        return;
-      }
-      const incoming=normalizeData(payload.new.data);
-      try{await saveLocal(incoming)}catch(e){console.warn("Realtime yerel kayıt başarısız:",e)}
-      setData(incoming);
-      setSaved(false);
-      showToast(language==="EN"?"Catalog updated from another device.":"Katalog başka bir cihazdan güncellendi.");
-    })
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:SUPABASE_TABLE,filter:`id=eq.${SUPABASE_ROW_ID}`},async payload=>{
-      if(!active||!payload.new?.data||typeof payload.new.data!=="object")return;
-      if(panelSnapshot.current && panelOpen)return;
-      const incoming=normalizeData(payload.new.data);
-      try{await saveLocal(incoming)}catch(e){}
-      setData(incoming);
+  const applyCloudPayload=async (payloadData,updatedAt)=>{
+    if(!active||!payloadData||typeof payloadData!=="object")return;
+    const stamp=Date.parse(updatedAt||"")||Date.now();
+    if(stamp<=lastCloudUpdatedAtRef.current)return;
+    lastCloudUpdatedAtRef.current=stamp;
+    if(panelOpenRef.current){
+      showToast(languageRef.current==="EN"?"Cloud update received. Save your changes first.":"Bulut güncellemesi geldi. Önce kendi değişikliklerinizi kaydedin.");
+      return;
+    }
+    const incoming=normalizeData(payloadData);
+    realtimeApplyingRef.current=true;
+    try{await saveLocal(incoming)}catch(e){console.warn("Bulut verisi yerel kayda yazılamadı:",e)}
+    setData(incoming);
+    setSaved(false);
+    showToast(languageRef.current==="EN"?"Catalog updated from another device.":"Katalog başka bir cihazdan güncellendi.");
+    setTimeout(()=>{realtimeApplyingRef.current=false},0);
+  };
+  const channel=supabaseClient.channel("ofischi-catalog-realtime-v2")
+    .on("postgres_changes",{event:"*",schema:"public",table:SUPABASE_TABLE,filter:`id=eq.${SUPABASE_ROW_ID}`},payload=>{
+      const row=payload.new||{};
+      applyCloudPayload(row.data,row.updated_at);
     })
     .subscribe(status=>{
       if(status==="SUBSCRIBED")console.info("Ofischi Supabase Realtime aktif.");
-      if(status==="CHANNEL_ERROR")console.warn("Supabase Realtime kanal hatası. SQL'de supabase_realtime yayını kontrol edin.");
+      else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED")console.warn("Supabase Realtime bağlantısı yeniden denenecek.",status);
     });
-  return()=>{active=false;supabaseClient.removeChannel(channel)};
-},[!!data,panelOpen,language]);
+
+  /* Realtime kapalı/engelli olsa bile en fazla birkaç saniyede güncel kalması için yedek okuma. */
+  const poll=async()=>{
+    if(!active||panelOpenRef.current||realtimeApplyingRef.current)return;
+    const cloud=await loadCloud();
+    if(cloud&&cloud.savedAt>lastCloudUpdatedAtRef.current){
+      await applyCloudPayload(cloud.data, new Date(cloud.savedAt).toISOString());
+    }
+  };
+  const pollTimer=setInterval(poll,5000);
+  return()=>{active=false;clearInterval(pollTimer);supabaseClient.removeChannel(channel)};
+},[]);
 const productTranslationTimers=useRef({});
 const productTranslationSeq=useRef({});
 const generalTranslationTimers=useRef({});
@@ -1590,25 +1604,37 @@ async function save(){
 if(!data||saving)return;
 setSaving(true);
 try{
-const clean=await saveLocal(data);
-let cloudSaved=false;
-if(SUPABASE_ENABLED){
-  const session=await getCloudSession();
-  if(session){try{
-    const cloudResult=await saveCloud(clean);
-    cloudSaved=!!cloudResult?.saved;
-    /* Storage'a taşınan görsel URL'lerini yerel kopyaya da yaz. */
-    const cloudPrepared=cloudResult?.data||clean;
-    if(JSON.stringify(cloudPrepared)!==JSON.stringify(clean))await saveLocal(cloudPrepared);
-    setData(cloudPrepared);
-  }catch(e){console.error(e);showToast("Yerel kayıt yapıldı ancak Supabase kaydı başarısız: "+(e.message||"hata"));return}}
-  else{showToast("Yerel kayıt yapıldı. Supabase için yönetici hesabıyla giriş yapmalısınız.");return}
-}
-setData(clean);setSaved(true);showToast(cloudSaved?"Supabase'e kaydedildi.":t(language,"saved"));
-setTimeout(()=>{panelSnapshot.current=null;setSaved(false);setPanelOpen(false)},800);
+  const clean=normalizeData(data);
+  /* Önce yerel kayıt: kullanıcı değişikliği asla kaybolmasın. */
+  await saveLocal(clean);
+  let cloudSaved=false;
+  if(SUPABASE_ENABLED){
+    const session=await getCloudSession();
+    if(!session){
+      setSaving(false);
+      setSupabaseLogin(true);
+      showToast("Kaydetmek için önce Supabase yönetici girişi yapın.");
+      return;
+    }
+    try{
+      const cloudResult=await saveCloud(clean);
+      cloudSaved=!!cloudResult?.saved;
+      const cloudPrepared=cloudResult?.data||clean;
+      if(JSON.stringify(cloudPrepared)!==JSON.stringify(clean))await saveLocal(cloudPrepared);
+      setData(cloudPrepared);
+      lastCloudUpdatedAtRef.current=Date.now();
+    }catch(e){
+      console.error("Supabase kaydetme hatası:",e);
+      showToast("Yerel kayıt yapıldı; Supabase kaydı başarısız: "+(e.message||"hata"));
+      return;
+    }
+  }
+  setData(clean);setSaved(true);
+  showToast(cloudSaved?"Supabase'e kaydedildi. Diğer cihazlara gönderiliyor.":t(language,"saved"));
+  setTimeout(()=>{panelSnapshot.current=null;setSaved(false);setPanelOpen(false)},800);
 }catch(e){
-console.error(e);
-showToast("Kaydetme hatası: Tarayıcı depolaması kullanılamıyor.");
+  console.error(e);
+  showToast("Kaydetme hatası: "+(e.message||"Tarayıcı depolaması kullanılamıyor."));
 }finally{setSaving(false)}
 }
 async function loginSupabase(){
@@ -2000,7 +2026,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div>
 </div>
 
-<div className="sticky bottom-0 bg-neutral-950 border-t border-neutral-800 p-4"><button onClick={save} disabled={saving} className="w-full py-3.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50" style={{background:saved?"#12B76A":theme.accent,animation:saved?"pop .3s ease":saving?"none":"pulse 2.2s infinite"}}>{saved?<Icon type="check" size={17}/>:<Icon type="save" size={17}/>} {saved?t("TR","saved"):saving?t("TR","saving"):t("TR","save")}</button></div></div>
+<div className="sticky bottom-0 bg-neutral-950 border-t border-neutral-800 p-4"><button type="button" onClick={save} disabled={saving||!data} className="w-full py-3.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50" style={{background:saved?"#12B76A":theme.accent,animation:saved?"pop .3s ease":saving?"none":"pulse 2.2s infinite"}}>{saved?<Icon type="check" size={17}/>:<Icon type="save" size={17}/>} {saved?t("TR","saved"):saving?t("TR","saving"):t("TR","save")}</button></div></div>
 </aside></div>}
 
 </div>
