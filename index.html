@@ -1075,13 +1075,15 @@ function pdfPageMetrics(){return{width:595.28,height:841.89}}
 const PDF_LAYOUT={
  W:595.28,H:841.89,
  rail:18,left:27,right:8,top:18,bottom:25,
- gap:3.2,
+ gap:2.5,
  cardW:560.28,
  imageW:190,
- titleH:18,
- headerH:18,
+ imageH:82,
+ cardH:105,
+ titleH:17,
+ headerH:16,
  rowH:14.5,
- categoryH:19
+ categoryH:18
 };
 PDF_LAYOUT.cardW=PDF_LAYOUT.W-PDF_LAYOUT.left-PDF_LAYOUT.right;
 PDF_LAYOUT.tableX=PDF_LAYOUT.left+PDF_LAYOUT.imageW;
@@ -1095,8 +1097,8 @@ PDF_LAYOUT.c2=PDF_LAYOUT.c1+PDF_LAYOUT.dimW;
 PDF_LAYOUT.c3=PDF_LAYOUT.c2+PDF_LAYOUT.unitW;
 
 function pdfCardHeight(item){
- const rows=Math.max(1,pdfRowsForItem(item).length);
- return PDF_LAYOUT.titleH+PDF_LAYOUT.headerH+(rows*PDF_LAYOUT.rowH)+2.5;
+ /* All product sheets use exactly the same height so the 7-product page grid is uniform. */
+ return PDF_LAYOUT.cardH;
 }
 function pdfCategoryHeight(){return PDF_LAYOUT.categoryH}
 function pdfPageChrome(data,pageNo){
@@ -1123,11 +1125,12 @@ function pdfProductBlock(data,category,item,lang,x,y,w,h,asset,id){
  c+=pdfRect(x,titleY,w,L.titleH,[0.98,0.98,0.98],[0.18,0.18,0.18],.45);
  c+=pdfTextOp(title,x+w/2,titleY+5.0,11.8,{align:"center",bold:true,maxWidth:w-12,maxLines:1});
 
- /* Left image panel: fixed width for every product. */
+ /* Left image panel: identical dimensions for every product sheet. */
  const bodyY=y,bodyH=h-L.titleH;
  c+=pdfRect(x+0.5,bodyY+0.5,L.imageW-1,bodyH-1,[0.97,0.97,0.96],[0.45,0.45,0.45],.45);
+ const imageBoxH=Math.min(L.imageH,bodyH-4),imageBoxY=bodyY+(bodyH-imageBoxH)/2;
  if(asset){
-   c+=pdfDrawImage("Im"+id,asset,x+2,bodyY+2,L.imageW-4,bodyH-4,true);
+   c+=pdfDrawImage("Im"+id,asset,x+2,imageBoxY,L.imageW-4,imageBoxH,true);
  }else{
    c+=pdfTextOp(lang==="EN"?"NO PRODUCT IMAGE":"ÜRÜN GÖRSELİ YOK",x+L.imageW/2,bodyY+bodyH/2-3.2,8.7,{align:"center",bold:true,maxWidth:L.imageW-12,maxLines:2});
  }
@@ -1258,7 +1261,7 @@ async function buildPriceListPDF(rawData,lang){
  /* 1 currency/language  2 existing rates  3 real products  4 demo filter  5 images  6 layout */
  const prepared=await pdfPrepareImages(source),data=prepared.data,preparedImages=prepared.images;
  const pages=[await renderPdfCoverPage(data,pdfLang)];
- const L=PDF_LAYOUT,H=L.H,TOP=L.top,BOTTOM=L.bottom,GAP=L.gap,MAX_PRODUCTS=6;
+ const L=PDF_LAYOUT,H=L.H,TOP=L.top,BOTTOM=L.bottom,GAP=L.gap,MAX_PRODUCTS=7;
  let current=[],used=TOP,productCount=0,currentCategoryId=null;
  const flush=async()=>{
    if(!current.length)return;
