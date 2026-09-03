@@ -9,8 +9,6 @@
 <meta name="theme-color" content="#141416">
 <title>Ofischi Premium</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -768,45 +766,124 @@ function pdfAddProductPage(doc,data,category,item,lang,pageNo){
  const totalY=y+8;doc.setFillColor(20,20,20);doc.rect(tableX,totalY,tableW,16,"F");doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text(pdfText(lang,"TAKIM FİYATI","SET PRICE","SET PRICE"),tableX+4,totalY+10);doc.text(pdfTotal(data,item),tableX+tableW-4,totalY+10,{align:"right"});
  pdfDrawFooter(doc,data,lang,pageNo);
 }
+function pdfDataUriToBytes(dataUri){
+ const b64=String(dataUri||"").split(",")[1]||"";
+ const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+ for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+ return bytes;
+}
+function pdfConcatBytes(chunks){
+ let total=0;chunks.forEach(c=>total+=c.length);const out=new Uint8Array(total);let o=0;
+ chunks.forEach(c=>{out.set(c,o);o+=c.length});return out;
+}
+function createImagePDF(jpegPages){
+ const enc=new TextEncoder();const objs=[];const addObj=b=>{objs.push(b);return objs.length};
+ const pageRefs=[];
+ for(const page of jpegPages){
+  const img=pdfDataUriToBytes(page.data);
+  const imageObj=addObj(pdfConcatBytes([enc.encode(`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.length} >>\nstream\n`),img,enc.encode(`\nendstream`)]));
+  const content=enc.encode(`q\n595.28 0 0 841.89 0 0 cm\n/Im${pageRefs.length+1} Do\nQ`);
+  const contentObj=addObj(pdfConcatBytes([enc.encode(`<< /Length ${content.length} >>\nstream\n`),content,enc.encode(`\nendstream`)]));
+  const pageObj=addObj(enc.encode(`<< /Type /Page /Parent PAGESREF /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im${pageRefs.length+1} ${imageObj} 0 R >> >> /Contents ${contentObj} 0 R >>`));
+  pageRefs.push(pageObj);
+ }
+ const pagesObj=addObj(enc.encode(`<< /Type /Pages /Kids [${pageRefs.map(n=>n+' 0 R').join(' ')}] /Count ${pageRefs.length} >>`));
+ const catalogObj=addObj(enc.encode(`<< /Type /Catalog /Pages ${pagesObj} 0 R >>`));
+ // Patch the page parent references now that the Pages object number is known.
+ const pageObjNumbers=pageRefs.slice();
+ for(let i=0;i<pageObjNumbers.length;i++){
+  const old=objs[pageObjNumbers[i]-1];
+  objs[pageObjNumbers[i]-1]=enc.encode(new TextDecoder().decode(old).replace('PAGESREF',`${pagesObj} 0 R`));
+ }
+ const header=enc.encode('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');
+ const parts=[header];const offsets=[0];let pos=header.length;
+ for(let i=0;i<objs.length;i++){const head=enc.encode(`${i+1} 0 obj\n`),tail=enc.encode('\nendobj\n');offsets[i+1]=pos;parts.push(head,objs[i],tail);pos+=head.length+objs[i].length+tail.length;}
+ const xrefPos=pos;let xref=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`;
+ for(let i=1;i<=objs.length;i++)xref+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
+ xref+=`trailer\n<< /Size ${objs.length+1} /Root ${catalogObj} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+ parts.push(enc.encode(xref));
+ return new Blob([pdfConcatBytes(parts)],{type:'application/pdf'});
+}
+async function pdfLoadImage(src){
+ if(!src||!/^data:image\/(png|jpe?g|webp)/i.test(src))return null;
+ return await new Promise(resolve=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>resolve(null);im.src=src});
+}
+function pdfFitImage(ctx,img,x,y,w,h,contain=true){
+ if(!img)return;
+ const iw=img.naturalWidth||img.width,ih=img.naturalHeight||img.height;if(!iw||!ih)return;
+ const r=contain?Math.min(w/iw,h/ih):Math.max(w/iw,h/ih);const dw=iw*r,dh=ih*r;
+ ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+}
+function pdfCanvasText(ctx,text,x,y,maxWidth,font,fill='#151515',align='left'){
+ ctx.font=font;ctx.fillStyle=fill;ctx.textAlign=align;ctx.textBaseline='alphabetic';
+ const value=String(text??'');
+ if(!maxWidth){ctx.fillText(value,x,y);return;}
+ const words=value.split(/\s+/);let line='',lines=[];
+ for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width<=maxWidth)line=test;else{if(line)lines.push(line);line=word;}}
+ if(line)lines.push(line);
+ const lh=Math.max(14,parseInt(font.match(/(\d+)px/)?.[1]||12,10)*1.25);
+ lines.slice(0,5).forEach((ln,i)=>ctx.fillText(ln,x,y+i*lh));
+ return lines.length;
+}
+async function renderPdfPageCanvas(kind,opts){
+ const width=1588,height=2246; // 794x1123 @ 2x for crisp A4 raster pages
+ const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+ const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);
+ const S=2; const px=v=>v*S;
+ const data=opts.data,lang=opts.lang;
+ if(kind==='cover'){
+  const bg=opts.category.coverImage?await pdfLoadImage(opts.category.coverImage):null;
+  if(bg){pdfFitImage(ctx,bg,0,0,width,height,false);ctx.fillStyle='rgba(0,0,0,.46)';ctx.fillRect(0,0,width,height)}
+  else{const g=ctx.createLinearGradient(0,0,width,height);g.addColorStop(0,'#f4f4f1');g.addColorStop(1,'#deded9');ctx.fillStyle=g;ctx.fillRect(0,0,width,height);}
+  const logo=await pdfLoadImage(data.logo?.src);
+  if(logo)pdfFitImage(ctx,logo,px(45),px(35),px(170),px(75),true);
+  pdfCanvasText(ctx,pdfText(lang,opts.category.name,opts.category.name_en,opts.category.name),px(45),height-px(105),px(700),'800 42px Arial','#fff');
+  pdfCanvasText(ctx,pdfText(lang,data.eyebrow,data.eyebrow_en,'Ofischi Premium'),px(45),height-px(78),px(690),'700 15px Arial','#eee');
+  ctx.strokeStyle='rgba(255,255,255,.45)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px(45),height-px(42));ctx.lineTo(width-px(45),height-px(42));ctx.stroke();
+  pdfCanvasText(ctx,data.pdf?.footer||data.pdf?.website||'www.ofischi.com',px(45),height-px(18),px(600),'12px Arial','#fff');
+  if(data.pdf?.showPageNumbers!==false)pdfCanvasText(ctx,String(opts.pageNo),width-px(45),height-px(18),null,'12px Arial','#fff','right');
+ }else{
+  const item=opts.item,category=opts.category,p=normalizePrice(item.price);
+  const rows=p.parts.length?p.parts:[{name:item.name,name_en:item.name_en,dims:item.dims,amount:p.amount,contactOnly:p.contactOnly}];
+  ctx.fillStyle='#111';ctx.fillRect(0,0,width,px(58));
+  const logo=await pdfLoadImage(data.logo?.src);if(logo)pdfFitImage(ctx,logo,px(45),px(4),px(120),px(50),true);
+  pdfCanvasText(ctx,pdfText(lang,category.name,category.name_en,category.name),width-px(45),px(36),px(500),'700 14px Arial','#fff','right');
+  const title=pdfText(lang,item.name,item.name_en,item.name);pdfCanvasText(ctx,title,px(45),px(128),px(700),'800 30px Arial','#151515');
+  if(item.desc)pdfCanvasText(ctx,pdfText(lang,item.desc,item.desc_en,item.desc),px(45),px(157),px(700),'12px Arial','#777');
+  const img=await pdfLoadImage(item.image);
+  const ix=px(45),iy=px(190),iw=px(315),ih=px(650);
+  ctx.fillStyle='#f5f5f3';ctx.fillRect(ix,iy,iw,ih);ctx.strokeStyle='#ddd';ctx.lineWidth=2;ctx.strokeRect(ix,iy,iw,ih);
+  if(img)pdfFitImage(ctx,img,ix+px(16),iy+px(16),iw-px(32),ih-px(32),true);else pdfCanvasText(ctx,lang==='EN'?'NO PRODUCT IMAGE':'ÜRÜN GÖRSELİ YOK',ix+iw/2,iy+ih/2,null,'700 14px Arial','#aaa','center');
+  const tx=px(390),ty=px(190),tw=px(359),rowH=px(55);
+  const cols=[0,.36,.70,1];
+  ctx.fillStyle='#111';ctx.fillRect(tx,ty,tw,px(48));
+  pdfCanvasText(ctx,lang==='EN'?'MODULE':'MODÜL',tx+px(10),ty+px(30),px(110),'700 12px Arial','#fff');
+  pdfCanvasText(ctx,lang==='EN'?'DIMENSIONS':'ÖLÇÜLER',tx+tw*.36+px(10),ty+px(30),px(105),'700 12px Arial','#fff');
+  pdfCanvasText(ctx,lang==='EN'?'UNIT PRICE':'BİRİM FİYATI',tx+tw*.70+px(10),ty+px(30),tw*.30-px(18),'700 12px Arial','#fff','right');
+  rows.forEach((part,i)=>{
+   const y=ty+px(48)+i*rowH;ctx.fillStyle=i%2?'#fafafa':'#fff';ctx.fillRect(tx,y,tw,rowH);ctx.strokeStyle='#d2d2d2';ctx.lineWidth=2;ctx.strokeRect(tx,y,tw,rowH);
+   ctx.beginPath();ctx.moveTo(tx+tw*.36,y);ctx.lineTo(tx+tw*.36,y+rowH);ctx.moveTo(tx+tw*.70,y);ctx.lineTo(tx+tw*.70,y+rowH);ctx.stroke();
+   pdfCanvasText(ctx,pdfText(lang,part.name,part.name_en,part.name)||'—',tx+px(10),y+px(33),tw*.34-px(18),'700 12px Arial','#232323');
+   const cleanDims=String(part.dims||'—').replace(/\b(kg|m³|m3)\b/gi,'').trim();pdfCanvasText(ctx,cleanDims,tx+tw*.36+px(10),y+px(33),tw*.34-px(18),'12px Arial','#444');
+   const price=part.contactOnly?(lang==='EN'?'Contact us':'İletişime geçin'):pdfMoney(data,part.amount);pdfCanvasText(ctx,price,tx+tw-px(10),y+px(33),tw*.28,'700 12px Arial','#232323','right');
+  });
+  const totalY=ty+px(48)+rows.length*rowH+px(18);ctx.fillStyle='#111';ctx.fillRect(tx,totalY,tw,px(62));
+  pdfCanvasText(ctx,lang==='EN'?'SET PRICE':'TAKIM FİYATI',tx+px(14),totalY+px(38),px(150),'800 14px Arial','#fff');pdfCanvasText(ctx,pdfTotal(data,item),tx+tw-px(14),totalY+px(38),px(190),'800 14px Arial','#fff','right');
+  const fy=height-px(42);ctx.strokeStyle='#bbb';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px(45),fy);ctx.lineTo(width-px(45),fy);ctx.stroke();
+  pdfCanvasText(ctx,data.pdf?.footer||data.pdf?.website||'www.ofischi.com',px(45),height-px(18),px(600),'11px Arial','#666');if(data.pdf?.showPageNumbers!==false)pdfCanvasText(ctx,String(opts.pageNo),width-px(45),height-px(18),null,'11px Arial','#666','right');
+ }
+ return {data:canvas.toDataURL('image/jpeg',.94),width,height};
+}
 async function buildPriceListPDF(data,lang){
- if(!window.jspdf?.jsPDF)throw new Error("PDF kütüphanesi yüklenemedi. İnternet bağlantısını kontrol edin.");
- if(!window.html2canvas)throw new Error("PDF görüntüleme kütüphanesi yüklenemedi.");
- const {jsPDF}=window.jspdf;
- const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4",compress:true});
- const W=210,H=297;
- const host=document.createElement("div");
- host.style.cssText="position:fixed;left:-10000px;top:0;width:794px;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;z-index:-1;";
- document.body.appendChild(host);
- const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;");
- const addCanvasPage=async(html,first=false)=>{
-  host.innerHTML=html;
-  const canvas=await html2canvas(host,{backgroundColor:"#fff",scale:2,useCORS:true,allowTaint:false,logging:false,imageTimeout:15000});
-  const img=canvas.toDataURL("image/jpeg",.94);
-  if(!first)doc.addPage();
-  doc.addImage(img,"JPEG",0,0,W,H,undefined,"FAST");
- };
- let first=true,pageNo=1;
+ const pages=[];let pageNo=1;
  for(const category of (data.categories||[])){
-  const cover=category.coverImage?`<div style="position:absolute;inset:0;background:#111"><img src="${category.coverImage}" style="width:100%;height:100%;object-fit:cover;display:block"/><div style="position:absolute;inset:0;background:rgba(0,0,0,.42)"></div></div>`:`<div style="position:absolute;inset:0;background:linear-gradient(135deg,#f4f4f1,#e5e5e0)"></div>`;
-  const logo=data.logo?.src?`<img src="${data.logo.src}" style="width:170px;height:75px;object-fit:contain;object-position:left center;position:absolute;left:45px;top:35px">`:"";
-  const catTitle=esc(pdfText(lang,category.name,category.name_en,category.name));
-  const eyebrow=esc(pdfText(lang,data.eyebrow,data.eyebrow_en,"Ofischi Premium"));
-  const footer=esc(data.pdf?.footer||data.pdf?.website||"www.ofischi.com");
-  const coverHtml=`<div style="width:794px;height:1123px;position:relative;overflow:hidden">${cover}${logo}<div style="position:absolute;left:45px;bottom:105px;color:#fff;font-size:42px;font-weight:800;letter-spacing:.5px;max-width:690px">${catTitle}</div><div style="position:absolute;left:45px;bottom:78px;color:#eee;font-size:15px;letter-spacing:3px;text-transform:uppercase">${eyebrow}</div><div style="position:absolute;left:45px;right:45px;bottom:42px;border-top:1px solid rgba(255,255,255,.45);padding-top:12px;color:#fff;font-size:12px">${footer}${data.pdf?.showPageNumbers!==false?`<span style="float:right">${pageNo}</span>`:""}</div></div>`;
-  await addCanvasPage(coverHtml,first);first=false;pageNo++;
+  pages.push(await renderPdfPageCanvas('cover',{data,lang,category,pageNo}));pageNo++;
   for(const item of (category.items||[])){
-   const p=normalizePrice(item.price);const rows=p.parts.length?p.parts:[{name:item.name,name_en:item.name_en,dims:item.dims,amount:p.amount,contactOnly:p.contactOnly}];
-   const tr=(lang==="EN")?"MODULE":"MODÜL",dimsLabel=(lang==="EN")?"DIMENSIONS":"ÖLÇÜLER",unitLabel=(lang==="EN")?"UNIT PRICE":"BİRİM FİYATI",setLabel=(lang==="EN")?"SET PRICE":"TAKIM FİYATI";
-   const rowHtml=rows.map((part,i)=>`<tr style="height:55px;background:${i%2?"#fafafa":"#fff"}"><td style="padding:0 10px;font-weight:700;border:1px solid #d2d2d2;border-right:0">${esc(pdfText(lang,part.name,part.name_en,part.name)||"—")}</td><td style="padding:0 10px;border-top:1px solid #d2d2d2;border-bottom:1px solid #d2d2d2">${esc(String(part.dims||"—").replace(/\b(kg|m³|m3)\b/gi,""))}</td><td style="padding:0 10px;border:1px solid #d2d2d2;border-left:0;text-align:right;font-weight:700;white-space:nowrap">${esc(part.contactOnly?(lang==="EN"?"Contact us":"İletişime geçin"):pdfMoney(data,part.amount))}</td></tr>`).join("");
-   const title=esc(pdfText(lang,item.name,item.name_en,item.name));
-   const desc=item.desc?`<div style="font-size:12px;color:#777;line-height:1.35;margin-top:9px;max-width:700px">${esc(pdfText(lang,item.desc,item.desc_en,item.desc)).replace(/\n/g,"<br>")}</div>`:"";
-   const img=item.image?`<img src="${item.image}" style="width:100%;height:100%;object-fit:contain;display:block">`:`<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px">${lang==="EN"?"NO PRODUCT IMAGE":"ÜRÜN GÖRSELİ YOK"}</div>`;
-   const productHtml=`<div style="width:794px;height:1123px;background:#fff;position:relative;padding:35px 45px;overflow:hidden;box-sizing:border-box"><div style="height:58px;background:#111;margin:-35px -45px 0;padding:0 45px;display:flex;align-items:center;justify-content:space-between;color:#fff"><div style="font-size:14px;font-weight:700;letter-spacing:1.5px">${esc(pdfText(lang,category.name,category.name_en,category.name))}</div><div style="font-size:11px">${esc(data.pdf?.website||"www.ofischi.com")}</div></div><div style="font-size:30px;font-weight:800;margin-top:30px;color:#151515">${title}</div>${desc}<div style="display:grid;grid-template-columns:42% 58%;gap:28px;margin-top:22px"><div style="height:650px;background:#f5f5f3;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:16px;box-sizing:border-box">${img}</div><div><table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed"><thead><tr style="height:48px;background:#111;color:#fff"><th style="width:36%;text-align:left;padding:0 10px">${tr}</th><th style="width:34%;text-align:left;padding:0 10px">${dimsLabel}</th><th style="width:30%;text-align:right;padding:0 10px">${unitLabel}</th></tr></thead><tbody>${rowHtml}</tbody></table><div style="margin-top:18px;background:#111;color:#fff;height:62px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:14px;font-weight:800"><span>${setLabel}</span><span>${esc(pdfTotal(data,item))}</span></div></div></div><div style="position:absolute;left:45px;right:45px;bottom:42px;border-top:1px solid #bbb;padding-top:12px;color:#666;font-size:11px">${footer}${data.pdf?.showPageNumbers!==false?`<span style="float:right">${pageNo}</span>`:""}</div></div>`;
-   await addCanvasPage(productHtml,false);pageNo++;
+   pages.push(await renderPdfPageCanvas('product',{data,lang,category,item,pageNo}));pageNo++;
   }
  }
- if(first){await addCanvasPage(`<div style="width:794px;height:1123px;background:#fff;padding:60px;font-family:Arial"><div style="font-size:30px;font-weight:800">${esc(pdfText(lang,"Henüz ürün yok","No products yet","No products yet"))}</div></div>`,true)}
- host.remove();return doc;
+ if(!pages.length)pages.push(await renderPdfPageCanvas('product',{data,lang,category:{name:'',name_en:''},item:{name:'Henüz ürün yok',name_en:'No products yet',desc:'',desc_en:'',image:null,dims:'',price:{contactOnly:true,amount:null,parts:[]}},pageNo:1}));
+ return createImagePDF(pages);
 }
 
 /* -------------------- APP -------------------- */
@@ -1122,8 +1199,7 @@ async function createPDF(openPreview=false){
  let win=null;
  try{
   if(openPreview)win=window.open("about:blank","_blank");
-  const doc=await buildPriceListPDF(normalizeData(data),language);
-  const blob=doc.output("blob");
+  const blob=await buildPriceListPDF(normalizeData(data),language);
   const url=URL.createObjectURL(blob);
   if(openPreview){if(win){win.location.href=url}else window.open(url,"_blank");setTimeout(()=>URL.revokeObjectURL(url),120000)}
   else{const a=document.createElement("a");a.href=url;a.download=`ofischi-premium-fiyat-listesi-${language}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)}
