@@ -294,12 +294,75 @@ async function loadCloud(){
     return {savedAt:Date.parse(data.updated_at)||0,data:normalizeData(data.data)};
   }catch(e){console.warn('Supabase okunamadı:',e);return null}
 }
+function isDataImageSource(src){
+  return typeof src==='string' && /^data:image\//i.test(src);
+}
+function dataUrlToBlob(dataUrl){
+  const m=String(dataUrl||'').match(/^data:([^;,]+)(?:;[^,]*)?,(.*)$/s);
+  if(!m)throw new Error('Geçersiz görsel verisi');
+  const mime=m[1]||'application/octet-stream';
+  const body=m[2]||'';
+  if(String(dataUrl).includes(';base64,')){
+    const bin=atob(body);
+    const bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    return new Blob([bytes],{type:mime});
+  }
+  return new Blob([decodeURIComponent(body)],{type:mime});
+}
+function storagePathFor(kind,categoryId,itemId,src){
+  const ext=/^data:image\/(png|webp|gif|svg\+xml)/i.test(String(src||''))?
+    (String(src).match(/^data:image\/(png|webp|gif)/i)?.[1]||'png'):'jpg';
+  if(kind==='product')return `products/${encodeURIComponent(String(categoryId))}/${encodeURIComponent(String(itemId))}.${ext}`;
+  if(kind==='category')return `categories/${encodeURIComponent(String(categoryId))}.${ext}`;
+  if(kind==='site-logo')return `branding/site-logo.${ext}`;
+  if(kind==='pdf-logo')return `branding/pdf-cover-logo.${ext}`;
+  return `branding/${kind}.${ext}`;
+}
+async function uploadDataImageToSupabase(src,path){
+  if(!isDataImageSource(src))return src;
+  if(!SUPABASE_ENABLED||!supabaseClient)throw new Error('Supabase yapılandırılmadı');
+  const session=await getCloudSession();
+  if(!session)throw new Error('Görsel yüklemek için Supabase yönetici girişi gerekli.');
+  const blob=dataUrlToBlob(src);
+  const {error}=await supabaseClient.storage.from(SUPABASE_BUCKET).upload(path,blob,{
+    cacheControl:'31536000',
+    contentType:blob.type||'image/jpeg',
+    upsert:true
+  });
+  if(error)throw error;
+  const {data}=supabaseClient.storage.from(SUPABASE_BUCKET).getPublicUrl(path);
+  if(!data?.publicUrl)throw new Error('Supabase görsel URL oluşturamadı.');
+  return data.publicUrl;
+}
+async function prepareDataForCloud(data){
+  const clean=normalizeData(JSON.parse(JSON.stringify(data)));
+  const tasks=[];
+  if(isDataImageSource(clean.logo?.src)){
+    tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor('site-logo',null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
+  }
+  if(isDataImageSource(clean.pdf?.coverLogo?.src)){
+    tasks.push(uploadDataImageToSupabase(clean.pdf.coverLogo.src,storagePathFor('pdf-logo',null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
+  }
+  for(const category of (clean.categories||[])){
+    if(isDataImageSource(category?.coverImage)){
+      tasks.push(uploadDataImageToSupabase(category.coverImage,storagePathFor('category',category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
+    }
+    for(const item of (category.items||[])){
+      if(isDataImageSource(item?.image)){
+        tasks.push(uploadDataImageToSupabase(item.image,storagePathFor('product',category.id,item.id,item.image)).then(url=>{item.image=url}));
+      }
+    }
+  }
+  if(tasks.length)await Promise.all(tasks);
+  return clean;
+}
 async function saveCloud(data){
-  if(!SUPABASE_ENABLED||!supabaseClient)return false;
-  const clean=normalizeData(data);
+  if(!SUPABASE_ENABLED||!supabaseClient)return {saved:false,data:normalizeData(data)};
+  const clean=await prepareDataForCloud(data);
   const {data:row,error}=await supabaseClient.from(SUPABASE_TABLE).upsert({id:SUPABASE_ROW_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:'id'}).select('id,updated_at').single();
   if(error)throw error;
-  return !!row;
+  return {saved:!!row,data:clean};
 }
 async function getCloudSession(){
   if(!SUPABASE_ENABLED||!supabaseClient)return null;
@@ -394,7 +457,7 @@ async function loadLocal(){
   }catch(e){}
   try{await idbSetRecord(newest)}catch(e){}
 
-  return normalizeData(newest.data);
+  return {savedAt:Number(newest.savedAt)||0,data:normalizeData(newest.data)};
 }
 
 async function saveLocal(data){
@@ -1302,9 +1365,9 @@ try{
 let localLoaded=await loadLocal();
 let cloudLoaded=await loadCloud();
 let loaded=null;
-if(cloudLoaded&&localLoaded){loaded=(cloudLoaded.savedAt||0)>=(localLoaded.__savedAt||0)?cloudLoaded.data:localLoaded}
+if(cloudLoaded&&localLoaded){loaded=(cloudLoaded.savedAt||0)>=(localLoaded.savedAt||0)?cloudLoaded.data:localLoaded.data}
 else if(cloudLoaded)loaded=cloudLoaded.data;
-else loaded=localLoaded;
+else loaded=localLoaded?.data||null;
 if(!loaded){
 loaded=defaultData();
 await saveLocal(loaded);
@@ -1531,7 +1594,14 @@ const clean=await saveLocal(data);
 let cloudSaved=false;
 if(SUPABASE_ENABLED){
   const session=await getCloudSession();
-  if(session){try{cloudSaved=await saveCloud(clean)}catch(e){console.error(e);showToast("Yerel kayıt yapıldı ancak Supabase kaydı başarısız: "+(e.message||"hata"));return}}
+  if(session){try{
+    const cloudResult=await saveCloud(clean);
+    cloudSaved=!!cloudResult?.saved;
+    /* Storage'a taşınan görsel URL'lerini yerel kopyaya da yaz. */
+    const cloudPrepared=cloudResult?.data||clean;
+    if(JSON.stringify(cloudPrepared)!==JSON.stringify(clean))await saveLocal(cloudPrepared);
+    setData(cloudPrepared);
+  }catch(e){console.error(e);showToast("Yerel kayıt yapıldı ancak Supabase kaydı başarısız: "+(e.message||"hata"));return}}
   else{showToast("Yerel kayıt yapıldı. Supabase için yönetici hesabıyla giriş yapmalısınız.");return}
 }
 setData(clean);setSaved(true);showToast(cloudSaved?"Supabase'e kaydedildi.":t(language,"saved"));
