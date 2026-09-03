@@ -690,6 +690,27 @@ function AdminLabel({children}){return <div style={{color:"#737373",fontSize:"10
 function ColorInput({label,value,onChange}){return <label className="flex items-center justify-between mb-3"><span className="text-xs text-neutral-400">{label}</span><input type="color" value={value||"#000000"} onChange={e=>onChange(e.target.value)} className="w-9 h-9 rounded-lg border border-neutral-700 bg-transparent cursor-pointer"/></label>}
 
 
+/* -------------------- SHARED PRICE ENGINE FOR PDF + WEB -------------------- */
+function getCurrencyByData(source){
+ const id=source?.currency?.selected||"TRY";
+ return CURRENCIES.find(x=>x.id===id)||CURRENCIES[0];
+}
+function convertPriceByData(source,amount){
+ if(amount===null||amount===undefined||amount==="")return null;
+ const n=Number(amount),c=source?.currency?.selected||"TRY";
+ if(!Number.isFinite(n))return null;
+ if(c==="USD"){const r=Number(source?.currency?.usdRate);return r>0?n/r:null}
+ if(c==="EUR"){const r=Number(source?.currency?.eurRate);return r>0?n/r:null}
+ return n;
+}
+function formatAmountByData(source,amount){
+ const v=convertPriceByData(source,amount);if(v===null)return null;
+ const c=getCurrencyByData(source),d=c.id==="TRY"?0:2;
+ const locale=c.id==="TRY"?"tr-TR":"en-US";
+ const s=v.toLocaleString(locale,{minimumFractionDigits:d,maximumFractionDigits:d});
+ return c.id==="USD"?"$"+s:c.id==="EUR"?"€"+s:s+" ₺";
+}
+
 /* -------------------- PDF PRICE LIST -------------------- */
 function pdfText(lang,tr,en,fallback){return getText(lang,tr,en,fallback||tr)}
 function pdfCurrencyInfo(data){
@@ -1167,25 +1188,6 @@ function editGeneralTurkishField(field,value){
 }
 function toggleCategory(id){setOpenCategories(p=>({...p,[id]:!p[id]}))}
 function openCategory(id){setOpenCategories(p=>({...p,[id]:true}))}
-function getCurrencyByData(source){
- const id=source?.currency?.selected||"TRY";
- return CURRENCIES.find(x=>x.id===id)||CURRENCIES[0];
-}
-function convertPriceByData(source,amount){
- if(amount===null||amount===undefined||amount==="")return null;
- const n=Number(amount),c=source?.currency?.selected||"TRY";
- if(!Number.isFinite(n))return null;
- if(c==="USD"){const r=Number(source?.currency?.usdRate);return r>0?n/r:null}
- if(c==="EUR"){const r=Number(source?.currency?.eurRate);return r>0?n/r:null}
- return n;
-}
-function formatAmountByData(source,amount){
- const v=convertPriceByData(source,amount);if(v===null)return null;
- const c=getCurrencyByData(source),d=c.id==="TRY"?0:2;
- const locale=c.id==="TRY"?"tr-TR":"en-US";
- const s=v.toLocaleString(locale,{minimumFractionDigits:d,maximumFractionDigits:d});
- return c.id==="USD"?"$"+s:c.id==="EUR"?"€"+s:s+" ₺";
-}
 function getCurrency(){return getCurrencyByData(data)}
 function convertPrice(amount){return convertPriceByData(data,amount)}
 function formatAmount(amount){return formatAmountByData(data,amount)}
