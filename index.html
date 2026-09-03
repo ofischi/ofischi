@@ -12,6 +12,7 @@
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box}html,body,#root{margin:0;padding:0;width:100%;min-height:100%}
 body{background:#141416;overflow-x:hidden;-webkit-font-smoothing:antialiased}
@@ -168,6 +169,14 @@ const {useState,useEffect,useRef}=React;
 */
 
 const DB_KEY="ofischi_premium_catalog_v4";
+const SUPABASE_URL="";
+const SUPABASE_PUBLISHABLE_KEY="";
+const SUPABASE_TABLE="ofischi_catalog";
+const SUPABASE_ROW_ID="main";
+const SUPABASE_BUCKET="catalog-assets";
+const SUPABASE_ENABLED=!!(SUPABASE_URL&&SUPABASE_PUBLISHABLE_KEY&&window.supabase?.createClient);
+const supabaseClient=SUPABASE_ENABLED?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}}):null;
+
 const BACKUP_KEY="ofischi_premium_catalog_backup_v4";
 const LANG_KEY="ofischi_premium_lang_v1";
 const CATS=[
@@ -271,14 +280,38 @@ return r;
 /* -------------------- STORAGE -------------------- */
 /*
   KALICI KAYIT SİSTEMİ
-  - localStorage: hızlı ana kayıt
-  - IndexedDB: ikinci kalıcı kayıt / kurtarma
-  - Her kayda savedAt eklenir ve açılışta en güncel kayıt seçilir.
-  - Sayfa yenilenirken pagehide/beforeunload son state'i de localStorage'a yazar.
-
-  Bu sürüm sunucu veritabanı kullanmaz. Aynı tarayıcı + aynı domain/origin
-  üzerinde veriler kalıcıdır. Cihazlar arasında ortak veri için backend gerekir.
+  - Supabase/Postgres: cihazlar arası ana katalog kaydı
+  - localStorage + IndexedDB: offline/geri dönüş katmanı
+  - Supabase kapalı veya bağlantısızsa mevcut yerel sistem çalışmaya devam eder.
+  - Tarayıcıya yalnızca Supabase publishable/anon key konur; service_role/secret key asla konmaz.
 */
+async function loadCloud(){
+  if(!SUPABASE_ENABLED||!supabaseClient)return null;
+  try{
+    const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+    if(error)throw error;
+    if(!data?.data||typeof data.data!=='object'||!Object.keys(data.data).length)return null;
+    return {savedAt:Date.parse(data.updated_at)||0,data:normalizeData(data.data)};
+  }catch(e){console.warn('Supabase okunamadı:',e);return null}
+}
+async function saveCloud(data){
+  if(!SUPABASE_ENABLED||!supabaseClient)return false;
+  const clean=normalizeData(data);
+  const {data:row,error}=await supabaseClient.from(SUPABASE_TABLE).upsert({id:SUPABASE_ROW_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:'id'}).select('id,updated_at').single();
+  if(error)throw error;
+  return !!row;
+}
+async function getCloudSession(){
+  if(!SUPABASE_ENABLED||!supabaseClient)return null;
+  try{const {data}=await supabaseClient.auth.getSession();return data?.session||null}catch(e){return null}
+}
+async function signInSupabase(email,password){
+  if(!SUPABASE_ENABLED||!supabaseClient)throw new Error('Supabase yapılandırılmadı');
+  const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+  if(error)throw error;
+  return data.session;
+}
+async function signOutSupabase(){if(SUPABASE_ENABLED&&supabaseClient)await supabaseClient.auth.signOut()}
 const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
 const IDB_KEY="catalog";
@@ -1217,7 +1250,7 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [search,setSearch]=useState(""),[selectedProduct,setSelectedProduct]=useState(null),[fullScreenImage,setFullScreenImage]=useState(null),[panelOpen,setPanelOpen]=useState(false),
 [unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[pdfBusy,setPdfBusy]=useState(false),[pdfPreviewUrl,setPdfPreviewUrl]=useState(null),
-[importRef,setImportRef]=useState(null);
+[importRef,setImportRef]=useState(null),[supabaseLogin,setSupabaseLogin]=useState(false),[sbEmail,setSbEmail]=useState(""),[sbPassword,setSbPassword]=useState(""),[sbBusy,setSbBusy]=useState(false);
 useEffect(()=>{document.documentElement.lang=language.toLowerCase()},[language]);
 const productTranslationTimers=useRef({});
 const productTranslationSeq=useRef({});
@@ -1234,10 +1267,16 @@ useEffect(()=>{
 let cancelled=false;
 async function init(){
 try{
-let loaded=await loadLocal();
+let localLoaded=await loadLocal();
+let cloudLoaded=await loadCloud();
+let loaded=null;
+if(cloudLoaded&&localLoaded){loaded=(cloudLoaded.savedAt||0)>=(localLoaded.__savedAt||0)?cloudLoaded.data:localLoaded}
+else if(cloudLoaded)loaded=cloudLoaded.data;
+else loaded=localLoaded;
 if(!loaded){
 loaded=defaultData();
 await saveLocal(loaded);
+if(SUPABASE_ENABLED){try{await saveCloud(loaded)}catch(e){console.warn('İlk Supabase kaydı yapılamadı:',e)}}
 }
 await requestPersistentStorage();
 if(cancelled)return;
@@ -1348,6 +1387,7 @@ const next=normalizeData(data);
 next.categories=next.categories.filter(c=>c.id!==id);
 try{
   await saveLocal(next);
+  if(SUPABASE_ENABLED&&await getCloudSession())await saveCloud(next);
   setData(next);
   setOpenCategories(prev=>{const copy={...prev};delete copy[id];return copy});
   setActiveCat(prev=>prev===id?(next.categories[0]?.id||null):prev);
@@ -1410,6 +1450,7 @@ const next=normalizeData(data);
 next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
 try{
   await saveLocal(next);
+  if(SUPABASE_ENABLED&&await getCloudSession())await saveCloud(next);
   setData(next);
   setSelectedProduct(prev=>prev?.id===itemId?null:prev);
   showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
@@ -1446,6 +1487,7 @@ const next=normalizeData(data);
 next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})});
 try{
   await saveLocal(next);
+  if(SUPABASE_ENABLED&&await getCloudSession())await saveCloud(next);
   setData(next);
 }catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
 }
@@ -1454,12 +1496,25 @@ if(!data||saving)return;
 setSaving(true);
 try{
 const clean=await saveLocal(data);
-setData(clean);setSaved(true);showToast(t(language,"saved"));
+let cloudSaved=false;
+if(SUPABASE_ENABLED){
+  const session=await getCloudSession();
+  if(session){try{cloudSaved=await saveCloud(clean)}catch(e){console.error(e);showToast("Yerel kayıt yapıldı ancak Supabase kaydı başarısız: "+(e.message||"hata"));return}}
+  else{showToast("Yerel kayıt yapıldı. Supabase için yönetici hesabıyla giriş yapmalısınız.");return}
+}
+setData(clean);setSaved(true);showToast(cloudSaved?"Supabase'e kaydedildi.":t(language,"saved"));
 setTimeout(()=>{panelSnapshot.current=null;setSaved(false);setPanelOpen(false)},800);
 }catch(e){
 console.error(e);
 showToast("Kaydetme hatası: Tarayıcı depolaması kullanılamıyor.");
 }finally{setSaving(false)}
+}
+async function loginSupabase(){
+  if(!SUPABASE_ENABLED){showToast("Önce SUPABASE_URL ve SUPABASE_PUBLISHABLE_KEY değerlerini kodun üst kısmına girin.");return}
+  setSbBusy(true);
+  try{await signInSupabase(sbEmail.trim(),sbPassword);setSupabaseLogin(false);setSbPassword("");showToast("Supabase yönetici girişi başarılı.")}
+  catch(e){console.error(e);showToast("Supabase giriş başarısız: "+(e.message||"Bilgileri kontrol edin."))}
+  finally{setSbBusy(false)}
 }
 function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
 function closeAdminPanel(discard=true){
@@ -1669,6 +1724,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 {toast&&<div className="fixed bottom-24 right-[18px] z-[150] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2"><Icon type="check" size={15}/>{toast}</div>}
 
 {fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-5 sm:p-8" onClick={()=>setFullScreenImage(null)}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()}><img src={fullScreenImage} alt="Ürün fotoğrafı"/><button onClick={()=>setFullScreenImage(null)} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
+{supabaseLogin&&<div className="fixed inset-0 z-[210] bg-black/80 flex items-center justify-center p-4"><div className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-2xl p-6"><h2 className="font-bold text-white mb-4">Supabase Yönetici Girişi</h2><input type="email" value={sbEmail} onChange={e=>setSbEmail(e.target.value)} placeholder="E-posta" className="admin-input mb-3"/><input type="password" value={sbPassword} onChange={e=>setSbPassword(e.target.value)} placeholder="Şifre" className="admin-input mb-4" onKeyDown={e=>e.key==="Enter"&&loginSupabase()}/><div className="flex gap-2"><button onClick={()=>{setSupabaseLogin(false);setSbPassword("")}} className="flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300">Vazgeç</button><button onClick={loginSupabase} disabled={sbBusy} className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50" style={{background:theme.accent}}>{sbBusy?"Giriş…":"Giriş Yap"}</button></div></div></div>}
 {pinModal&&<div className="fixed inset-0 z-[200] bg-black/75 flex items-center justify-center p-4"><div className="w-full max-w-xs bg-neutral-950 border border-neutral-800 rounded-2xl p-6"><div className="flex items-center gap-2 mb-4 text-white"><Icon type="lock" size={18}/><h2 className="font-bold">{t("TR","admin")}</h2></div><input autoFocus type="password" inputMode="numeric" maxLength="8" value={pinInput} onChange={e=>{setPinInput(e.target.value.replace(/\D/g,""));setPinError(false)}} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="PIN" className="admin-input tracking-[.3em]"/>{pinError&&<div className="text-xs text-red-400 mt-2">{t("TR","wrongPin")}</div>}<div className="text-[11px] text-neutral-500 mt-2 mb-4">Varsayılan PIN: 1234</div><div className="flex gap-2"><button onClick={()=>setPinModal(false)} className="flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300">{t("TR","cancel")}</button><button onClick={tryUnlock} className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white" style={{background:theme.accent}}>{t("TR","login")}</button></div></div></div>}
 
 {panelOpen&&unlocked&&<div className="fixed inset-0 z-[180] flex justify-end"><div className="flex-1 bg-black/40" onClick={()=>closeAdminPanel(true)}/><aside className="w-full sm:w-[500px] h-full bg-neutral-950 text-white overflow-y-auto shadow-2xl admin-panel-scroll">
@@ -1723,6 +1779,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <AdminLabel>Ürün Görsel Yüksekliği — {data.cardImgSize}px</AdminLabel>
 <input type="range" min="100" max="320" value={data.cardImgSize} onChange={e=>setPath(["cardImgSize"],Number(e.target.value))} className="w-full mb-5"/>
 <AdminLabel>Yönetim PIN</AdminLabel><input className="admin-input mb-5" value={data.pin||""} inputMode="numeric" maxLength="8" onChange={e=>setPath(["pin"],e.target.value.replace(/\D/g,""))} style={{letterSpacing:".3em"}}/>
+{SUPABASE_ENABLED&&<div className="mt-4 p-4 rounded-xl border border-neutral-800 bg-neutral-950/60"><div className="text-xs font-bold text-white mb-2">Supabase Yönetici Bağlantısı</div><div className="text-[11px] text-neutral-500 mb-3">Katalog verilerini cihazlar arasında senkronlamak için Supabase Auth hesabıyla giriş yapın.</div><button onClick={()=>setSupabaseLogin(true)} className="w-full py-2.5 rounded-lg text-xs font-bold text-white" style={{background:theme.accent}}>Supabase Girişi</button></div>}
 <button onClick={resetDefault} className="w-full py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs text-red-400">Varsayılan Ayarlara Dön</button>
 
 </div><div className={adminSection==="fiyat"?"":"hidden"}><div className="h-px bg-neutral-800 my-5"/>
