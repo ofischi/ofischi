@@ -1782,14 +1782,8 @@ const eyebrow=getText(language,data.eyebrow,data.eyebrow_en,data.eyebrow);
 const categoryDisplay=c=>getText(language,c.name,c.name_en,c.name);
 const productDisplay=i=>getText(language,i.name,i.name_en,i.name);
 const productDesc=i=>getText(language,i.desc,i.desc_en,i.desc);
-const productDims=i=>{
-const direct=getText(language,i?.dims,i?.dims_en,i?.dims);
-if(String(direct||"").trim())return direct;
-/* Eski kataloglarda ölçü bazen ürün yerine fiyat parçalarında tutuluyor.
-   Kartta da ölçünün görünmesi için bu alanı güvenli şekilde geri kullan. */
-const partDims=normalizePrice(i?.price).parts.map(p=>getText(language,p.dims,p.dims_en,p.dims)).filter(v=>String(v||"").trim());
-return [...new Set(partDims.map(v=>String(v).trim()))].join(" • ");
-};
+const productDims=i=>""; // Ölçüler artık yalnızca ürünün fiyat/parça satırlarında gösterilir.
+const partDimensionDisplay=p=>getText(language,p?.dims,p?.dims_en,p?.dims)||"";
 const partDisplay=p=>{
 if(language!=="EN")return p.name||"";
 if(p.name_en&&String(p.name_en).trim())return p.name_en;
@@ -1850,7 +1844,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 {visibleProducts.length===0&&<div className="col-span-full text-center py-16 opacity-50">{search.trim()?t(language,"notFound"):t(language,"empty")}</div>}
 {visibleProducts.map((item,index)=><article key={item.id} onClick={()=>setSelectedProduct(item)} className="product-card rounded-2xl overflow-hidden cursor-pointer" style={{background:theme.card,boxShadow:"0 5px 18px rgba(0,0,0,.14)",animationDelay:`${Math.min(index,8)*45}ms`}}>
 <div className="product-image" style={{height:data.cardImgSize,backgroundColor:theme.accent+"12",backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center",display:item.image?"block":"flex",alignItems:"center",justifyContent:"center"}}>{!item.image&&<Icon type="image" size={28}/>}</div>
-<div className="p-3 flex flex-col"><div className="font-semibold text-sm leading-tight">{productDisplay(item)}</div>{productDesc(item)&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{productDesc(item)}</div>}{productDims(item)&&<div className="text-[10px] font-semibold mt-2" style={{color:theme.accent}}><span className="uppercase tracking-wide opacity-70">{t(language,"dimensions")}:</span> <span>{productDims(item)}</span></div>}<div className="mt-3 pt-3 border-t" style={{borderColor:theme.text+"12"}}><div className="flex items-center justify-between gap-2"><span className="text-[9px] uppercase tracking-widest font-bold opacity-45">{t(language,"total")}</span><span className="text-[13px] font-bold" style={{color:theme.accent}}>{productMainPrice(item)}</span></div><div className="mt-1 text-[9px] opacity-40 flex items-center gap-1">{t(language,"detailedPrices")}<Icon type="arrow" size={10}/></div></div></div>
+<div className="p-3 flex flex-col"><div className="font-semibold text-sm leading-tight">{productDisplay(item)}</div>{productDesc(item)&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{productDesc(item)}</div>}<div className="mt-3 pt-3 border-t" style={{borderColor:theme.text+"12"}}><div className="flex items-center justify-between gap-2"><span className="text-[9px] uppercase tracking-widest font-bold opacity-45">{t(language,"total")}</span><span className="text-[13px] font-bold" style={{color:theme.accent}}>{productMainPrice(item)}</span></div><div className="mt-1 text-[9px] opacity-40 flex items-center gap-1">{t(language,"detailedPrices")}<Icon type="arrow" size={10}/></div></div></div>
 </article>)}</main>
 
 {selectedProduct&&<div className="fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={()=>setSelectedProduct(null)}>
@@ -1860,9 +1854,8 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>PREMIUM</div>
 <h2 className="text-2xl font-bold">{productDisplay(selectedProduct)}</h2>
 {productDesc(selectedProduct)&&<p className="text-sm opacity-65 mt-2 leading-relaxed">{productDesc(selectedProduct)}</p>}
-{productDims(selectedProduct)&&<div className="mt-3 px-3 py-2 rounded-xl text-xs" style={{background:theme.accent+"12"}}>{t(language,"dimensions")}: <strong>{productDims(selectedProduct)}</strong></div>}
 <div className="mt-5"><div className="text-[10px] uppercase tracking-widest font-bold opacity-50 mb-3">{t(language,"prices")}</div>
-{normalizePrice(selectedProduct.price).parts.length>0?<div className="space-y-2">{normalizePrice(selectedProduct.price).parts.map(part=><div key={part.id} className="price-row rounded-xl p-3 flex items-center justify-between gap-3"><div className="text-sm font-medium">{partDisplay(part)}{language==="EN"&&part.dims_en&&<div className="text-[10px] opacity-50 mt-1">{part.dims_en}</div>}</div><div className="text-sm font-bold whitespace-nowrap" style={{color:theme.accent}}>{priceText(part)}</div></div>)}</div>:<div className="rounded-xl p-4 text-center" style={{background:theme.accent+"12",color:theme.accent}}>{t(language,"contactPrice")}</div>}<div className="mt-3 rounded-xl p-4 flex items-center justify-between" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"28"}}><span className="text-[10px] uppercase tracking-widest font-bold opacity-55">{t(language,"total")}</span><span className="text-base font-bold" style={{color:theme.accent}}>{productMainPrice(selectedProduct)}</span></div></div>
+{normalizePrice(selectedProduct.price).parts.length>0?<div className="space-y-2">{normalizePrice(selectedProduct.price).parts.map(part=><div key={part.id} className="price-row rounded-xl p-3 flex items-center justify-between gap-3"><div className="text-sm font-medium"><div>{partDisplay(part)}</div>{partDimensionDisplay(part)&&<div className="text-[10px] opacity-50 mt-1"><span className="uppercase tracking-wide opacity-60">{t(language,"dimensions")}:</span> {partDimensionDisplay(part)}</div>}</div><div className="text-sm font-bold whitespace-nowrap" style={{color:theme.accent}}>{priceText(part)}</div></div>)}</div>:<div className="rounded-xl p-4 text-center" style={{background:theme.accent+"12",color:theme.accent}}>{t(language,"contactPrice")}</div>}<div className="mt-3 rounded-xl p-4 flex items-center justify-between" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"28"}}><span className="text-[10px] uppercase tracking-widest font-bold opacity-55">{t(language,"total")}</span><span className="text-base font-bold" style={{color:theme.accent}}>{productMainPrice(selectedProduct)}</span></div></div>
 {data.phone&&<a href={"tel:"+data.phone.replace(/\s/g,"")} className="mt-5 w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-sm" style={{background:theme.accent,color:"#fff"}}><Icon type="phone" size={16}/>{t(language,"call")}</a>}
 </div></div></div>}
 
