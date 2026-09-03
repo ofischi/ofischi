@@ -208,7 +208,7 @@ logo:{src:"./ofischi_logo_transparent.png",size:110,width:110,height:110,positio
 theme:{...THEMES[0],bgImage:null},cardImgSize:180,
 currency:{selected:"TRY",usdRate:40,eurRate:47},
 categories:createDefaultCategories(),language:"TR",
-pdf:{title:"2026-2 TL FİYAT LİSTESİ",footer:"www.ofishci.com",showPageNumbers:true,website:"www.ofishci.com",useCategoryCovers:false,coverLogo:null}
+pdf:{title:"2026-2 TL FİYAT LİSTESİ",footer:"www.ofishci.com",showPageNumbers:true,website:"www.ofishci.com",useCategoryCovers:true,coverLogo:null}
 }}
 function normalizePrice(price){
 if(!price)return{contactOnly:true,amount:null,parts:[]};
@@ -1065,6 +1065,23 @@ async function renderPdfCoverPage(data,lang){
  return {content,images,pageNo:null};
 }
 
+async function renderPdfCategoryCoverPage(data,lang,category,pageNo){
+ const L=PDF_LAYOUT,W=L.W,H=L.H;
+ let content=pdfRect(0,0,W,H,[0.02,0.02,0.02]);
+ content+=pdfRect(7,7,W-14,H-14,null,[0.55,0.55,0.55],.55);
+ const src=pdfImageSource(category?.coverImage);
+ const asset=src?await pdfImageAsset(src):null;
+ if(asset){content+=pdfDrawImage("Im1",{...asset,id:1},0,0,W,H,false)}
+ else{content+=pdfRect(18,18,W-36,H-36,[0.08,0.08,0.08]);}
+ content+=pdfRect(0,0,W,115,[0,0,0]);
+ content+=pdfRect(0,H-78,W,78,[0,0,0]);
+ const title=pdfText(lang,category?.name,category?.name_en,category?.name||"");
+ content+=pdfTextOp(title,W/2,61,25,{align:"center",bold:true,maxWidth:W-70,maxLines:2,color:[1,1,1]});
+ content+=pdfTextOp(pdfText(lang,"VIP MAKAM TAKIMLARI","VIP EXECUTIVE SETS","VIP MAKAM TAKIMLARI"),W/2,H-49,10,{align:"center",bold:true,maxWidth:W-80,maxLines:1,color:[0.88,0.88,0.88]});
+ content+=pdfTextOp(String(pageNo),W-30,30,8,{align:"right",color:[0.8,0.8,0.8]});
+ return {content,images:[]};
+}
+
 async function renderPdfCatalogPage(data,lang,blocks,pageNo,preparedImages){
  const L=PDF_LAYOUT,W=L.W,H=L.H;
  let content=pdfPageChrome(data,pageNo),images=new Map(),yTop=L.top,imageId=1;
@@ -1117,15 +1134,11 @@ async function buildPriceListPDF(rawData,lang){
    const items=Array.isArray(category.items)?category.items:[];
    if(!items.length)continue;
    const useCover=!!(data.pdf?.useCategoryCovers&&category.coverImage);
-   const coverH=46;
-   /* Category header belongs naturally before the first product, but never causes a giant blank area. */
-   let headerNeed=L.categoryH+GAP;
-   if(useCover)headerNeed+=coverH+GAP;
-   if(current.length&&(!fits(headerNeed+pdfCardHeight(items[0]))||productCount>=MAX_PRODUCTS))await flush();
    if(useCover){
-     if(!fits(coverH+GAP))await flush();
-     current.push({type:"categoryCover",category});used+=coverH+GAP;
+     pages.push(await renderPdfCategoryCoverPage(data,pdfLang,category,pages.length+1));
    }
+   let headerNeed=L.categoryH+GAP;
+   if(current.length&&(!fits(headerNeed+pdfCardHeight(items[0]))||productCount>=MAX_PRODUCTS))await flush();
    if(!fits(L.categoryH+GAP)&&current.length)await flush();
    current.push({type:"category",category});used+=L.categoryH+GAP;currentCategoryId=category.id;
    for(const item of items){
@@ -1421,7 +1434,19 @@ function closeAdminPanel(discard=true){
   setSaved(false);setPanelOpen(false);
 }
 function uploadLogoLocal(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{updateData(x=>{x.logo={...x.logo,src:reader.result}});showToast("Logo yüklendi. Kaydet'e basın.")};reader.onerror=()=>showToast("Logo yüklenemedi.");reader.readAsDataURL(file);e.target.value=""}
-function uploadPdfCoverLogo(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{updateData(x=>{x.pdf={...x.pdf,coverLogo:{src:reader.result}}});showToast("PDF kapak logosu yüklendi. Kaydet'e basın.")};reader.onerror=()=>showToast("PDF kapak logosu yüklenemedi.");reader.readAsDataURL(file);e.target.value=""}
+async function uploadPdfCoverLogo(e){const file=e.target.files?.[0];if(!file)return;try{const src=await pdfLogoToTransparentDataURL(file);updateData(x=>{x.pdf={...x.pdf,coverLogo:{src}}});showToast("PDF kapak logosu yüklendi. Kaydet'e basın.")}catch(err){showToast("PDF kapak logosu yüklenemedi.")}finally{e.target.value=""}}
+async function pdfLogoToTransparentDataURL(file){
+  if(!file||!file.type.startsWith("image/"))throw new Error("Geçersiz logo");
+  if(file.type.includes("svg")){return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=()=>reject(r.error);r.readAsDataURL(file)})}
+  const raw=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.readAsDataURL(file)});
+  const img=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>reject(new Error("Logo açılamadı"));im.src=raw});
+  const max=1800,scale=Math.min(1,max/Math.max(img.naturalWidth||img.width,img.naturalHeight||img.height));
+  const c=document.createElement("canvas");c.width=Math.max(1,Math.round((img.naturalWidth||img.width)*scale));c.height=Math.max(1,Math.round((img.naturalHeight||img.height)*scale));
+  const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0,c.width,c.height);
+  const d=ctx.getImageData(0,0,c.width,c.height),px=d.data;
+  for(let i=0;i<px.length;i+=4){const r=px[i],g=px[i+1],b=px[i+2],a=px[i+3];const min=Math.min(r,g,b),maxc=Math.max(r,g,b);if(a>0&&min>238&&maxc-min<18)px[i+3]=0;else if(a>0&&min>220&&maxc-min<22)px[i+3]=Math.round(a*((255-min)/35));}
+  ctx.putImageData(d,0,0);return c.toDataURL("image/png");
+}
 function removePdfCoverLogo(){if(!confirm("PDF kapak logosu kaldırılsın mı?"))return;setPath(["pdf","coverLogo"],null)}
 async function fileToOptimizedDataURL(file,maxSize=1800,quality=.82){
   if(!file||!file.type.startsWith("image/"))throw new Error("Geçersiz görsel");
@@ -1754,7 +1779,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div>
 <label className="block mb-4"><AdminLabel>PDF Alt Bilgisi</AdminLabel><input className="admin-input" value={data.pdf?.footer||""} onChange={e=>setPath(["pdf","footer"],e.target.value)}/></label>
 <label className="flex items-center gap-2 text-xs text-neutral-300 mb-5"><input type="checkbox" checked={data.pdf?.showPageNumbers!==false} onChange={e=>setPath(["pdf","showPageNumbers"],e.target.checked)}/> Sayfa numarası göster</label>
-<label className="flex items-center gap-2 text-xs text-neutral-300 mb-5"><input type="checkbox" checked={!!data.pdf?.useCategoryCovers} onChange={e=>setPath(["pdf","useCategoryCovers"],e.target.checked)}/> Kategori kapak görsellerini PDF içinde kompakt banner olarak kullan</label>
+<label className="flex items-center gap-2 text-xs text-neutral-300 mb-5"><input type="checkbox" checked={!!data.pdf?.useCategoryCovers} onChange={e=>setPath(["pdf","useCategoryCovers"],e.target.checked)}/> Kategori kapak görsellerini PDF'de tam sayfa kullan</label>
 <div className="border-t border-neutral-800 pt-4 mb-5">
 <div className="text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-2">PDF Kapak Logosu</div>
 <div className="text-[10px] text-neutral-500 mb-3">Bu logo sadece PDF'nin ilk kapağında kullanılır. Web sitesindeki logo ve ürün görsellerinden bağımsızdır.</div>
