@@ -208,7 +208,7 @@ logo:{src:"./ofischi_logo_transparent.png",size:110,width:110,height:110,positio
 theme:{...THEMES[0],bgImage:null},cardImgSize:180,
 currency:{selected:"TRY",usdRate:40,eurRate:47},
 categories:createDefaultCategories(),language:"TR",
-pdf:{title:"Ofischi Premium Fiyat Listesi",footer:"www.ofischi.com",showPageNumbers:true,website:"www.ofischi.com"}
+pdf:{title:"2026-2 TL FİYAT LİSTESİ",footer:"www.ofishci.com",showPageNumbers:true,website:"www.ofishci.com",useCategoryCovers:false}
 }}
 function normalizePrice(price){
 if(!price)return{contactOnly:true,amount:null,parts:[]};
@@ -707,78 +707,152 @@ function pdfMoney(data,amount){
 function pdfTotal(data,item){
  const p=normalizePrice(item.price);
  if(p.parts.length){const n=p.parts.filter(x=>!x.contactOnly&&x.amount!==null&&x.amount!==undefined&&x.amount!=="").reduce((a,x)=>a+Number(x.amount),0);return n>0?pdfMoney(data,n):"—";}
- return pdfMoney(data,p.amount);
+ return p.contactOnly?pdfText(data?.language||"TR","İletişime geçin","Contact us","Contact us"):pdfMoney(data,p.amount);
 }
-function pdfImageFormat(src){return /^data:image\/png/i.test(src)?"PNG":"JPEG"}
-function pdfDrawImageContain(doc,src,x,y,w,h){
- if(!src)return;
- try{
-  const props=doc.getImageProperties(src); const r=Math.min(w/props.width,h/props.height); const iw=props.width*r,ih=props.height*r;
-  doc.addImage(src,pdfImageFormat(src),x+(w-iw)/2,y+(h-ih)/2,iw,ih,undefined,"FAST");
- }catch(e){console.warn("PDF görseli eklenemedi",e)}
+function pdfCleanDims(value){
+ return String(value||"—").replace(/\b(kg|m³|m3)\b/gi,"").replace(/\s{2,}/g," ").trim()||"—";
 }
-function pdfDrawHeader(doc,data,lang,pageTitle){
- const W=doc.internal.pageSize.getWidth();
- doc.setFillColor(18,18,18);doc.rect(0,0,W,18,"F");
- if(data.logo?.src)pdfDrawImageContain(doc,data.logo.src,12,2,26,13);
- doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(9);doc.text(pageTitle||pdfText(lang,data.siteName,data.siteName_en,"Ofischi"),W-12,11,{align:"right"});
+function pdfDimsParts(value){
+ const s=pdfCleanDims(value);
+ const nums=s.match(/[-+]?\d+(?:[.,]\d+)?/g)||[];
+ return [nums[0]||"—",nums[1]||"—",nums[2]||"—"];
 }
-function pdfDrawFooter(doc,data,lang,pageNo){
- const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
- doc.setDrawColor(190,190,190);doc.line(12,H-14,W-12,H-14);doc.setTextColor(90,90,90);doc.setFont("helvetica","normal");doc.setFontSize(7);
- const foot=data.pdf?.footer||data.pdf?.website||"www.ofischi.com";doc.text(foot,12,H-8);
- if(data.pdf?.showPageNumbers!==false)doc.text(String(pageNo),W-12,H-8,{align:"right"});
+async function pdfLoadImage(src){
+ if(!src||!/^data:image\/(png|jpe?g|webp|svg\+xml)/i.test(src))return null;
+ return await new Promise(resolve=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>resolve(null);im.src=src});
 }
-function pdfAddCategoryCover(doc,data,category,lang,pageNo){
- const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
- doc.setFillColor(248,248,246);doc.rect(0,0,W,H,"F");
- if(category.coverImage){
-  try{const props=doc.getImageProperties(category.coverImage);const r=Math.max(W/props.width,H/props.height);const iw=props.width*r,ih=props.height*r;doc.addImage(category.coverImage,pdfImageFormat(category.coverImage),(W-iw)/2,(H-ih)/2,iw,ih,undefined,"FAST");doc.setFillColor(0,0,0);doc.setGState(new doc.GState({opacity:.36}));doc.rect(0,0,W,H,"F");doc.setGState(new doc.GState({opacity:1}));}catch(e){}
- }
- if(data.logo?.src)pdfDrawImageContain(doc,data.logo.src,14,14,42,20);
- doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(24);doc.text(pdfText(lang,category.name,category.name_en,category.name),14,H-38);
- doc.setFontSize(8);doc.setFont("helvetica","normal");doc.text(pdfText(lang,data.eyebrow,data.eyebrow_en,"Ofischi Premium"),14,H-28);
- pdfDrawFooter(doc,data,lang,pageNo);
+function pdfFitImage(ctx,img,x,y,w,h,contain=true){
+ if(!img)return;
+ const iw=img.naturalWidth||img.width,ih=img.naturalHeight||img.height;if(!iw||!ih)return;
+ const r=contain?Math.min(w/iw,h/ih):Math.max(w/iw,h/ih);const dw=iw*r,dh=ih*r;
+ ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
 }
-function pdfAddProductPage(doc,data,category,item,lang,pageNo){
- const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
- doc.addPage();doc.setFillColor(255,255,255);doc.rect(0,0,W,H,"F");pdfDrawHeader(doc,data,lang,pdfText(lang,category.name,category.name_en,category.name));
- const margin=12,top=26;
- doc.setTextColor(22,22,22);doc.setFont("helvetica","bold");doc.setFontSize(18);doc.text(pdfText(lang,item.name,item.name_en,item.name),margin,top);
- if(item.desc){doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(100,100,100);const lines=doc.splitTextToSize(pdfText(lang,item.desc,item.desc_en,item.desc),W-2*margin);doc.text(lines.slice(0,3),margin,top+6)}
- const imageX=margin,imageY=top+14,imageW=W*0.43,imageH=H-54;
- doc.setFillColor(247,247,245);doc.roundedRect(imageX,imageY,imageW,imageH,3,3,"F");
- if(item.image)pdfDrawImageContain(doc,item.image,imageX+4,imageY+4,imageW-8,imageH-8);
- const tableX=W*0.49,tableY=top+14,tableW=W-tableX-margin;
- const cols=[0,.36,.72,1];
- doc.setFillColor(20,20,20);doc.rect(tableX,tableY,tableW,10,"F");doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(7);
- doc.text(pdfText(lang,"MODÜL","MODULE","MODULE"),tableX+3,tableY+6.7);
- doc.text(pdfText(lang,"ÖLÇÜLER","DIMENSIONS","DIMENSIONS"),tableX+tableW*.36+3,tableY+6.7);
- doc.text(pdfText(lang,"BİRİM FİYATI","UNIT PRICE","UNIT PRICE"),tableX+tableW*.72+3,tableY+6.7);
- const p=normalizePrice(item.price);const rows=p.parts.length?p.parts:[{name:item.name,name_en:item.name_en,dims:item.dims,amount:p.amount,contactOnly:p.contactOnly}];
- let y=tableY+10;doc.setFontSize(6.8);
- rows.forEach((part,idx)=>{
-  const h=13;doc.setFillColor(idx%2?248:255,idx%2?248:255,idx%2?248:255);doc.rect(tableX,y,tableW,h,"F");doc.setDrawColor(205,205,205);doc.rect(tableX,y,tableW,h,"S");doc.line(tableX+tableW*.36,y,tableX+tableW*.36,y+h);doc.line(tableX+tableW*.72,y,tableX+tableW*.72,y+h);
-  doc.setTextColor(35,35,35);doc.setFont("helvetica","bold");doc.text(pdfText(lang,part.name,part.name_en,part.name)||"—",tableX+3,y+8.2,{maxWidth:tableW*.33});
-  doc.setFont("helvetica","normal");doc.text(String(part.dims||"—").replace(/\b(kg|m³|m3)\b/gi,""),tableX+tableW*.36+3,y+8.2,{maxWidth:tableW*.34});
-  doc.text(part.contactOnly?pdfText(lang,"İletişime geçin","Contact us","Contact us"):pdfMoney(data,part.amount),tableX+tableW*.72+3,y+8.2,{maxWidth:tableW*.27});y+=h;
+function pdfCanvasText(ctx,text,x,y,maxWidth,font,fill="#151515",align="left",maxLines=3){
+ ctx.font=font;ctx.fillStyle=fill;ctx.textAlign=align;ctx.textBaseline="alphabetic";
+ const value=String(text??"");
+ if(!maxWidth){ctx.fillText(value,x,y);return 1;}
+ const words=value.split(/\s+/);let line="",lines=[];
+ for(const word of words){const test=line?line+" "+word:word;if(ctx.measureText(test).width<=maxWidth)line=test;else{if(line)lines.push(line);line=word;}}
+ if(line)lines.push(line);
+ const size=Number((font.match(/(\d+(?:\.\d+)?)px/)||[])[1])||12;const lh=size*1.18;
+ lines.slice(0,maxLines).forEach((ln,i)=>ctx.fillText(ln,x,y+i*lh));
+ return Math.min(lines.length,maxLines);
+}
+function pdfPageMetrics(){return{width:1588,height:2246,S:2}}
+function pdfDrawPageChrome(ctx,data,lang,pageNo,width,height,S){
+ const bar=px(28,S);
+ ctx.fillStyle="#0d0d0d";ctx.fillRect(0,0,bar,height);
+ ctx.save();ctx.translate(bar/2,height/2);ctx.rotate(-Math.PI/2);
+ pdfCanvasText(ctx,data.pdf?.website||data.pdf?.footer||"www.ofishci.com",0,0,null,"700 12px Arial","#fff","center");ctx.restore();
+ if(pageNo!==null&&pageNo!==undefined){pdfCanvasText(ctx,String(pageNo),bar/2,height-px(16,S),null,"700 11px Arial","#fff","center")}
+}
+function px(v,S){return v*S}
+function pdfRowsForItem(item){
+ const p=normalizePrice(item.price);
+ return p.parts.length?p.parts:[{name:item.name,name_en:item.name_en,dims:item.dims,amount:p.amount,contactOnly:p.contactOnly}];
+}
+function pdfCardHeight(item){
+ const rows=pdfRowsForItem(item).length;
+ return 142 + Math.max(0,rows-3)*13 + (rows>7?Math.min(40,(rows-7)*8):0);
+}
+function pdfHeaderHeight(){return 22}
+function pdfCategoryTitle(ctx,category,lang,x,y,w,S){
+ ctx.fillStyle="#0d0d0d";ctx.fillRect(x,y,w,px(22,S));
+ pdfCanvasText(ctx,pdfText(lang,category.name,category.name_en,category.name),x+w/2,y+px(15.5,S),w-px(20,S),"800 13px Arial","#fff","center",1);
+ return px(22,S);
+}
+async function pdfDrawProductCard(ctx,data,category,item,lang,x,y,w,h,S){
+ const rows=pdfRowsForItem(item), title=pdfText(lang,item.name,item.name_en,item.name);
+ const imageW=Math.min(px(275,S),w*.36), tableX=x+imageW, tableW=w-imageW;
+ ctx.fillStyle="#fff";ctx.fillRect(x,y,w,h);ctx.strokeStyle="#1f1f1f";ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);
+ // Product name strip
+ ctx.fillStyle="#fff";ctx.fillRect(x,y,w,px(20,S));ctx.strokeStyle="#333";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+px(20,S));ctx.lineTo(x+w,y+px(20,S));ctx.stroke();
+ pdfCanvasText(ctx,title,x+imageW/2,y+px(14,S),imageW-px(10,S),"800 12px Arial","#151515","center",1);
+ // Product image
+ const img=await pdfLoadImage(item.image);
+ const iy=y+px(20,S), ih=h-px(20,S);
+ ctx.fillStyle="#f6f6f4";ctx.fillRect(x,iy,imageW,ih);
+ ctx.strokeStyle="#444";ctx.lineWidth=2;ctx.strokeRect(x,iy,imageW,ih);
+ if(img)pdfFitImage(ctx,img,x+px(5,S),iy+px(4,S),imageW-px(10,S),ih-px(8,S),true);
+ else pdfCanvasText(ctx,lang==="EN"?"NO PRODUCT IMAGE":"ÜRÜN GÖRSELİ YOK",x+imageW/2,iy+ih/2,imageW-px(12,S),"700 10px Arial","#999","center",2);
+ // Table: module | dimensions (G/W,D/D,Y/H) | unit price | set price
+ const header1=px(14,S), header2=px(14,S), bodyH=Math.max(px(16,S),(h-px(20,S)-header1-header2)/Math.max(rows.length,1));
+ const moduleW=tableW*.25, dimsW=tableW*.39, unitW=tableW*.18, setW=tableW-moduleW-dimsW-unitW;
+ const c1=tableX+moduleW,c2=c1+dimsW,c3=c2+unitW;
+ ctx.fillStyle="#111";ctx.fillRect(tableX,y,tableW,header1+header2);
+ pdfCanvasText(ctx,lang==="EN"?"MODULE":"MODÜL",tableX+moduleW/2,y+px(10,S),moduleW-px(8,S),"800 8px Arial","#fff","center",1);
+ pdfCanvasText(ctx,lang==="EN"?"DIMENSIONS":"ÖLÇÜLER",c1+dimsW/2,y+px(9,S),dimsW-px(6,S),"800 7px Arial","#fff","center",1);
+ const dimY=y+header1+px(10,S);ctx.fillStyle="#111";ctx.fillRect(c1,y+header1,dimsW,header2);
+ pdfCanvasText(ctx,"G/W",c1+dimsW/6,dimY,dimsW/3,"700 7px Arial","#fff","center",1);
+ pdfCanvasText(ctx,"D/D",c1+dimsW/2,dimY,dimsW/3,"700 7px Arial","#fff","center",1);
+ pdfCanvasText(ctx,"Y/H",c1+dimsW*5/6,dimY,dimsW/3,"700 7px Arial","#fff","center",1);
+ pdfCanvasText(ctx,lang==="EN"?"UNIT PRICE":"BİRİM FİYATI",c2+unitW/2,y+px(17,S),unitW-px(4,S),"800 7px Arial","#fff","center",1);
+ pdfCanvasText(ctx,lang==="EN"?"SET PRICE":"TAKIM FİYATI",c3+setW/2,y+px(17,S),setW-px(4,S),"800 7px Arial","#fff","center",1);
+ // Grid borders
+ ctx.strokeStyle="#555";ctx.lineWidth=1.5;
+ [c1,c2,c3].forEach(xx=>{ctx.beginPath();ctx.moveTo(xx,y);ctx.lineTo(xx,y+h);ctx.stroke()});
+ ctx.beginPath();ctx.moveTo(tableX,y+header1);ctx.lineTo(c2,y+header1);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(c1,y+header1+header2);ctx.lineTo(c3,y+header1+header2);ctx.stroke();
+ // Body cells (set price column remains vertically merged)
+ rows.forEach((part,i)=>{
+  const yy=y+header1+header2+i*bodyH;
+  ctx.fillStyle=i%2?"#fafafa":"#fff";ctx.fillRect(tableX,yy,tableW,bodyH);
+  ctx.strokeStyle="#c4c4c4";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(tableX,yy+bodyH);ctx.lineTo(c3,yy+bodyH);ctx.stroke();
+  const mod=pdfText(lang,part.name,part.name_en,part.name)||"—";
+  pdfCanvasText(ctx,mod,tableX+px(4,S),yy+bodyH*.64,moduleW-px(8,S),"700 7.5px Arial","#222","left",1);
+  const [dw,dd,dh]=pdfDimsParts(part.dims);
+  pdfCanvasText(ctx,dw,c1+dimsW/6,yy+bodyH*.64,dimsW/3-px(2,S),"7.5px Arial","#222","center",1);
+  pdfCanvasText(ctx,dd,c1+dimsW/2,yy+bodyH*.64,dimsW/3-px(2,S),"7.5px Arial","#222","center",1);
+  pdfCanvasText(ctx,dh,c1+dimsW*5/6,yy+bodyH*.64,dimsW/3-px(2,S),"7.5px Arial","#222","center",1);
+  const price=part.contactOnly?(lang==="EN"?"Contact us":"İletişime geçin"):pdfMoney(data,part.amount);
+  pdfCanvasText(ctx,price,c2+unitW/2,yy+bodyH*.64,unitW-px(6,S),"700 7.2px Arial","#222","center",1);
  });
- const totalY=y+8;doc.setFillColor(20,20,20);doc.rect(tableX,totalY,tableW,16,"F");doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text(pdfText(lang,"TAKIM FİYATI","SET PRICE","SET PRICE"),tableX+4,totalY+10);doc.text(pdfTotal(data,item),tableX+tableW-4,totalY+10,{align:"right"});
- pdfDrawFooter(doc,data,lang,pageNo);
+ // Set price merged cell
+ ctx.fillStyle="#fff";ctx.fillRect(c3,y+header1+header2,setW,h-header1-header2);
+ ctx.strokeStyle="#555";ctx.lineWidth=1.5;ctx.strokeRect(c3,y+header1+header2,setW,h-header1-header2);
+ pdfCanvasText(ctx,pdfTotal(data,item),c3+setW/2,y+(h+header1+header2)/2+px(5,S),setW-px(8,S),"800 10px Arial","#151515","center",2);
 }
-function pdfDataUriToBytes(dataUri){
- const b64=String(dataUri||"").split(",")[1]||"";
- const bin=atob(b64);const bytes=new Uint8Array(bin.length);
- for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
- return bytes;
+async function renderPdfCoverPage(data,lang){
+ const {width,height,S}=pdfPageMetrics();const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;const ctx=canvas.getContext("2d");
+ ctx.fillStyle="#050505";ctx.fillRect(0,0,width,height);
+ // Fine frame like the reference cover
+ ctx.strokeStyle="#8d8d8d";ctx.lineWidth=2;ctx.strokeRect(px(9,S),px(9,S),width-px(18,S),height-px(18,S));
+ ctx.strokeStyle="#333";ctx.lineWidth=2;ctx.strokeRect(px(13,S),px(13,S),width-px(26,S),height-px(26,S));
+ const logo=await pdfLoadImage(data.logo?.src);
+ if(logo)pdfFitImage(ctx,logo,px(70,S),px(385,S),px(655,S),px(190,S),true);
+ else pdfCanvasText(ctx,pdfText(lang,data.siteName,data.siteName_en,"Ofischi Premium"),width/2,px(510,S),px(600,S),"700 54px Arial","#fff","center",1);
+ const title=data.pdf?.title||"2026-2 TL FİYAT LİSTESİ";
+ pdfCanvasText(ctx,title,width-px(48,S),height-px(54,S),px(620,S),"italic 700 19px Georgia","#fff","right",2);
+ return {data:canvas.toDataURL("image/jpeg",.94),width,height};
 }
-function pdfConcatBytes(chunks){
- let total=0;chunks.forEach(c=>total+=c.length);const out=new Uint8Array(total);let o=0;
- chunks.forEach(c=>{out.set(c,o);o+=c.length});return out;
+async function renderPdfCatalogPage(data,lang,blocks,pageNo){
+ const {width,height,S}=pdfPageMetrics();
+ const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;const ctx=canvas.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,width,height);
+ pdfDrawPageChrome(ctx,data,lang,pageNo,width,height,S);
+ const left=px(36,S),right=px(10,S),contentW=width-left-right,top=px(12,S),bottom=px(34,S),gap=px(4,S);let y=top;
+ for(const block of blocks){
+  if(block.type==="category"){
+   const h=px(22,S);if(y+h>height-bottom)break;
+   y+=pdfCategoryTitle(ctx,block.category,lang,left,y,contentW,S)+gap;
+  }else if(block.type==="categoryCover"){
+   const h=px(68,S);if(y+h>height-bottom)break;
+   const x=left,w=contentW;ctx.fillStyle="#f0f0ed";ctx.fillRect(x,y,w,h);ctx.strokeStyle="#222";ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);
+   const img=await pdfLoadImage(block.category.coverImage);
+   const iw=Math.min(px(150,S),w*.25);if(img)pdfFitImage(ctx,img,x+2,y+2,iw-4,h-4,true);
+   ctx.fillStyle="#111";ctx.fillRect(x+iw,y,w-iw,h);
+   pdfCanvasText(ctx,pdfText(lang,block.category.name,block.category.name_en,block.category.name),x+iw+(w-iw)/2,y+h/2+px(5,S),w-iw-px(16,S),"800 14px Arial","#fff","center",1);
+   y+=h+gap;
+  }else{
+   const h=px(pdfCardHeight(block.item),S);if(y+h>height-bottom)break;
+   await pdfDrawProductCard(ctx,data,block.category,block.item,lang,left,y,contentW,h,S);y+=h+gap;
+  }
+ }
+ // Reference-style footer; website is also present on the vertical black rail.
+ pdfCanvasText(ctx,data.pdf?.footer||data.pdf?.website||"www.ofishci.com",left,height-px(14,S),px(500,S),"9px Arial","#555","left",1);
+ return {data:canvas.toDataURL("image/jpeg",.94),width,height};
 }
 function createImagePDF(jpegPages){
- const enc=new TextEncoder();const objs=[];const addObj=b=>{objs.push(b);return objs.length};
- const pageRefs=[];
+ const enc=new TextEncoder();const objs=[];const addObj=b=>{objs.push(b);return objs.length};const pageRefs=[];
  for(const page of jpegPages){
   const img=pdfDataUriToBytes(page.data);
   const imageObj=addObj(pdfConcatBytes([enc.encode(`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.length} >>\nstream\n`),img,enc.encode(`\nendstream`)]));
@@ -789,100 +863,47 @@ function createImagePDF(jpegPages){
  }
  const pagesObj=addObj(enc.encode(`<< /Type /Pages /Kids [${pageRefs.map(n=>n+' 0 R').join(' ')}] /Count ${pageRefs.length} >>`));
  const catalogObj=addObj(enc.encode(`<< /Type /Catalog /Pages ${pagesObj} 0 R >>`));
- // Patch the page parent references now that the Pages object number is known.
- const pageObjNumbers=pageRefs.slice();
- for(let i=0;i<pageObjNumbers.length;i++){
-  const old=objs[pageObjNumbers[i]-1];
-  objs[pageObjNumbers[i]-1]=enc.encode(new TextDecoder().decode(old).replace('PAGESREF',`${pagesObj} 0 R`));
- }
- const header=enc.encode('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');
- const parts=[header];const offsets=[0];let pos=header.length;
+ for(const n of pageRefs){const old=objs[n-1];objs[n-1]=enc.encode(new TextDecoder().decode(old).replace("PAGESREF",`${pagesObj} 0 R`))}
+ const header=enc.encode('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');const parts=[header];const offsets=[0];let pos=header.length;
  for(let i=0;i<objs.length;i++){const head=enc.encode(`${i+1} 0 obj\n`),tail=enc.encode('\nendobj\n');offsets[i+1]=pos;parts.push(head,objs[i],tail);pos+=head.length+objs[i].length+tail.length;}
  const xrefPos=pos;let xref=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`;
  for(let i=1;i<=objs.length;i++)xref+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
- xref+=`trailer\n<< /Size ${objs.length+1} /Root ${catalogObj} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
- parts.push(enc.encode(xref));
- return new Blob([pdfConcatBytes(parts)],{type:'application/pdf'});
+ xref+=`trailer\n<< /Size ${objs.length+1} /Root ${catalogObj} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;parts.push(enc.encode(xref));
+ return new Blob([pdfConcatBytes(parts)],{type:"application/pdf"});
 }
-async function pdfLoadImage(src){
- if(!src||!/^data:image\/(png|jpe?g|webp)/i.test(src))return null;
- return await new Promise(resolve=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>resolve(null);im.src=src});
-}
-function pdfFitImage(ctx,img,x,y,w,h,contain=true){
- if(!img)return;
- const iw=img.naturalWidth||img.width,ih=img.naturalHeight||img.height;if(!iw||!ih)return;
- const r=contain?Math.min(w/iw,h/ih):Math.max(w/iw,h/ih);const dw=iw*r,dh=ih*r;
- ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
-}
-function pdfCanvasText(ctx,text,x,y,maxWidth,font,fill='#151515',align='left'){
- ctx.font=font;ctx.fillStyle=fill;ctx.textAlign=align;ctx.textBaseline='alphabetic';
- const value=String(text??'');
- if(!maxWidth){ctx.fillText(value,x,y);return;}
- const words=value.split(/\s+/);let line='',lines=[];
- for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width<=maxWidth)line=test;else{if(line)lines.push(line);line=word;}}
- if(line)lines.push(line);
- const lh=Math.max(14,parseInt(font.match(/(\d+)px/)?.[1]||12,10)*1.25);
- lines.slice(0,5).forEach((ln,i)=>ctx.fillText(ln,x,y+i*lh));
- return lines.length;
-}
-async function renderPdfPageCanvas(kind,opts){
- const width=1588,height=2246; // 794x1123 @ 2x for crisp A4 raster pages
- const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
- const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);
- const S=2; const px=v=>v*S;
- const data=opts.data,lang=opts.lang;
- if(kind==='cover'){
-  const bg=opts.category.coverImage?await pdfLoadImage(opts.category.coverImage):null;
-  if(bg){pdfFitImage(ctx,bg,0,0,width,height,false);ctx.fillStyle='rgba(0,0,0,.46)';ctx.fillRect(0,0,width,height)}
-  else{const g=ctx.createLinearGradient(0,0,width,height);g.addColorStop(0,'#f4f4f1');g.addColorStop(1,'#deded9');ctx.fillStyle=g;ctx.fillRect(0,0,width,height);}
-  const logo=await pdfLoadImage(data.logo?.src);
-  if(logo)pdfFitImage(ctx,logo,px(45),px(35),px(170),px(75),true);
-  pdfCanvasText(ctx,pdfText(lang,opts.category.name,opts.category.name_en,opts.category.name),px(45),height-px(105),px(700),'800 42px Arial','#fff');
-  pdfCanvasText(ctx,pdfText(lang,data.eyebrow,data.eyebrow_en,'Ofischi Premium'),px(45),height-px(78),px(690),'700 15px Arial','#eee');
-  ctx.strokeStyle='rgba(255,255,255,.45)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px(45),height-px(42));ctx.lineTo(width-px(45),height-px(42));ctx.stroke();
-  pdfCanvasText(ctx,data.pdf?.footer||data.pdf?.website||'www.ofischi.com',px(45),height-px(18),px(600),'12px Arial','#fff');
-  if(data.pdf?.showPageNumbers!==false)pdfCanvasText(ctx,String(opts.pageNo),width-px(45),height-px(18),null,'12px Arial','#fff','right');
- }else{
-  const item=opts.item,category=opts.category,p=normalizePrice(item.price);
-  const rows=p.parts.length?p.parts:[{name:item.name,name_en:item.name_en,dims:item.dims,amount:p.amount,contactOnly:p.contactOnly}];
-  ctx.fillStyle='#111';ctx.fillRect(0,0,width,px(58));
-  const logo=await pdfLoadImage(data.logo?.src);if(logo)pdfFitImage(ctx,logo,px(45),px(4),px(120),px(50),true);
-  pdfCanvasText(ctx,pdfText(lang,category.name,category.name_en,category.name),width-px(45),px(36),px(500),'700 14px Arial','#fff','right');
-  const title=pdfText(lang,item.name,item.name_en,item.name);pdfCanvasText(ctx,title,px(45),px(128),px(700),'800 30px Arial','#151515');
-  if(item.desc)pdfCanvasText(ctx,pdfText(lang,item.desc,item.desc_en,item.desc),px(45),px(157),px(700),'12px Arial','#777');
-  const img=await pdfLoadImage(item.image);
-  const ix=px(45),iy=px(190),iw=px(315),ih=px(650);
-  ctx.fillStyle='#f5f5f3';ctx.fillRect(ix,iy,iw,ih);ctx.strokeStyle='#ddd';ctx.lineWidth=2;ctx.strokeRect(ix,iy,iw,ih);
-  if(img)pdfFitImage(ctx,img,ix+px(16),iy+px(16),iw-px(32),ih-px(32),true);else pdfCanvasText(ctx,lang==='EN'?'NO PRODUCT IMAGE':'ÜRÜN GÖRSELİ YOK',ix+iw/2,iy+ih/2,null,'700 14px Arial','#aaa','center');
-  const tx=px(390),ty=px(190),tw=px(359),rowH=px(55);
-  const cols=[0,.36,.70,1];
-  ctx.fillStyle='#111';ctx.fillRect(tx,ty,tw,px(48));
-  pdfCanvasText(ctx,lang==='EN'?'MODULE':'MODÜL',tx+px(10),ty+px(30),px(110),'700 12px Arial','#fff');
-  pdfCanvasText(ctx,lang==='EN'?'DIMENSIONS':'ÖLÇÜLER',tx+tw*.36+px(10),ty+px(30),px(105),'700 12px Arial','#fff');
-  pdfCanvasText(ctx,lang==='EN'?'UNIT PRICE':'BİRİM FİYATI',tx+tw*.70+px(10),ty+px(30),tw*.30-px(18),'700 12px Arial','#fff','right');
-  rows.forEach((part,i)=>{
-   const y=ty+px(48)+i*rowH;ctx.fillStyle=i%2?'#fafafa':'#fff';ctx.fillRect(tx,y,tw,rowH);ctx.strokeStyle='#d2d2d2';ctx.lineWidth=2;ctx.strokeRect(tx,y,tw,rowH);
-   ctx.beginPath();ctx.moveTo(tx+tw*.36,y);ctx.lineTo(tx+tw*.36,y+rowH);ctx.moveTo(tx+tw*.70,y);ctx.lineTo(tx+tw*.70,y+rowH);ctx.stroke();
-   pdfCanvasText(ctx,pdfText(lang,part.name,part.name_en,part.name)||'—',tx+px(10),y+px(33),tw*.34-px(18),'700 12px Arial','#232323');
-   const cleanDims=String(part.dims||'—').replace(/\b(kg|m³|m3)\b/gi,'').trim();pdfCanvasText(ctx,cleanDims,tx+tw*.36+px(10),y+px(33),tw*.34-px(18),'12px Arial','#444');
-   const price=part.contactOnly?(lang==='EN'?'Contact us':'İletişime geçin'):pdfMoney(data,part.amount);pdfCanvasText(ctx,price,tx+tw-px(10),y+px(33),tw*.28,'700 12px Arial','#232323','right');
-  });
-  const totalY=ty+px(48)+rows.length*rowH+px(18);ctx.fillStyle='#111';ctx.fillRect(tx,totalY,tw,px(62));
-  pdfCanvasText(ctx,lang==='EN'?'SET PRICE':'TAKIM FİYATI',tx+px(14),totalY+px(38),px(150),'800 14px Arial','#fff');pdfCanvasText(ctx,pdfTotal(data,item),tx+tw-px(14),totalY+px(38),px(190),'800 14px Arial','#fff','right');
-  const fy=height-px(42);ctx.strokeStyle='#bbb';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px(45),fy);ctx.lineTo(width-px(45),fy);ctx.stroke();
-  pdfCanvasText(ctx,data.pdf?.footer||data.pdf?.website||'www.ofischi.com',px(45),height-px(18),px(600),'11px Arial','#666');if(data.pdf?.showPageNumbers!==false)pdfCanvasText(ctx,String(opts.pageNo),width-px(45),height-px(18),null,'11px Arial','#666','right');
- }
- return {data:canvas.toDataURL('image/jpeg',.94),width,height};
-}
+function pdfDataUriToBytes(dataUri){const b64=String(dataUri||"").split(",")[1]||"";const bin=atob(b64);const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);return bytes}
+function pdfConcatBytes(chunks){let total=0;chunks.forEach(c=>total+=c.length);const out=new Uint8Array(total);let o=0;chunks.forEach(c=>{out.set(c,o);o+=c.length});return out}
 async function buildPriceListPDF(data,lang){
- const pages=[];let pageNo=1;
+ const pages=[];
+ // Page 1 follows the supplied 2026-2 reference: dedicated black cover.
+ pages.push(await renderPdfCoverPage(data,lang));
+ let pageNo=2;
+ let current=[];let used=12;let productCount=0;
+ const PAGE_H=1123,BOTTOM=34,GAP=4,MAX_PRODUCTS=6;
+ const heightOf=b=>b.type==="category"?22:b.type==="categoryCover"?68:pdfCardHeight(b.item);
+ const flush=async()=>{if(!current.length)return;pages.push(await renderPdfCatalogPage(data,lang,current,pageNo++));current=[];used=12;productCount=0};
+ const pushBlock=async(block)=>{current.push(block);used+=heightOf(block)+GAP;if(block.type==="product")productCount++};
  for(const category of (data.categories||[])){
-  pages.push(await renderPdfPageCanvas('cover',{data,lang,category,pageNo}));pageNo++;
-  for(const item of (category.items||[])){
-   pages.push(await renderPdfPageCanvas('product',{data,lang,category,item,pageNo}));pageNo++;
+  const items=category.items||[];
+  // Optional category cover is a compact banner, never a forced full page.
+  const coverBlock=data.pdf?.useCategoryCovers&&category.coverImage?{type:"categoryCover",category}:null;
+  const catH=22+(coverBlock?68+GAP:0);
+  const firstItemH=items.length?pdfCardHeight(items[0]):0;
+  // Category title stays with at least its first product when possible.
+  if(current.length && (productCount>=MAX_PRODUCTS || used+catH+firstItemH>PAGE_H-BOTTOM))await flush();
+  if(coverBlock)await pushBlock(coverBlock);
+  if(current.length && used+22+firstItemH>PAGE_H-BOTTOM)await flush();
+  await pushBlock({type:"category",category});
+  for(const item of items){
+   const h=pdfCardHeight(item);
+   if(current.length && (productCount>=MAX_PRODUCTS || used+h>PAGE_H-BOTTOM))await flush();
+   await pushBlock({type:"product",category,item});
   }
  }
- if(!pages.length)pages.push(await renderPdfPageCanvas('product',{data,lang,category:{name:'',name_en:''},item:{name:'Henüz ürün yok',name_en:'No products yet',desc:'',desc_en:'',image:null,dims:'',price:{contactOnly:true,amount:null,parts:[]}},pageNo:1}));
+ await flush();
+ if(pages.length===1){
+  pages.push(await renderPdfCatalogPage(data,lang,[{type:"category",category:{name:"",name_en:""}},{type:"product",category:{name:"",name_en:""},item:{name:"Henüz ürün yok",name_en:"No products yet",desc:"",desc_en:"",image:null,dims:"",price:{contactOnly:true,amount:null,parts:[]}}}],2));
+ }
  return createImagePDF(pages);
 }
 
@@ -1478,9 +1499,10 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div>
 <label className="block mb-4"><AdminLabel>PDF Alt Bilgisi</AdminLabel><input className="admin-input" value={data.pdf?.footer||""} onChange={e=>setPath(["pdf","footer"],e.target.value)}/></label>
 <label className="flex items-center gap-2 text-xs text-neutral-300 mb-5"><input type="checkbox" checked={data.pdf?.showPageNumbers!==false} onChange={e=>setPath(["pdf","showPageNumbers"],e.target.checked)}/> Sayfa numarası göster</label>
+<label className="flex items-center gap-2 text-xs text-neutral-300 mb-5"><input type="checkbox" checked={!!data.pdf?.useCategoryCovers} onChange={e=>setPath(["pdf","useCategoryCovers"],e.target.checked)}/> Kategori kapak görsellerini PDF içinde kompakt banner olarak kullan</label>
 <div className="border-t border-neutral-800 pt-4">
 <div className="text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-3">Kategori Kapakları</div>
-<div className="text-[10px] text-neutral-500 mb-3">Kapaklar ürün fotoğraflarından ayrı tutulur ve PDF'de kategori başlangıç sayfası olarak kullanılır.</div>
+<div className="text-[10px] text-neutral-500 mb-3">Kapak görselleri ayrı tutulur. İstersen PDF içinde tam sayfa açmadan kompakt kategori bannerı olarak kullanılabilir.</div>
 {categories.map(category=><div key={category.id} className="rounded-xl bg-neutral-950 border border-neutral-800 p-3 mb-3">
 <div className="flex items-center justify-between gap-3 mb-3"><div className="font-semibold text-sm">{category.name}</div><div className="text-[10px] text-neutral-500">{category.items?.length||0} ürün</div></div>
 <div className="h-28 rounded-lg bg-neutral-900 overflow-hidden flex items-center justify-center mb-3">{category.coverImage?<img src={category.coverImage} alt="Kapak" className="w-full h-full object-cover"/>:<span className="text-[10px] text-neutral-600">Kapak görseli yok</span>}</div>
