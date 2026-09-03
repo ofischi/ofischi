@@ -416,6 +416,14 @@ if(result&&result.trim())return preserveTechnicalTokens(source,result.trim());
 /* deterministic professional catalog fallback */
 const exact={
 "VIP Makam Takımları":"VIP Executive Office Sets",
+"ETAJERLİ MASA":"DESK WITH RETURN",
+"ETAJERLİ MASA":"DESK WITH RETURN",
+"DOLAP":"CABINET",
+"SEHPA":"COFFEE TABLE",
+"ÜNİTE":"UNIT",
+"MASA":"DESK",
+"ETAJER":"RETURN",
+"ÇALIŞMA MASASI":"OFFICE DESK",
 "Makam Takımları":"Executive Office Sets",
 "Personel Takımları":"Staff Office Sets",
 "Toplantı Masaları":"Meeting Tables",
@@ -538,6 +546,7 @@ const[data,setData]=useState(null),[loading,setLoading]=useState(true),[saving,s
 [unlocked,setUnlocked]=useState(false),[pinModal,setPinModal]=useState(false),[pinInput,setPinInput]=useState(""),
 [pinError,setPinError]=useState(false),[busy,setBusy]=useState(false),[translationBusy,setTranslationBusy]=useState(false),
 [importRef,setImportRef]=useState(null);
+const translationDrafts=useRef({});
 const toastTimerRef=useRef(null);
 
 useEffect(()=>{
@@ -661,11 +670,16 @@ openCategory(categoryId);
 function updateItem(categoryId,itemId,field,value){
 updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>i.id===itemId?{...i,[field]:value}:i)})});
 }
-async function editTurkishField(categoryId,item,field,value){
-const old=item[field]||"";
+function editTurkishField(categoryId,item,field,value){
+const key=categoryId+"::"+item.id+"::"+field;
+if(!(key in translationDrafts.current)) translationDrafts.current[key]=item[field]||"";
 updateItem(categoryId,item.id,field,value);
-if(old!==value&&item[field+"_en"]){
-setTimeout(async()=>{
+}
+async function finishTurkishField(categoryId,item,field,value){
+const key=categoryId+"::"+item.id+"::"+field;
+const old=translationDrafts.current[key] ?? item[field] ?? "";
+delete translationDrafts.current[key];
+if(old===value || !item[field+"_en"] || !value.trim()) return;
 if(confirm(t(language,"updateTranslation"))){
 setTranslationBusy(true);
 try{
@@ -673,8 +687,6 @@ const en=await translateCached(value,field);
 updateItem(categoryId,item.id,field+"_en",en);
 }catch(e){showToast(t(language,"translateError"))}
 finally{setTranslationBusy(false)}
-}
-},50);
 }
 }
 async function translateOne(categoryId,itemId){
@@ -755,6 +767,43 @@ showToast("Kaydetme hatası: Tarayıcı depolaması kullanılamıyor.");
 }
 function openAdmin(){if(unlocked){setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
 function uploadLogoLocal(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{updateData(x=>{x.logo={...x.logo,src:reader.result}});showToast("Logo yüklendi. Kaydet'e basın.")};reader.onerror=()=>showToast("Logo yüklenemedi.");reader.readAsDataURL(file);e.target.value=""}
+async function fileToOptimizedDataURL(file,maxSize=1800,quality=.82){
+  if(!file||!file.type.startsWith("image/"))throw new Error("Geçersiz görsel");
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(reader.error||new Error("Dosya okunamadı"));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error("Görsel açılamadı"));
+      img.onload=()=>{
+        const scale=Math.min(1,maxSize/Math.max(img.naturalWidth,img.naturalHeight));
+        const w=Math.max(1,Math.round(img.naturalWidth*scale));
+        const h=Math.max(1,Math.round(img.naturalHeight*scale));
+        const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext("2d");ctx.drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL("image/jpeg",quality));
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function uploadProductImage(categoryId,itemId,e){
+  const file=e.target.files?.[0];if(!file)return;
+  try{
+    if(!file.type.startsWith("image/"))throw new Error("Lütfen JPG, PNG, WEBP veya başka bir görsel dosyası seçin.");
+    const src=await fileToOptimizedDataURL(file,1800,.82);
+    updateItem(categoryId,itemId,"image",src);
+    showToast("Ürün fotoğrafı yüklendi. Kaydet'e basın.");
+  }catch(err){console.error(err);showToast("Fotoğraf yüklenemedi: "+(err.message||"Dosya hatası"));}
+  finally{e.target.value=""}
+}
+function removeProductImage(categoryId,itemId){
+  if(!confirm("Ürün fotoğrafı kaldırılsın mı?"))return;
+  updateItem(categoryId,itemId,"image",null);
+  showToast("Fotoğraf kaldırıldı. Kaydet'e basın.");
+}
+
 function removeLogo(){if(!confirm("Logo kaldırılsın mı?"))return;setPath(["logo","src"],null)}
 function tryUnlock(){
 if(pinInput===String(data?.pin||"1234")){setUnlocked(true);setPinModal(false);setPanelOpen(true);setPinInput("")}
@@ -793,7 +842,23 @@ const categoryDisplay=c=>getText(language,c.name,c.name_en,c.name);
 const productDisplay=i=>getText(language,i.name,i.name_en,i.name);
 const productDesc=i=>getText(language,i.desc,i.desc_en,i.desc);
 const productDims=i=>getText(language,i.dims,i.dims_en,i.dims);
-const partDisplay=p=>getText(language,p.name,p.name_en,p.name);
+const partDisplay=p=>{
+if(language!=="EN")return p.name||"";
+if(p.name_en&&String(p.name_en).trim())return p.name_en;
+/* Price components must never remain Turkish in EN mode. Use the same
+   deterministic catalog translator as the admin translation tools. */
+const exactPart={
+"ETAJERLİ MASA":"DESK WITH RETURN",
+"ETAJERLİ MASA":"DESK WITH RETURN",
+"DOLAP":"CABINET",
+"SEHPA":"COFFEE TABLE",
+"ÜNİTE":"UNIT",
+"MASA":"DESK",
+"ETAJER":"RETURN"
+};
+const key=String(p.name||"").trim().toLocaleUpperCase("tr-TR");
+return exactPart[key]||p.name||"";
+};
 
 return <div style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:theme.bgImage?`linear-gradient(${theme.bg}cc,${theme.bg}f5),url(${theme.bgImage})`:undefined,backgroundSize:"cover",backgroundPosition:"center",color:theme.text,fontFamily:"Inter,system-ui,sans-serif"}}>
 
@@ -957,9 +1022,14 @@ return <div style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:t
 {category.items.map((item,itemIndex)=><div key={item.id} className="bg-neutral-800 rounded-xl p-3 mb-2">
 <div className="flex gap-2 mb-2">
 <div className="w-16 h-16 rounded-lg bg-neutral-700 flex-shrink-0 overflow-hidden flex items-center justify-center" style={{backgroundImage:item.image?`url(${item.image})`:undefined,backgroundSize:"cover",backgroundPosition:"center"}}>{!item.image&&<Icon type="image" size={18}/>}</div>
+<div className="flex flex-col gap-1 flex-shrink-0">
+<button type="button" onClick={()=>document.getElementById("product-image-"+category.id+"-"+item.id)?.click()} className="px-2.5 py-1.5 rounded-lg bg-neutral-700 border border-neutral-600 text-[10px] font-bold flex items-center gap-1"><Icon type="upload" size={12}/>Fotoğraf</button>
+{item.image&&<button type="button" onClick={()=>removeProductImage(category.id,item.id)} className="px-2.5 py-1.5 rounded-lg bg-red-950 text-red-400 text-[10px] font-bold">Sil</button>}
+<input id={"product-image-"+category.id+"-"+item.id} type="file" accept="image/*" className="hidden" onChange={e=>uploadProductImage(category.id,item.id,e)}/>
+</div>
 <div className="flex-1 grid gap-2">
 <div className="grid grid-cols-2 gap-2">
-<input value={item.name} onChange={e=>editTurkishField(category.id,item,"name",e.target.value)} placeholder="Ürün adı" className="admin-input" style={{padding:"8px 9px",fontSize:"12px"}}/>
+<input value={item.name} onChange={e=>editTurkishField(category.id,item,"name",e.target.value)} onBlur={e=>finishTurkishField(category.id,item,"name",e.target.value)} placeholder="Ürün adı" className="admin-input" style={{padding:"8px 9px",fontSize:"12px"}}/>
 <input value={item.name_en||""} onChange={e=>updateItem(category.id,item.id,"name_en",e.target.value)} placeholder="English product name" className="admin-input" style={{padding:"8px 9px",fontSize:"12px"}}/>
 </div>
 <div className="grid grid-cols-2 gap-2">
@@ -969,7 +1039,7 @@ return <div style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:t
 </div></div>
 
 <div className="grid grid-cols-2 gap-2 mb-2">
-<textarea value={item.desc} onChange={e=>editTurkishField(category.id,item,"desc",e.target.value)} placeholder={t(language,"description")} className="admin-input"/>
+<textarea value={item.desc} onChange={e=>editTurkishField(category.id,item,"desc",e.target.value)} onBlur={e=>finishTurkishField(category.id,item,"desc",e.target.value)} placeholder={t(language,"description")} className="admin-input"/>
 <textarea value={item.desc_en||""} onChange={e=>updateItem(category.id,item.id,"desc_en",e.target.value)} placeholder="English description" className="admin-input"/>
 </div>
 
