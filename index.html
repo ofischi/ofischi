@@ -1947,7 +1947,7 @@ return exactPart[key]||translateFallbackSync(source)||source||"";
 
 return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:theme.bgImage?`linear-gradient(${theme.bg}cc,${theme.bg}f5),url(${theme.bgImage})`:undefined,backgroundSize:"cover",backgroundPosition:"center",color:theme.text,fontFamily:"Inter,system-ui,sans-serif"}}>
 
-<div className="fixed top-7 left-4 right-4 z-40">
+<div className="fixed top-12 left-4 right-4 z-40">
 <div className="max-w-5xl mx-auto flex justify-end items-center gap-2">
 
 <button onClick={()=>switchLanguage(language==="TR"?"EN":"TR")} className="h-10 px-3.5 rounded-full flex items-center justify-center gap-1.5 font-bold text-xs border" style={{background:theme.card,color:theme.text,borderColor:theme.text+"20"}}>
@@ -1966,7 +1966,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <button onClick={()=>setSearch(search?"":" ")} className="w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.25)",backdropFilter:"blur(15px)",color:theme.text}}><Icon type="search" size={18}/></button>
 </div></div>
 
-{search!==""&&<div className="fixed top-[68px] left-4 right-4 z-40"><div className="max-w-5xl mx-auto relative"><input autoFocus value={search.trim()} onChange={e=>setSearch(e.target.value)} placeholder={t(language,"search")} className="search-input" style={{color:theme.text}}/></div></div>}
+{search!==""&&<div className="fixed top-[104px] left-4 right-4 z-40"><div className="max-w-5xl mx-auto relative"><input autoFocus value={search.trim()} onChange={e=>setSearch(e.target.value)} placeholder={t(language,"search")} className="search-input" style={{color:theme.text}}/></div></div>}
 
 <header className="px-6 pt-28 pb-8 max-w-5xl mx-auto">
 <div style={{width:"100%",display:"flex",justifyContent:data.logo.position==="left"?"flex-start":data.logo.position==="right"?"flex-end":"center",marginBottom:18}}>
