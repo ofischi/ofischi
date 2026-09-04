@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.tailwindcss.com"></script>
 <script defer crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script defer crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script defer crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -559,9 +559,44 @@ newPart:"New Part",contactOnly:"Contact us for price",total:"Total",
 };
 
 function t(lang,key){return UI[lang==="EN"?"en":"tr"][key]||UI.tr[key]||key}
+function translateFallbackSync(text){
+if(!text||!String(text).trim())return "";
+const source=String(text).trim();
+const exact={
+"VIP Makam Takımları":"VIP Executive Office Sets","ETAJERLİ MASA":"DESK WITH RETURN","DOLAP":"CABINET","SEHPA":"COFFEE TABLE","ÜNİTE":"UNIT","MASA":"DESK","ETAJER":"RETURN","ÇALIŞMA MASASI":"OFFICE DESK",
+"Makam Takımları":"Executive Office Sets","Personel Takımları":"Staff Office Sets","Toplantı Masaları":"Meeting Tables","Workstation":"Workstations","Loby Koltukları":"Lobby Seating","Ofis Koltukları":"Office Chairs","Fileli Koltukları":"Mesh Office Chairs","Aksesuarlar":"Accessories",
+"Ofis Mobilyaları":"Office Furniture","Ofis Mobilyası":"Office Furniture","Yönetici Masası":"Executive Desk","Yönetici Çalışma Masası":"Executive Office Desk","Toplantı Masası":"Meeting Table","Ofis Koltuğu":"Office Chair","Misafir Koltuğu":"Guest Chair","Lobi Koltuğu":"Lobby Seating","Fileli Koltuk":"Mesh Office Chair","Çalışma Masası":"Office Desk","Personel Masası":"Staff Desk","Makam Masası":"Executive Desk","Dolap":"Cabinet","Sehpa":"Coffee Table","Ünite":"Unit","İNEGÖL ÜRETİM":"İNEGÖL PRODUCTION","Yeni Ürün":"New Product","Yeni Kategori":"New Category","Yeni Parça":"New Part","Fiyat için iletişime geçin":"Contact us for price"
+};
+if(exact[source])return exact[source];
+let s=source;
+const phrases=[
+["yönetici çalışma masası","executive office desk"],["yönetici masası","executive desk"],["makam masası","executive desk"],["personel masası","staff desk"],["çalışma masası","office desk"],["toplantı masası","meeting table"],["toplantı masaları","meeting tables"],["ofis koltuğu","office chair"],["ofis koltukları","office chairs"],["fileli koltuğu","mesh office chair"],["fileli koltuk","mesh office chair"],["fileli koltuklar","mesh office chairs"],["misafir koltuğu","guest chair"],["lobi koltuğu","lobby seating"],["loby koltukları","lobby seating"],["vip makam takımları","VIP executive office sets"],["makam takımları","executive office sets"],["personel takımları","staff office sets"],["ofis mobilyaları","office furniture"],["özel tasarım","special design"],["çekmeceli","with drawers"],["çekmece","drawer"],["kapaklı","with doors"],["kapak","door/panel"],["ölçüler","dimensions"],["ahşap","wood"],["ceviz","walnut"],["antrasit","anthracite"],["siyah","black"],["beyaz","white"],["krem","cream"],["kahverengi","brown"],["deri","leather"],["kumaş","fabric"],["metal","metal"],["cam","glass"],["modern","modern"],["klasik","classic"],["premium","premium"],["özel","special"],["tasarım","design"],["yeni ürün","new product"],["yeni kategori","new category"],["yeni parça","new part"],["fiyat için iletişime geçin","contact us for price"],["iletişime geçin","contact us"],["üretim","production"],["ofis","office"],["masalar","desks"],["masa","desk"],["dolaplar","cabinets"],["dolap","cabinet"],["sehpalar","coffee tables"],["sehpa","coffee table"],["üniteler","units"],["ünite","unit"],["etajerli masa","desk with return"],["etajerlı masa","desk with return"],["etajer","return"],["adet","pieces"],["ve","and"],["ile","with"]
+];
+phrases.forEach(([a,b])=>{s=s.replace(new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi"),b)});
+s=s.replace(/\b(\d+)\s*çekmeceli\b/gi,"$1-drawer");
+s=s.replace(/\b(\d+)\s*adet\b/gi,"$1 pieces");
+return s;
+}
 function getText(lang,tr,en,fallback){
-if(lang==="EN")return(en&&String(en).trim())?en:(fallback||tr||"");
-return tr||"";
+if(lang!=="EN")return tr||"";
+const source=String(fallback||tr||"").trim();
+const translated=String(en||"").trim();
+// Never allow generic placeholders to mask a real product/category/part name.
+const placeholderPairs={
+  "Yeni Ürün":"New Product",
+  "Yeni Parça":"New Part",
+  "Yeni Kategori":"New Category",
+  "New Product":"New Product",
+  "New Part":"New Part",
+  "New Category":"New Category"
+};
+const genericEnglishPlaceholders=new Set(["new product","new part","new category"]);
+const isGenericPlaceholder=genericEnglishPlaceholders.has(translated.toLocaleLowerCase("en-US")) &&
+  !genericEnglishPlaceholders.has(source.toLocaleLowerCase("en-US"));
+if(translated&&translated!==source&&!isGenericPlaceholder)return translated;
+// If the Turkish source itself is only the system placeholder, its normal EN label is correct.
+if(source&&placeholderPairs[source]&&translated===placeholderPairs[source])return translated;
+return translateFallbackSync(source);
 }
 function preserveTechnicalTokens(source,target){
 if(!source||!target)return target;
@@ -742,16 +777,24 @@ return s===source ? source : preserveTechnicalTokens(source,s);
 function cacheKey(text,type="general"){return "ofischi_tr_en_v3_"+btoa(unescape(encodeURIComponent(type+"::"+text))).slice(0,180)}
 async function translateCached(text,type,setStatus){
 if(!text||!text.trim())return "";
-const key=cacheKey(text,type);
+const source=String(text).trim();
+const key=cacheKey(source,type);
+const genericPlaceholders=new Set(["new product","new part","new category"]);
+const isBadPlaceholder=(value)=>{
+  const v=String(value||"").trim().toLocaleLowerCase("en-US");
+  const tr=source.toLocaleLowerCase("tr-TR");
+  return genericPlaceholders.has(v) && !genericPlaceholders.has(tr) && !["yeni ürün","yeni parça","yeni kategori"].includes(tr);
+};
 try{
 const cached=localStorage.getItem(key);
-if(cached)return cached;
+if(cached&&cached.trim()!==source&& !isBadPlaceholder(cached))return cached.trim();
 }catch(e){}
-const result=await aiTranslateText(text,type);
-if(result&&result!==text){
-try{localStorage.setItem(key,result)}catch(e){}
+const result=await aiTranslateText(source,type);
+const finalResult=(result&&result.trim()!==source&&!isBadPlaceholder(result))?result.trim():translateFallbackSync(source);
+if(finalResult&&finalResult.trim()!==source&&!isBadPlaceholder(finalResult)){
+try{localStorage.setItem(key,finalResult)}catch(e){}
 }
-return result;
+return finalResult||source;
 }
 async function translateProduct(item,setStatus){
 const copy={...item};
@@ -1350,7 +1393,7 @@ useEffect(()=>{
    if(g.length>1)next[i.id]=((prev[i.id]||0)+1)%g.length;
   }));
   return next;
- }),4200);
+ }),6500);
  return()=>clearInterval(timer);
 },[data?.categories]);
 
@@ -1395,7 +1438,7 @@ useEffect(()=>{
       await applyCloudPayload(cloud.data, new Date(cloud.savedAt).toISOString());
     }
   };
-  const pollTimer=setInterval(poll,5000);
+  const pollTimer=setInterval(poll,15000);
   return()=>{active=false;clearInterval(pollTimer);supabaseClient.removeChannel(channel)};
 },[]);
 const productTranslationTimers=useRef({});
@@ -1409,12 +1452,62 @@ const pricePartTranslationTimers=useRef({});
 const pricePartTranslationSeq=useRef({});
 const panelSnapshot=useRef(null);
 
+/* PUBLIC ENGLISH TRANSLATION HYDRATION
+   The admin panel remains Turkish. When EN is active, all customer-facing
+   catalog text is translated automatically and stored in *_en fields.
+   Turkish source fields are never changed. */
+const publicTranslationRun=useRef(0);
+useEffect(()=>{
+  if(language!=="EN"||!data||panelOpenRef.current)return;
+  const run=++publicTranslationRun.current;
+  let cancelled=false;
+  const work=async()=>{
+    const source=JSON.parse(JSON.stringify(data));
+    let changed=false;
+    const defaults={"Yeni Ürün":"New Product","Yeni Parça":"New Part","Yeni Kategori":"New Category"};
+    const translateField=async(obj,trKey,enKey,type)=>{
+      const tr=String(obj?.[trKey]??"").trim();
+      if(!tr)return;
+      const existing=String(obj?.[enKey]??"").trim();
+      const genericExisting=/^(new product|new part|new category)$/i.test(existing);
+      const legitimateDefault=defaults[tr]===existing;
+      if(existing&&existing!==tr&&!genericExisting)return;
+      if(legitimateDefault&&/^yeni (ürün|parça|kategori)$/i.test(tr))return;
+      const en=await translateCached(tr,type);
+      if(cancelled||run!==publicTranslationRun.current)return;
+      const final=String(en||translateFallbackSync(tr)||tr).trim();
+      if(final&&final!==existing){obj[enKey]=final;changed=true;}
+    };
+    await Promise.all([
+      translateField(source,"siteName","siteName_en","site_name"),
+      translateField(source,"subtitle","subtitle_en","subtitle"),
+      translateField(source,"eyebrow","eyebrow_en","eyebrow")
+    ]);
+    const categoryJobs=[];
+    for(const category of (source.categories||[])){
+      categoryJobs.push((async()=>{
+        await translateField(category,"name","name_en","category");
+        await Promise.all((category.items||[]).map(async item=>{
+          await Promise.all([
+            translateField(item,"name","name_en","product_name"),
+            translateField(item,"desc","desc_en","product_description"),
+            ...(normalizePrice(item.price).parts||[]).map(part=>translateField(part,"name","name_en","price_part"))
+          ]);
+        }));
+      })());
+    }
+    await Promise.all(categoryJobs);
+    if(!cancelled&&run===publicTranslationRun.current&&changed)setData(source);
+  };
+  work().catch(e=>console.warn("Public EN translation failed:",e));
+  return()=>{cancelled=true};
+},[language,data?.categories,data?.siteName,data?.subtitle,data?.eyebrow,panelOpen]);
+
 useEffect(()=>{
 let cancelled=false;
 async function init(){
 try{
-let localLoaded=await loadLocal();
-let cloudLoaded=await loadCloud();
+const [localLoaded,cloudLoaded]=await Promise.all([loadLocal(),loadCloud()]);
 let loaded=null;
 if(cloudLoaded&&localLoaded){loaded=(cloudLoaded.savedAt||0)>=(localLoaded.savedAt||0)?cloudLoaded.data:localLoaded.data}
 else if(cloudLoaded)loaded=cloudLoaded.data;
@@ -1439,7 +1532,10 @@ return()=>{cancelled=true}
 /* Sayfa kapanırken/yenilenirken son state'i de yedekle. */
 useEffect(()=>{
   if(!data)return;
+  let persisted=false;
   const persist=()=>{
+    if(persisted)return;
+    persisted=true;
     try{
       const clean=normalizeData(data);
       const json=JSON.stringify(clean);
@@ -1447,8 +1543,8 @@ useEffect(()=>{
       localStorage.setItem(BACKUP_KEY,json);
     }catch(e){}
   };
-  window.addEventListener("pagehide",persist);
-  window.addEventListener("beforeunload",persist);
+  window.addEventListener("pagehide",persist,{once:true});
+  window.addEventListener("beforeunload",persist,{once:true});
   return()=>{
     window.removeEventListener("pagehide",persist);
     window.removeEventListener("beforeunload",persist);
@@ -1581,6 +1677,10 @@ productTranslationSeq.current[key]=(productTranslationSeq.current[key]||0)+1;
 const seq=productTranslationSeq.current[key];
 updateItem(categoryId,item.id,field,value);
 if(!value.trim()){updateItem(categoryId,item.id,field+"_en","");return;}
+/* Put an immediate deterministic EN value on new/edited Turkish text.
+   The async translator then replaces it with a better translation when available. */
+const instantEn=translateFallbackSync(value);
+if(instantEn&&instantEn!==value)updateItem(categoryId,item.id,field+"_en",instantEn);
 productTranslationTimers.current[key]=setTimeout(async()=>{
 try{
 const en=await translateCached(value,field);
@@ -1618,7 +1718,7 @@ function updatePricePart(categoryId,itemId,partId,field,value){
   if(pricePartTranslationTimers.current[key])clearTimeout(pricePartTranslationTimers.current[key]);
   pricePartTranslationSeq.current[key]=(pricePartTranslationSeq.current[key]||0)+1;
   const seq=pricePartTranslationSeq.current[key];
-  updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId?{...part,name:value,...(!value.trim()?{name_en:""}:{})}:part)}}})})});
+  updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.map(part=>part.id===partId?{...part,name:value,...(!value.trim()?{name_en:""}:{name_en:translateFallbackSync(value)})}:part)}}})})});
   if(!value.trim())return;
   pricePartTranslationTimers.current[key]=setTimeout(async()=>{
     try{
@@ -1806,8 +1906,8 @@ await saveLocal(imported);setData(imported);setActiveCat(imported.categories?.[0
 }catch(err){console.error(err);showToast("JSON dosyası okunamadı.")}
 finally{e.target.value=""}
 }
-if(loading)return <div style={{minHeight:"100vh",background:"#141416",color:"#aaa",display:"flex",alignItems:"center",justifyContent:"center"}}>Veriler yükleniyor...</div>;
-if(!data)return <div style={{minHeight:"100vh",background:"#141416",color:"#f87171",display:"flex",alignItems:"center",justifyContent:"center"}}>Site verileri yüklenemedi.</div>;
+if(loading)return <div style={{minHeight:"100vh",background:"#141416",color:"#aaa",display:"flex",alignItems:"center",justifyContent:"center"}}>{language==="EN"?"Loading data…":"Veriler yükleniyor…"}</div>;
+if(!data)return <div style={{minHeight:"100vh",background:"#141416",color:"#f87171",display:"flex",alignItems:"center",justifyContent:"center"}}>{language==="EN"?"Site data could not be loaded.":"Site verileri yüklenemedi."}</div>;
 
 const categories=data.categories||[];
 const activeCategory=categories.find(c=>c.id===activeCat)||categories[0]||null;
@@ -1827,7 +1927,10 @@ const productDims=i=>""; // Ölçüler artık yalnızca ürünün fiyat/parça s
 const partDimensionDisplay=p=>getText(language,p?.dims,p?.dims_en,p?.dims)||"";
 const partDisplay=p=>{
 if(language!=="EN")return p.name||"";
-if(p.name_en&&String(p.name_en).trim())return p.name_en;
+const source=String(p?.name||"").trim();
+const stored=String(p?.name_en||"").trim();
+// A default English placeholder must not mask a newly entered Turkish part name.
+if(stored&&stored!==source&&!(source!=="Yeni Parça"&&stored==="New Part"))return stored;
 /* Price components must never remain Turkish in EN mode. Use the same
    deterministic catalog translator as the admin translation tools. */
 const exactPart={
@@ -1838,13 +1941,13 @@ const exactPart={
 "MASA":"DESK",
 "ETAJER":"RETURN"
 };
-const key=String(p.name||"").trim().toLocaleUpperCase("tr-TR");
-return exactPart[key]||p.name||"";
+const key=source.toLocaleUpperCase("tr-TR");
+return exactPart[key]||translateFallbackSync(source)||source||"";
 };
 
 return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:theme.bg,backgroundImage:theme.bgImage?`linear-gradient(${theme.bg}cc,${theme.bg}f5),url(${theme.bgImage})`:undefined,backgroundSize:"cover",backgroundPosition:"center",color:theme.text,fontFamily:"Inter,system-ui,sans-serif"}}>
 
-<div className="fixed top-4 left-4 right-4 z-40">
+<div className="fixed top-7 left-4 right-4 z-40">
 <div className="max-w-5xl mx-auto flex justify-end items-center gap-2">
 
 <button onClick={()=>switchLanguage(language==="TR"?"EN":"TR")} className="h-10 px-3.5 rounded-full flex items-center justify-center gap-1.5 font-bold text-xs border" style={{background:theme.card,color:theme.text,borderColor:theme.text+"20"}}>
@@ -1891,7 +1994,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 {selectedProduct&&<div className="fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={()=>setSelectedProduct(null)}>
 <div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl" style={{background:theme.card,color:theme.text,animation:"pop .22s ease"}} onClick={e=>e.stopPropagation()}>
 <div className="relative"><div className="detail-gallery" onPointerDown={e=>{e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{const sx=Number(e.currentTarget.dataset.sx||0),sy=Number(e.currentTarget.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy,g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);if(g.length>1&&Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy))setDetailGalleryIndex(v=>(v+(dx<0?1:-1)+g.length)%g.length)}} style={{backgroundColor:theme.accent+"12",touchAction:"pan-y"}}>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);const idx=(detailGalleryIndex||0)%Math.max(g.length,1);return g.length?<img key={`detail-${selectedProduct.id}-${idx}`} src={g[idx]} alt={productDisplay(selectedProduct)} className="detail-gallery-img" decoding="async" draggable="false" onClick={()=>{setFullScreenImage({images:g,index:idx});setLightboxZoom(1)}}/>:<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon type="image" size={40}/></div>})()}</div>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);return g.length>1&&<div className="detail-gallery-dots">{g.map((_,i)=><span key={i} className={'detail-gallery-dot '+(i===detailGalleryIndex?'active':'')}/>)}</div>})()}<button type="button" onClick={()=>setSelectedProduct(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.55)",color:"#fff"}}><Icon type="x" size={20}/></button></div>
-<div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>PREMIUM</div>
+<div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>{t(language,"premium")}</div>
 <h2 className="text-2xl font-bold">{productDisplay(selectedProduct)}</h2>
 {productDesc(selectedProduct)&&<p className="text-sm opacity-65 mt-2 leading-relaxed">{productDesc(selectedProduct)}</p>}
 <div className="mt-5"><div className="text-[10px] uppercase tracking-widest font-bold opacity-50 mb-3">{t(language,"prices")}</div>
@@ -1899,7 +2002,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 {data.phone&&<a href={"tel:"+data.phone.replace(/\s/g,"")} className="mt-5 w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-sm" style={{background:theme.accent,color:"#fff"}}><Icon type="phone" size={16}/>{t(language,"call")}</a>}
 </div></div></div>}
 
-<button onClick={()=>createPDF(false)} disabled={pdfBusy} className="fixed bottom-5 left-[18px] z-30 rounded-full px-4 h-12 shadow-xl flex items-center justify-center gap-2 font-bold text-xs disabled:opacity-60" style={{background:theme.accent,color:"#fff"}}><Icon type="download" size={16}/><span className="hidden sm:inline">PDF FİYAT LİSTESİ</span></button>
+<button onClick={()=>createPDF(false)} disabled={pdfBusy} className="fixed bottom-5 left-[18px] z-30 rounded-full px-4 h-12 shadow-xl flex items-center justify-center gap-2 font-bold text-xs disabled:opacity-60" style={{background:theme.accent,color:"#fff"}}><Icon type="download" size={16}/><span className="hidden sm:inline">{language==="EN"?"PDF PRICE LIST":"PDF FİYAT LİSTESİ"}</span></button>
 <button onClick={openAdmin} className="fixed bottom-5 right-[18px] z-30 rounded-full shadow-xl flex items-center justify-center" style={{width:52,height:52,background:theme.text,color:theme.bg}}><Icon type="settings" size={20}/></button>
 {toast&&<div className="fixed bottom-24 right-[18px] z-[150] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2"><Icon type="check" size={15}/>{toast}</div>}
 
