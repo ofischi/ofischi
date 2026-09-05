@@ -351,21 +351,21 @@ async function uploadDataImageToSupabase(src,path){
   if(!data?.publicUrl)throw new Error('Supabase görsel URL oluşturamadı.');
   return data.publicUrl;
 }
+function hasInlineImages(data){
+  if(isDataImageSource(data?.logo?.src)||isDataImageSource(data?.pdf?.coverLogo?.src))return true;
+  for(const c of (data?.categories||[])){
+    if(isDataImageSource(c?.coverImage))return true;
+    for(const item of (c.items||[])){
+      if(isDataImageSource(item?.image))return true;
+      if(Array.isArray(item?.images)&&item.images.some(isDataImageSource))return true;
+    }
+  }
+  return false;
+}
 async function prepareDataForCloud(data){
-  /*
-    Performans: JSON.parse(JSON.stringify(data)) burada katalogdaki bütün
-    ürünleri ikinci kez serialize/parse etmeye neden oluyordu.
-    Bunun yerine yalnızca gereken seviyelerde shallow clone yapıyoruz.
-    Veri şeması ve Supabase payload yapısı değişmez.
-  */
-  const clean={...data};
-  clean.logo={...(data.logo||{})};
-  clean.theme={...(data.theme||{})};
-  clean.currency={...(data.currency||{})};
-  clean.pdf={...(data.pdf||{})};
-  if(data.pdf?.coverLogo)clean.pdf.coverLogo={...data.pdf.coverLogo};
-  clean.categories=(data.categories||[]).map(category=>({...category,items:(category.items||[]).map(item=>({...item,price:item.price?{...item.price,parts:Array.isArray(item.price.parts)?item.price.parts.map(part=>({...part})):[]}:item.price}))}));
-
+  /* Normal catalog data is already normalized. Avoid cloning the entire catalog
+     unless an inline data:image must actually be replaced by a Storage URL. */
+  const clean=hasInlineImages(data)?normalizeData(JSON.parse(JSON.stringify(data))):data;
   const tasks=[];
   if(isDataImageSource(clean.logo?.src)){
     tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor('site-logo',null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
@@ -373,13 +373,21 @@ async function prepareDataForCloud(data){
   if(isDataImageSource(clean.pdf?.coverLogo?.src)){
     tasks.push(uploadDataImageToSupabase(clean.pdf.coverLogo.src,storagePathFor('pdf-logo',null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
   }
-  for(const category of clean.categories){
+  for(const category of (clean.categories||[])){
     if(isDataImageSource(category?.coverImage)){
       tasks.push(uploadDataImageToSupabase(category.coverImage,storagePathFor('category',category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
     }
     for(const item of (category.items||[])){
       if(isDataImageSource(item?.image)){
         tasks.push(uploadDataImageToSupabase(item.image,storagePathFor('product',category.id,item.id,item.image)).then(url=>{item.image=url}));
+      }
+      if(Array.isArray(item.images)){
+        for(let idx=0;idx<item.images.length;idx++){
+          if(isDataImageSource(item.images[idx])){
+            const src=item.images[idx];
+            tasks.push(uploadDataImageToSupabase(src,storagePathFor('product-gallery',category.id,item.id,src)).then(url=>{item.images[idx]=url}));
+          }
+        }
       }
     }
   }
@@ -397,10 +405,8 @@ const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
 const IDB_KEY="catalog";
 
-let catalogDBPromise=null;
 function openCatalogDB(){
-  if(catalogDBPromise)return catalogDBPromise;
-  catalogDBPromise=new Promise((resolve,reject)=>{
+  return new Promise((resolve,reject)=>{
     if(!window.indexedDB){reject(new Error("IndexedDB desteklenmiyor"));return;}
     const req=indexedDB.open(IDB_NAME,1);
     req.onupgradeneeded=()=>{
@@ -408,9 +414,8 @@ function openCatalogDB(){
       if(!db.objectStoreNames.contains(IDB_STORE))db.createObjectStore(IDB_STORE);
     };
     req.onsuccess=()=>resolve(req.result);
-    req.onerror=()=>{catalogDBPromise=null;reject(req.error||new Error("IndexedDB açılamadı"))};
+    req.onerror=()=>reject(req.error||new Error("IndexedDB açılamadı"));
   });
-  return catalogDBPromise;
 }
 
 function makeStorageRecord(data){
@@ -482,15 +487,10 @@ async function loadLocal(){
 }
 
 async function saveLocal(data){
-  /*
-    Performans: eski sürüm her kayıtta localStorage'ı yazıp tekrar okuyuyor,
-    ardından IndexedDB'ye yazıp tekrar okuyordu. Büyük kataloglarda bu işlem
-    JSON parse/normalize maliyetini iki kez daha tetikliyordu.
-    Yazma işlemleri doğrulama amaçlı tekrar okunmadan yapılır; hata durumunda
-    mevcut fallback davranışı korunur.
-  */
+  /* localStorage is synchronous and is the fastest durable write available here.
+     IndexedDB is kept as the secondary backup but is no longer read back after every save. */
   const clean=data;
-  const record={savedAt:Date.now(),data:clean};
+  const record=makeStorageRecord(clean);
   const json=JSON.stringify(record);
   let localOk=false;
   try{
@@ -498,15 +498,12 @@ async function saveLocal(data){
     localStorage.setItem(BACKUP_KEY,json);
     localOk=true;
   }catch(e){console.warn("localStorage yazılamadı:",e)}
-
-  try{
-    await idbSetRecord(record);
-  }catch(e){console.warn("IndexedDB yazılamadı:",e)}
-
-  if(!localOk&&!window.indexedDB)throw new Error("Tarayıcı depolamasına yazılamadı");
+  /* Do not block the Save button on IndexedDB. The record is already safely
+     persisted in localStorage; IDB remains a redundant recovery copy. */
+  idbSetRecord(record).catch(e=>console.warn("IndexedDB yazılamadı:",e));
+  if(!localOk)throw new Error("Tarayıcı depolamasına yazılamadı");
   return clean;
 }
-
 async function requestPersistentStorage(){
   try{
     if(navigator.storage&&navigator.storage.persist){
@@ -1552,6 +1549,8 @@ const categoryTranslationSeq=useRef({});
 const pricePartTranslationTimers=useRef({});
 const pricePartTranslationSeq=useRef({});
 const panelSnapshot=useRef(null);
+const cloudSaveTimerRef=useRef(null);
+const cloudSaveSeqRef=useRef(0);
 
 /* PUBLIC ENGLISH TRANSLATION HYDRATION
    The admin panel remains Turkish. When EN is active, all customer-facing
@@ -1792,16 +1791,19 @@ updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:
 }
 function finishTurkishField(categoryId,item,field,value){return;}
 async function deleteItem(categoryId,itemId){
-if(!confirm(t(language,"deleteConfirm")))return;
-const next=normalizeData(data);
-next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
-try{
-  await saveLocal(next);
-  if(SUPABASE_ENABLED)await saveCloud(next);
-  setData(next);
-  setSelectedProduct(prev=>prev?.id===itemId?null:prev);
-  showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
-}catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
+ if(!confirm(t(language,"deleteConfirm")))return;
+ const next=normalizeData(data);
+ next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
+ /* Update the UI immediately. Persistence happens after the user sees the deletion. */
+ setData(next);
+ setSelectedProduct(prev=>prev?.id===itemId?null:prev);
+ showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
+ try{
+   await saveLocal(next);
+   if(SUPABASE_ENABLED){
+     saveCloud(next).catch(e=>{console.error(e);showToast(language==="EN"?"Saved locally; cloud sync failed.":"Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.")});
+   }
+ }catch(e){console.error(e);showToast(language==="EN"?"Local save failed.":"Yerel kayıt başarısız.")}
 }
 function moveItem(categoryId,itemId,direction){
 updateData(x=>{x.categories=x.categories.map(c=>{if(c.id!==categoryId)return c;const l=[...c.items],i=l.findIndex(a=>a.id===itemId),j=i+direction;if(i<0||j<0||j>=l.length)return c;[l[i],l[j]]=[l[j],l[i]];return {...c,items:l}})})
@@ -1830,47 +1832,50 @@ function updatePricePart(categoryId,itemId,partId,field,value){
   },650);
 }
 async function deletePricePart(categoryId,itemId,partId){
-const next=normalizeData(data);
-next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})});
-try{
-  await saveLocal(next);
-  if(SUPABASE_ENABLED)await saveCloud(next);
-  setData(next);
-}catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
+ const next=normalizeData(data);
+ next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})});
+ /* Remove it from the visible panel immediately; do not make the UI wait for network storage. */
+ setData(next);
+ try{
+   await saveLocal(next);
+   if(SUPABASE_ENABLED)saveCloud(next).catch(e=>console.error("Fiyat parçası Supabase senkronizasyonu başarısız:",e));
+ }catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
 }
 async function save(){
-if(!data||saving)return;
-setSaving(true);
-try{
-  const clean=data;
-  /* Yerel kayıt ile bulut hazırlığını aynı anda başlat. Böylece IndexedDB/localStorage
-     beklemesi ile Supabase hazırlama süresi birbirinin üzerine binmez. */
-  const localSavePromise=saveLocal(clean);
-  let cloudSaved=false;
-  if(SUPABASE_ENABLED){
-    try{
-      const cloudResult=await Promise.all([localSavePromise,saveCloud(clean)]).then(results=>results[1]);
-      cloudSaved=!!cloudResult?.saved;
-      const cloudPrepared=cloudResult?.data||clean;
-      if(JSON.stringify(cloudPrepared)!==JSON.stringify(clean))await saveLocal(cloudPrepared);
-      setData(cloudPrepared);
-      lastCloudUpdatedAtRef.current=Date.now();
-    }catch(e){
-      console.error('Supabase kaydetme hatası:',e);
-      showToast('Yerel kayıt yapıldı; Supabase kaydı başarısız: '+(e.message||'hata'));
-      setData(clean);setSaved(true);
-      return;
-    }
-  }else{
-    await localSavePromise;
-  }
-  setData(clean);setSaved(true);
-  showToast(cloudSaved?'Supabase’e kaydedildi. Diğer cihazlara gönderiliyor.':t(language,'saved'));
-  setTimeout(()=>{panelSnapshot.current=null;setSaved(false);setPanelOpen(false)},800);
-}catch(e){
-  console.error(e);
-  showToast('Kaydetme hatası: '+(e.message||'Tarayıcı depolaması kullanılamıyor.'));
-}finally{setSaving(false)}
+ if(!data||saving)return;
+ setSaving(true);
+ try{
+   const clean=normalizeData(data);
+   /* Local save is synchronous/durable and now returns immediately. */
+   await saveLocal(clean);
+   setData(clean);
+   setSaved(true);
+   showToast(t(language,'saved'));
+
+   /* Supabase is deliberately moved off the critical UI path. This makes the
+      Save button feel immediate while preserving cloud synchronization. */
+   const seq=++cloudSaveSeqRef.current;
+   if(cloudSaveTimerRef.current)clearTimeout(cloudSaveTimerRef.current);
+   cloudSaveTimerRef.current=setTimeout(async()=>{
+     try{
+       if(!SUPABASE_ENABLED)return;
+       const cloudResult=await saveCloud(clean);
+       if(seq!==cloudSaveSeqRef.current)return;
+       const cloudPrepared=cloudResult?.data||clean;
+       if(cloudPrepared!==clean)await saveLocal(cloudPrepared);
+       setData(cloudPrepared);
+       lastCloudUpdatedAtRef.current=Date.now();
+       showToast('Supabase’e kaydedildi. Diğer cihazlara gönderiliyor.');
+     }catch(e){
+       console.error('Supabase kaydetme hatası:',e);
+       if(seq===cloudSaveSeqRef.current)showToast('Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.');
+     }
+   },150);
+   setTimeout(()=>{panelSnapshot.current=null;setSaved(false);setPanelOpen(false)},450);
+ }catch(e){
+   console.error(e);
+   showToast('Kaydetme hatası: '+(e.message||'Tarayıcı depolaması kullanılamıyor.'));
+ }finally{setSaving(false)}
 }
 function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
 function closeAdminPanel(discard=true){
