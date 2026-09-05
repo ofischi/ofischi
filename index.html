@@ -976,20 +976,20 @@ const PDF_FONT_METRICS={"unitsPerEm":2048,"ascent":1901,"descent":-483,"bbox":[-
 function pdfB64Bytes(b64){const bin=atob(b64);const out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out}
 function pdfHex(bytes){let s="";for(let i=0;i<bytes.length;i++)s+=bytes[i].toString(16).padStart(2,"0");return s.toUpperCase()}
 function pdfUnicodeHex(text){
- const s=String(text??"");let out="";
- /* Canonical CID scheme: CID = TrueType GID. The Type0 font uses
-    Identity-H and CIDToGIDMap /Identity, which is the most broadly
-    compatible mapping for Acrobat and other strict PDF readers. */
+ const s=String(text??'');let out="";
+ /* Canonical PDF Unicode CID scheme: CID = Unicode code point.
+    The embedded CIDFont maps each CID to the real TrueType GID through
+    an explicit CIDToGIDMap stream. This avoids Acrobat glyph-index
+    ambiguity while keeping real Unicode text and Turkish characters. */
  for(const ch of s){
    const cp=ch.codePointAt(0);
-   const gid=PDF_FONT_CMAP[cp]??PDF_FONT_CMAP[63]??0;
-   out+=gid.toString(16).padStart(4,"0");
+   if(cp<=0xFFFF) out+=cp.toString(16).padStart(4,"0");
+   else {
+     const v=cp-0x10000;
+     out+=(0xD800+(v>>10)).toString(16).padStart(4,"0");
+     out+=(0xDC00+(v&1023)).toString(16).padStart(4,"0");
+   }
  }
- return out.toUpperCase();
-}
-function pdfUtf16Hex(text){
- const s=String(text??"");let out="";
- for(const ch of s){let cp=ch.codePointAt(0);if(cp<=0xFFFF)out+=cp.toString(16).padStart(4,"0");else{cp-=0x10000;out+=(0xD800+(cp>>10)).toString(16).padStart(4,"0")+(0xDC00+(cp&1023)).toString(16).padStart(4,"0")}}
  return out.toUpperCase();
 }
 function pdfFontWidth(text,size){
@@ -1017,8 +1017,11 @@ function pdfTextOp(text,x,y,size,opts={}){
   if(align==="center")xx=x-pdfFontWidth(line,size)/2;else if(align==="right")xx=x-pdfFontWidth(line,size);
   const hex=pdfUnicodeHex(line),color=Array.isArray(opts.color)?opts.color:[0,0,0];
   const rgb=`${color[0]} ${color[1]} ${color[2]} rg`;
-  out+=`${rgb}\nBT /F1 ${size.toFixed(2)} Tf 1 0 0 1 ${xx.toFixed(2)} ${(y-i*leading).toFixed(2)} Tm <${hex}> Tj ET\n`;
-  if(bold){const bx=xx+0.22;out+=`${rgb}\nBT /F1 ${size.toFixed(2)} Tf 1 0 0 1 ${bx.toFixed(2)} ${(y-i*leading).toFixed(2)} Tm <${hex}> Tj ET\n`}
+  /* Use PDF text rendering mode for bold instead of drawing the same glyph
+     twice. Double-drawing caused visible ghosting/overlap in Acrobat. */
+  const boldOp=bold?`${Math.max(0.18,Math.min(0.42,size*0.035)).toFixed(2)} w 2 Tr\n`:'';
+  const resetOp=bold?'0 Tr\n':'';
+  out+=`${rgb}\nBT ${boldOp}/F1 ${size.toFixed(2)} Tf 1 0 0 1 ${xx.toFixed(2)} ${(y-i*leading).toFixed(2)} Tm <${hex}> Tj ${resetOp}ET\n`;
  }
  return out;
 }
@@ -1099,25 +1102,17 @@ async function pdfLogoImageAsset(src){
 function pdfDataUriToBytes(dataUri){const b64=String(dataUri||"").split(",")[1]||"";return pdfB64Bytes(b64)}
 function pdfConcatBytes(chunks){let total=0;for(const c of chunks)total+=c.length;const out=new Uint8Array(total);let o=0;for(const c of chunks){out.set(c,o);o+=c.length}return out}
 function pdfObjBytes(value){return value instanceof Uint8Array?value:new TextEncoder().encode(value)}
-function pdfGidToUnicode(gid){
- let best=null;
- for(const key of Object.keys(PDF_FONT_CMAP)){
-   const cp=Number(key);
-   if(PDF_FONT_CMAP[cp]===gid && cp<=0x10FFFF){
-     if(best===null || cp<best)best=cp;
-   }
- }
- return best===null?0xFFFD:best;
+function pdfCodepointToGid(cp){
+ return PDF_FONT_CMAP[cp]??PDF_FONT_CMAP[63]??0;
 }
 function pdfToUnicodeObject(usedCids){
- const arr=[...usedCids].sort((a,b)=>a-b);let body="/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000><FFFF>\nendcodespacerange\n";
+ const arr=[...usedCids].filter(cp=>Number.isInteger(cp)&&cp>=0&&cp<=0xFFFF).sort((a,b)=>a-b);
+ let body="/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000><FFFF>\nendcodespacerange\n";
  for(let i=0;i<arr.length;i+=100){
    const chunk=arr.slice(i,i+100);
    body+=chunk.length+" beginbfchar\n";
-   for(const gid of chunk){
-     const cp=pdfGidToUnicode(gid);
-     const hex=cp.toString(16).padStart(4,"0");
-     body+=`<${gid.toString(16).padStart(4,"0")}><${hex}>\n`;
+   for(const cp of chunk){
+     body+=`<${cp.toString(16).padStart(4,"0")}><${cp.toString(16).padStart(4,"0")}>\n`;
    }
    body+="endbfchar\n";
  }
@@ -1125,11 +1120,16 @@ function pdfToUnicodeObject(usedCids){
  return body;
 }
 function pdfCollectUsedCids(texts){
- const set=new Set([0]);
+ const set=new Set([0,32,63]);
  for(const text of texts){
    for(const ch of String(text??"")){
      const cp=ch.codePointAt(0);
-     set.add(PDF_FONT_CMAP[cp]??PDF_FONT_CMAP[63]??0);
+     if(cp<=0xFFFF)set.add(cp);
+     else {
+       const v=cp-0x10000;
+       set.add(0xD800+(v>>10));
+       set.add(0xDC00+(v&1023));
+     }
    }
  }
  return set;
@@ -1153,15 +1153,31 @@ async function pdfMakeFontAndToUnicode(objs,usedCids){
  const fontFile=add(pdfConcatBytes([pdfObjBytes(`<< /Length ${fontBytes.length} /Length1 ${fontBytes.length} >>\nstream\n`),fontBytes,pdfObjBytes("\nendstream")]));
  const m=PDF_FONT_METRICS,scale=1000/m.unitsPerEm,bb=m.bbox.map(v=>Math.round(v*scale));
  const desc=add(pdfObjBytes(`<< /Type /FontDescriptor /FontName /DejaVuSans /Flags 32 /FontBBox [${bb.join(" ")}] /ItalicAngle 0 /Ascent ${Math.round(m.ascent*scale)} /Descent ${Math.round(m.descent*scale)} /CapHeight ${Math.round(m.capHeight*scale)} /StemV 80 /FontFile2 ${fontFile} 0 R >>`));
+
+ /* CID = Unicode code point. Widths are therefore indexed by the same CID
+    values used in the Identity-H text stream. */
  const widths=[];
- const arr=[...usedCids].filter(g=>Number.isInteger(g)&&g>=0&&g<PDF_FONT_WIDTHS.length).sort((a,b)=>a-b);
- for(const gid of arr){
-   widths.push(`${gid} [${Math.round((PDF_FONT_WIDTHS[gid]||0)*scale)}]`);
+ const arr=[...usedCids].filter(cp=>Number.isInteger(cp)&&cp>=0&&cp<=0xFFFF).sort((a,b)=>a-b);
+ for(const cp of arr){
+   const gid=pdfCodepointToGid(cp);
+   widths.push(`${cp} [${Math.round((PDF_FONT_WIDTHS[gid]||0)*scale)}]`);
  }
+
+ /* Explicit CID -> TrueType GID map. Acrobat no longer has to infer any
+    relationship between Unicode CIDs and the font's internal glyph IDs. */
+ const maxCid=arr.length?arr[arr.length-1]:0;
+ const mapBytes=new Uint8Array((maxCid+1)*2);
+ for(const cp of arr){
+   const gid=pdfCodepointToGid(cp);
+   mapBytes[cp*2]=(gid>>8)&255;
+   mapBytes[cp*2+1]=gid&255;
+ }
+ const cidMap=add(pdfConcatBytes([pdfObjBytes(`<< /Length ${mapBytes.length} >>\nstream\n`),mapBytes,pdfObjBytes("\nendstream")]));
+
  const cmapText=pdfToUnicodeObject(usedCids);
  const cmapBytes=pdfObjBytes(cmapText);
  const cmap=add(pdfConcatBytes([pdfObjBytes(`<< /Length ${cmapBytes.length} >>\nstream\n`),cmapBytes,pdfObjBytes("\nendstream")]));
- const cid=add(pdfObjBytes(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /DejaVuSans /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${desc} 0 R /DW 0 /W [${widths.join(" ")}] /CIDToGIDMap /Identity >>`));
+ const cid=add(pdfObjBytes(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /DejaVuSans /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${desc} 0 R /DW 500 /W [${widths.join(" ")}] /CIDToGIDMap ${cidMap} 0 R >>`));
  const type0=add(pdfObjBytes(`<< /Type /Font /Subtype /Type0 /BaseFont /DejaVuSans /Encoding /Identity-H /DescendantFonts [${cid} 0 R] /ToUnicode ${cmap} 0 R >>`));
  return type0;
 }
