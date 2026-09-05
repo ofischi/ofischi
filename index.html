@@ -1156,11 +1156,28 @@ async function pdfMakeFontAndToUnicode(objs,glyphToUnicode){
  const fontFile=add(pdfConcatBytes([pdfObjBytes(`<< /Length ${fontBytes.length} /Length1 ${fontBytes.length} >>\nstream\n`),fontBytes,pdfObjBytes("\nendstream")]));
  const m=PDF_FONT_METRICS,scale=1000/m.unitsPerEm,bb=m.bbox.map(v=>Math.round(v*scale));
  const desc=add(pdfObjBytes(`<< /Type /FontDescriptor /FontName /DejaVuSans /Flags 32 /FontBBox [${bb.join(" ")}] /ItalicAngle 0 /Ascent ${Math.round(m.ascent*scale)} /Descent ${Math.round(m.descent*scale)} /CapHeight ${Math.round(m.capHeight*scale)} /StemV 80 /FontFile2 ${fontFile} 0 R >>`));
+
+ /* IMPORTANT: /W must contain the real advance width for EVERY glyph CID that
+    the PDF can emit. The previous version only listed glyphs discovered by
+    scanning the already-generated PDF content stream (which contains hex
+    digits, not the original Unicode characters). That made most letters fall
+    back to /DW 500 and caused Acrobat to squeeze/overlap text. */
  const widths=[];
- for(const gid of [...glyphToUnicode.keys()].sort((a,b)=>a-b)){
+ for(let gid=0;gid<PDF_FONT_WIDTHS.length;gid++){
    widths.push(`${gid} [${Math.round((PDF_FONT_WIDTHS[gid]||0)*scale)}]`);
  }
- const cmapText=pdfToUnicodeObject(glyphToUnicode);
+
+ /* Build ToUnicode from the actual Unicode->GID table, not from PDF operators.
+    This keeps copy/search/extraction correct for Turkish characters too. */
+ const fullMap=new Map();
+ for(const [cp,gid] of Object.entries(PDF_FONT_CMAP)){
+   const ncp=Number(cp),ngid=Number(gid);
+   if(!fullMap.has(ngid))fullMap.set(ngid,ncp);
+ }
+ if(glyphToUnicode instanceof Map){
+   for(const [gid,cp] of glyphToUnicode.entries())fullMap.set(Number(gid),Number(cp));
+ }
+ const cmapText=pdfToUnicodeObject(fullMap);
  const cmapBytes=pdfObjBytes(cmapText);
  const cmap=add(pdfConcatBytes([pdfObjBytes(`<< /Length ${cmapBytes.length} >>\nstream\n`),cmapBytes,pdfObjBytes("\nendstream")]));
  const cid=add(pdfObjBytes(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /DejaVuSans /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${desc} 0 R /DW 500 /W [${widths.join(" ")}] /CIDToGIDMap /Identity >>`));
