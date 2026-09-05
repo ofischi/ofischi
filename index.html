@@ -351,21 +351,8 @@ async function uploadDataImageToSupabase(src,path){
   if(!data?.publicUrl)throw new Error('Supabase görsel URL oluşturamadı.');
   return data.publicUrl;
 }
-function hasInlineImages(data){
-  if(isDataImageSource(data?.logo?.src)||isDataImageSource(data?.pdf?.coverLogo?.src))return true;
-  for(const c of (data?.categories||[])){
-    if(isDataImageSource(c?.coverImage))return true;
-    for(const item of (c.items||[])){
-      if(isDataImageSource(item?.image))return true;
-      if(Array.isArray(item?.images)&&item.images.some(isDataImageSource))return true;
-    }
-  }
-  return false;
-}
 async function prepareDataForCloud(data){
-  /* Normal catalog data is already normalized. Avoid cloning the entire catalog
-     unless an inline data:image must actually be replaced by a Storage URL. */
-  const clean=hasInlineImages(data)?normalizeData(JSON.parse(JSON.stringify(data))):data;
+  const clean=normalizeData(JSON.parse(JSON.stringify(data)));
   const tasks=[];
   if(isDataImageSource(clean.logo?.src)){
     tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor('site-logo',null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
@@ -380,14 +367,6 @@ async function prepareDataForCloud(data){
     for(const item of (category.items||[])){
       if(isDataImageSource(item?.image)){
         tasks.push(uploadDataImageToSupabase(item.image,storagePathFor('product',category.id,item.id,item.image)).then(url=>{item.image=url}));
-      }
-      if(Array.isArray(item.images)){
-        for(let idx=0;idx<item.images.length;idx++){
-          if(isDataImageSource(item.images[idx])){
-            const src=item.images[idx];
-            tasks.push(uploadDataImageToSupabase(src,storagePathFor('product-gallery',category.id,item.id,src)).then(url=>{item.images[idx]=url}));
-          }
-        }
       }
     }
   }
@@ -487,23 +466,29 @@ async function loadLocal(){
 }
 
 async function saveLocal(data){
-  /* localStorage is synchronous and is the fastest durable write available here.
-     IndexedDB is kept as the secondary backup but is no longer read back after every save. */
-  const clean=data;
+  const clean=normalizeData(data);
   const record=makeStorageRecord(clean);
   const json=JSON.stringify(record);
-  let localOk=false;
+  let localOk=false,idbOk=false;
+
   try{
     localStorage.setItem(DB_KEY,json);
     localStorage.setItem(BACKUP_KEY,json);
-    localOk=true;
+    /* Yazmayı hemen geri okuyarak gerçekten kaydedildiğini doğrula. */
+    const check=readLocalRecord(DB_KEY);
+    localOk=!!check&&check.savedAt===record.savedAt;
   }catch(e){console.warn("localStorage yazılamadı:",e)}
-  /* Do not block the Save button on IndexedDB. The record is already safely
-     persisted in localStorage; IDB remains a redundant recovery copy. */
-  idbSetRecord(record).catch(e=>console.warn("IndexedDB yazılamadı:",e));
-  if(!localOk)throw new Error("Tarayıcı depolamasına yazılamadı");
+
+  try{
+    await idbSetRecord(record);
+    const check=await idbGetRecord();
+    idbOk=!!check&&check.savedAt===record.savedAt;
+  }catch(e){console.warn("IndexedDB yazılamadı:",e)}
+
+  if(!localOk&&!idbOk)throw new Error("Tarayıcı depolamasına yazılamadı");
   return clean;
 }
+
 async function requestPersistentStorage(){
   try{
     if(navigator.storage&&navigator.storage.persist){
@@ -1496,7 +1481,7 @@ useEffect(()=>{
 },[data?.categories]);
 
 /* SUPABASE REALTIME + POLLING YEDEĞİ: diğer cihazlardaki değişiklikleri al. */
-const panelOpenRef=useRef(false), languageRef=useRef(language), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0);
+const panelOpenRef=useRef(false), languageRef=useRef(language), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0), localMutationAtRef=useRef(0);
 useEffect(()=>{panelOpenRef.current=panelOpen},[panelOpen]);
 useEffect(()=>{languageRef.current=language},[language]);
 useEffect(()=>{
@@ -1505,7 +1490,9 @@ useEffect(()=>{
   const applyCloudPayload=async (payloadData,updatedAt)=>{
     if(!active||!payloadData||typeof payloadData!=="object")return;
     const stamp=Date.parse(updatedAt||"")||Date.now();
-    if(stamp<=lastCloudUpdatedAtRef.current)return;
+    /* Ignore a stale realtime event that was already older than our latest
+       local save/delete. This prevents deleted products from reappearing. */
+    if(stamp<=lastCloudUpdatedAtRef.current || stamp<=localMutationAtRef.current)return;
     lastCloudUpdatedAtRef.current=stamp;
     if(panelOpenRef.current){
       showToast(languageRef.current==="EN"?"Cloud update received. Save your changes first.":"Bulut güncellemesi geldi. Önce kendi değişikliklerinizi kaydedin.");
@@ -1549,8 +1536,6 @@ const categoryTranslationSeq=useRef({});
 const pricePartTranslationTimers=useRef({});
 const pricePartTranslationSeq=useRef({});
 const panelSnapshot=useRef(null);
-const cloudSaveTimerRef=useRef(null);
-const cloudSaveSeqRef=useRef(0);
 
 /* PUBLIC ENGLISH TRANSLATION HYDRATION
    The admin panel remains Turkish. When EN is active, all customer-facing
@@ -1791,19 +1776,25 @@ updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:
 }
 function finishTurkishField(categoryId,item,field,value){return;}
 async function deleteItem(categoryId,itemId){
- if(!confirm(t(language,"deleteConfirm")))return;
- const next=normalizeData(data);
- next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
- /* Update the UI immediately. Persistence happens after the user sees the deletion. */
- setData(next);
- setSelectedProduct(prev=>prev?.id===itemId?null:prev);
- showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
- try{
-   await saveLocal(next);
-   if(SUPABASE_ENABLED){
-     saveCloud(next).catch(e=>{console.error(e);showToast(language==="EN"?"Saved locally; cloud sync failed.":"Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.")});
-   }
- }catch(e){console.error(e);showToast(language==="EN"?"Local save failed.":"Yerel kayıt başarısız.")}
+if(!confirm(t(language,"deleteConfirm")))return;
+const next=normalizeData(data);
+next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
+/* Update React immediately so the row disappears without waiting for storage/network. */
+const mutationAt=Date.now();
+localMutationAtRef.current=mutationAt;
+lastCloudUpdatedAtRef.current=Math.max(lastCloudUpdatedAtRef.current,mutationAt);
+setData(next);
+setSelectedProduct(prev=>prev?.id===itemId?null:prev);
+showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
+setTimeout(async()=>{
+  try{
+    await saveLocal(next);
+    if(SUPABASE_ENABLED){
+      try{await saveCloud(next);lastCloudUpdatedAtRef.current=Date.now()}
+      catch(e){console.error(e);showToast(language==="EN"?"Saved locally; cloud sync failed.":"Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.")}
+    }
+  }catch(e){console.error(e);showToast(language==="EN"?"Local save failed.":"Yerel kayıt başarısız.")}
+},0);
 }
 function moveItem(categoryId,itemId,direction){
 updateData(x=>{x.categories=x.categories.map(c=>{if(c.id!==categoryId)return c;const l=[...c.items],i=l.findIndex(a=>a.id===itemId),j=i+direction;if(i<0||j<0||j>=l.length)return c;[l[i],l[j]]=[l[j],l[i]];return {...c,items:l}})})
@@ -1832,50 +1823,62 @@ function updatePricePart(categoryId,itemId,partId,field,value){
   },650);
 }
 async function deletePricePart(categoryId,itemId,partId){
- const next=normalizeData(data);
- next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})});
- /* Remove it from the visible panel immediately; do not make the UI wait for network storage. */
- setData(next);
- try{
-   await saveLocal(next);
-   if(SUPABASE_ENABLED)saveCloud(next).catch(e=>console.error("Fiyat parçası Supabase senkronizasyonu başarısız:",e));
- }catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
+const next=normalizeData(data);
+next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})});
+const mutationAt=Date.now();
+localMutationAtRef.current=mutationAt;
+lastCloudUpdatedAtRef.current=Math.max(lastCloudUpdatedAtRef.current,mutationAt);
+setData(next);
+showToast(language==="EN"?"Price item deleted.":"Fiyat kalemi silindi.");
+setTimeout(async()=>{
+  try{
+    await saveLocal(next);
+    if(SUPABASE_ENABLED){
+      try{await saveCloud(next);lastCloudUpdatedAtRef.current=Date.now()}
+      catch(e){console.error(e);showToast(language==="EN"?"Saved locally; cloud sync failed.":"Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.")}
+    }
+  }catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
+},0);
 }
 async function save(){
- if(!data||saving)return;
- setSaving(true);
- try{
-   const clean=normalizeData(data);
-   /* Local save is synchronous/durable and now returns immediately. */
-   await saveLocal(clean);
-   setData(clean);
-   setSaved(true);
-   showToast(t(language,'saved'));
-
-   /* Supabase is deliberately moved off the critical UI path. This makes the
-      Save button feel immediate while preserving cloud synchronization. */
-   const seq=++cloudSaveSeqRef.current;
-   if(cloudSaveTimerRef.current)clearTimeout(cloudSaveTimerRef.current);
-   cloudSaveTimerRef.current=setTimeout(async()=>{
-     try{
-       if(!SUPABASE_ENABLED)return;
-       const cloudResult=await saveCloud(clean);
-       if(seq!==cloudSaveSeqRef.current)return;
-       const cloudPrepared=cloudResult?.data||clean;
-       if(cloudPrepared!==clean)await saveLocal(cloudPrepared);
-       setData(cloudPrepared);
-       lastCloudUpdatedAtRef.current=Date.now();
-       showToast('Supabase’e kaydedildi. Diğer cihazlara gönderiliyor.');
-     }catch(e){
-       console.error('Supabase kaydetme hatası:',e);
-       if(seq===cloudSaveSeqRef.current)showToast('Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.');
-     }
-   },150);
-   setTimeout(()=>{panelSnapshot.current=null;setSaved(false);setPanelOpen(false)},450);
- }catch(e){
-   console.error(e);
-   showToast('Kaydetme hatası: '+(e.message||'Tarayıcı depolaması kullanılamıyor.'));
- }finally{setSaving(false)}
+if(!data||saving)return;
+setSaving(true);
+const clean=data;
+const mutationAt=Date.now();
+localMutationAtRef.current=mutationAt;
+lastCloudUpdatedAtRef.current=Math.max(lastCloudUpdatedAtRef.current,mutationAt);
+/* Close immediately. Storage serialization and network work happen after the
+   browser gets a chance to paint, so Save & Close never looks frozen. */
+panelSnapshot.current=null;
+setPanelOpen(false);
+showToast(t(language,'saving'));
+setTimeout(async()=>{
+  try{
+    await saveLocal(clean);
+    let cloudSaved=false;
+    if(SUPABASE_ENABLED){
+      try{
+        const cloudResult=await saveCloud(clean);
+        cloudSaved=!!cloudResult?.saved;
+        const cloudPrepared=cloudResult?.data||clean;
+        if(cloudPrepared!==clean)await saveLocal(cloudPrepared);
+        lastCloudUpdatedAtRef.current=Date.now();
+      }catch(e){
+        console.error('Supabase kaydetme hatası:',e);
+        showToast('Yerel kayıt yapıldı; Supabase kaydı başarısız: '+(e.message||'hata'));
+        setData(clean);
+        return;
+      }
+    }
+    setData(clean);
+    setSaved(true);
+    showToast(cloudSaved?'Supabase’e kaydedildi. Diğer cihazlara gönderiliyor.':t(language,'saved'));
+    setTimeout(()=>setSaved(false),800);
+  }catch(e){
+    console.error(e);
+    showToast('Kaydetme hatası: '+(e.message||'Tarayıcı depolaması kullanılamıyor.'));
+  }finally{setSaving(false)}
+},0);
 }
 function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
 function closeAdminPanel(discard=true){
