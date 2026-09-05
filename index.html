@@ -352,7 +352,7 @@ async function uploadDataImageToSupabase(src,path){
   return data.publicUrl;
 }
 async function prepareDataForCloud(data){
-  const clean=normalizeData(JSON.parse(JSON.stringify(data)));
+  const clean=normalizeData(data);
   const tasks=[];
   if(isDataImageSource(clean.logo?.src)){
     tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor('site-logo',null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
@@ -374,12 +374,17 @@ async function prepareDataForCloud(data){
   return clean;
 }
 async function saveCloud(data){
-  if(!SUPABASE_ENABLED||!supabaseClient)return {saved:false,data:normalizeData(data)};
+  if(!SUPABASE_ENABLED||!supabaseClient)return {saved:false,data};
   const clean=await prepareDataForCloud(data);
-  const {data:row,error}=await supabaseClient.from(SUPABASE_TABLE).upsert({id:SUPABASE_ROW_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:'id'}).select('id,updated_at').single();
-  if(error)throw error;
-  return {saved:!!row,data:clean};
+  const result=await supabaseClient
+    .from(SUPABASE_TABLE)
+    .upsert({id:SUPABASE_ROW_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:'id'})
+    .select('id,updated_at')
+    .single();
+  if(result.error)throw result.error;
+  return {saved:!!result.data,data:clean};
 }
+
 const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
 const IDB_KEY="catalog";
@@ -466,28 +471,17 @@ async function loadLocal(){
 }
 
 async function saveLocal(data){
-  const clean=normalizeData(data);
-  const record=makeStorageRecord(clean);
+  const clean=data;
+  const record={savedAt:Date.now(),data:clean};
   const json=JSON.stringify(record);
-  let localOk=false,idbOk=false;
-
   try{
     localStorage.setItem(DB_KEY,json);
     localStorage.setItem(BACKUP_KEY,json);
-    /* Yazmayı hemen geri okuyarak gerçekten kaydedildiğini doğrula. */
-    const check=readLocalRecord(DB_KEY);
-    localOk=!!check&&check.savedAt===record.savedAt;
   }catch(e){console.warn("localStorage yazılamadı:",e)}
-
-  try{
-    await idbSetRecord(record);
-    const check=await idbGetRecord();
-    idbOk=!!check&&check.savedAt===record.savedAt;
-  }catch(e){console.warn("IndexedDB yazılamadı:",e)}
-
-  if(!localOk&&!idbOk)throw new Error("Tarayıcı depolamasına yazılamadı");
-  return clean;
+  try{await idbSetRecord(record)}catch(e){console.warn("IndexedDB yazılamadı:",e)}
+  return {savedAt:record.savedAt,data:clean};
 }
+
 
 async function requestPersistentStorage(){
   try{
@@ -1776,26 +1770,20 @@ updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:
 }
 function finishTurkishField(categoryId,item,field,value){return;}
 async function deleteItem(categoryId,itemId){
-if(!confirm(t(language,"deleteConfirm")))return;
-const next=normalizeData(data);
-next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
-/* Update React immediately so the row disappears without waiting for storage/network. */
-const mutationAt=Date.now();
-localMutationAtRef.current=mutationAt;
-lastCloudUpdatedAtRef.current=Math.max(lastCloudUpdatedAtRef.current,mutationAt);
-setData(next);
-setSelectedProduct(prev=>prev?.id===itemId?null:prev);
-showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
-setTimeout(async()=>{
-  try{
-    await saveLocal(next);
-    if(SUPABASE_ENABLED){
-      try{await saveCloud(next);lastCloudUpdatedAtRef.current=Date.now()}
-      catch(e){console.error(e);showToast(language==="EN"?"Saved locally; cloud sync failed.":"Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.")}
-    }
-  }catch(e){console.error(e);showToast(language==="EN"?"Local save failed.":"Yerel kayıt başarısız.")}
-},0);
+  if(!confirm(t(language,"deleteConfirm")))return;
+  const next=normalizeData(data);
+  next.categories=next.categories.map(c=>c.id===categoryId?{...c,items:c.items.filter(i=>i.id!==itemId)}:c);
+  setData(next);
+  setSelectedProduct(prev=>prev?.id===itemId?null:prev);
+  showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
+  setTimeout(async()=>{
+    try{
+      await saveLocal(next);
+      if(SUPABASE_ENABLED)await saveCloud(next);
+    }catch(e){console.warn("Arka plan Supabase kayıt hatası:",e)}
+  },0);
 }
+
 function moveItem(categoryId,itemId,direction){
 updateData(x=>{x.categories=x.categories.map(c=>{if(c.id!==categoryId)return c;const l=[...c.items],i=l.findIndex(a=>a.id===itemId),j=i+direction;if(i<0||j<0||j>=l.length)return c;[l[i],l[j]]=[l[j],l[i]];return {...c,items:l}})})
 }
@@ -1823,63 +1811,48 @@ function updatePricePart(categoryId,itemId,partId,field,value){
   },650);
 }
 async function deletePricePart(categoryId,itemId,partId){
-const next=normalizeData(data);
-next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}}})});
-const mutationAt=Date.now();
-localMutationAtRef.current=mutationAt;
-lastCloudUpdatedAtRef.current=Math.max(lastCloudUpdatedAtRef.current,mutationAt);
-setData(next);
-showToast(language==="EN"?"Price item deleted.":"Fiyat kalemi silindi.");
-setTimeout(async()=>{
-  try{
-    await saveLocal(next);
-    if(SUPABASE_ENABLED){
-      try{await saveCloud(next);lastCloudUpdatedAtRef.current=Date.now()}
-      catch(e){console.error(e);showToast(language==="EN"?"Saved locally; cloud sync failed.":"Yerel kayıt yapıldı; Supabase senkronizasyonu başarısız.")}
-    }
-  }catch(e){console.error(e);showToast(language==="EN"?"Delete failed.":"Silme işlemi başarısız.")}
-},0);
+  const next=normalizeData(data);
+  next.categories=next.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{
+    if(i.id!==itemId)return i;
+    const p=normalizePrice(i.price);
+    return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}};
+  })});
+  setData(next);
+  setTimeout(async()=>{
+    try{
+      await saveLocal(next);
+      if(SUPABASE_ENABLED)await saveCloud(next);
+    }catch(e){console.warn("Arka plan Supabase kayıt hatası:",e)}
+  },0);
 }
+
 async function save(){
-if(!data||saving)return;
-setSaving(true);
-const clean=data;
-const mutationAt=Date.now();
-localMutationAtRef.current=mutationAt;
-lastCloudUpdatedAtRef.current=Math.max(lastCloudUpdatedAtRef.current,mutationAt);
-/* Close immediately. Storage serialization and network work happen after the
-   browser gets a chance to paint, so Save & Close never looks frozen. */
-panelSnapshot.current=null;
-setPanelOpen(false);
-showToast(t(language,'saving'));
-setTimeout(async()=>{
-  try{
-    await saveLocal(clean);
-    let cloudSaved=false;
-    if(SUPABASE_ENABLED){
-      try{
+  if(!data||saving)return;
+  const clean=normalizeData(data);
+  setSaving(false);
+  setSaved(true);
+  panelSnapshot.current=null;
+  setPanelOpen(false);
+  showToast(t(language,'saved'));
+  setTimeout(()=>setSaved(false),800);
+
+  setTimeout(async()=>{
+    try{
+      await saveLocal(clean);
+      if(SUPABASE_ENABLED){
         const cloudResult=await saveCloud(clean);
-        cloudSaved=!!cloudResult?.saved;
-        const cloudPrepared=cloudResult?.data||clean;
-        if(cloudPrepared!==clean)await saveLocal(cloudPrepared);
+        if(cloudResult?.data && JSON.stringify(cloudResult.data)!==JSON.stringify(clean)){
+          await saveLocal(cloudResult.data);
+          setData(cloudResult.data);
+        }
         lastCloudUpdatedAtRef.current=Date.now();
-      }catch(e){
-        console.error('Supabase kaydetme hatası:',e);
-        showToast('Yerel kayıt yapıldı; Supabase kaydı başarısız: '+(e.message||'hata'));
-        setData(clean);
-        return;
       }
+    }catch(e){
+      console.warn("Supabase arka plan kayıt hatası:",e);
     }
-    setData(clean);
-    setSaved(true);
-    showToast(cloudSaved?'Supabase’e kaydedildi. Diğer cihazlara gönderiliyor.':t(language,'saved'));
-    setTimeout(()=>setSaved(false),800);
-  }catch(e){
-    console.error(e);
-    showToast('Kaydetme hatası: '+(e.message||'Tarayıcı depolaması kullanılamıyor.'));
-  }finally{setSaving(false)}
-},0);
+  },0);
 }
+
 function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
 function closeAdminPanel(discard=true){
   if(discard && panelSnapshot.current){setData(panelSnapshot.current)}
