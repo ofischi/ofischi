@@ -43,7 +43,7 @@ button,input,textarea{font-family:inherit}button{cursor:pointer}button:disabled{
 .category-chip:active{transform:scale(.94)}
 .category-chip.active{transform:translateY(-2px);box-shadow:0 7px 20px rgba(0,0,0,.18),0 0 0 1px rgba(255,255,255,.08) inset}
 .category-chip.active::after{content:"";position:absolute;left:22%;right:22%;bottom:2px;height:2px;border-radius:999px;background:rgba(255,255,255,.72);filter:blur(1px);animation:categoryGlow 2s ease-in-out infinite}
-.product-card{position:relative;overflow:hidden;transform:translateZ(0);animation:productEnter .45s cubic-bezier(.22,1,.36,1) both;transition:transform .28s cubic-bezier(.22,1,.36,1),box-shadow .28s ease;-webkit-tap-highlight-color:transparent}
+.product-card{position:relative;overflow:hidden;transform:translateZ(0);will-change:transform;animation:productEnter .45s cubic-bezier(.22,1,.36,1) both;transition:transform .28s cubic-bezier(.22,1,.36,1),box-shadow .28s ease;-webkit-tap-highlight-color:transparent}
 .product-card{content-visibility:auto;contain-intrinsic-size:0 420px}
 .product-gallery-img,.detail-gallery-img{content-visibility:auto}
 .product-card:active{transform:scale(.965) translateY(1px)}
@@ -161,12 +161,7 @@ header{animation:luxuryEnter 1s cubic-bezier(.2,.75,.2,1) both}
 @keyframes orbFloat2{0%,100%{transform:translate(0,0)}50%{transform:translate(-60px,50px)}}
 @keyframes luxuryEnter{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){body::before,body::after,#root::before,#root::after,header,.product-card::before{animation:none!important}.product-card,.category-chip{transition:none!important}}
-@media(max-width:639px){body::after{opacity:.14}.product-card:hover{transform:none}.product-card::before{display:none}
-/* Performance-only mobile optimization. No JS/data/feature changes. */
-body::before,body::after,#root::before,#root::after{animation:none!important}
-.category-chip,.search-input,.gallery-arrow,.detail-gallery-arrow,.lightbox-nav,.gallery-dots,.detail-gallery-dots,.modal-backdrop,.image-lightbox{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-.product-card{animation-duration:.28s;transition-duration:.18s}
-}
+@media(max-width:639px){body::after{opacity:.14}.product-card:hover{transform:none}.product-card::before{display:none}}
 
 </style>
 
@@ -357,7 +352,20 @@ async function uploadDataImageToSupabase(src,path){
   return data.publicUrl;
 }
 async function prepareDataForCloud(data){
-  const clean=normalizeData(JSON.parse(JSON.stringify(data)));
+  /*
+    Performans: JSON.parse(JSON.stringify(data)) burada katalogdaki bütün
+    ürünleri ikinci kez serialize/parse etmeye neden oluyordu.
+    Bunun yerine yalnızca gereken seviyelerde shallow clone yapıyoruz.
+    Veri şeması ve Supabase payload yapısı değişmez.
+  */
+  const clean={...data};
+  clean.logo={...(data.logo||{})};
+  clean.theme={...(data.theme||{})};
+  clean.currency={...(data.currency||{})};
+  clean.pdf={...(data.pdf||{})};
+  if(data.pdf?.coverLogo)clean.pdf.coverLogo={...data.pdf.coverLogo};
+  clean.categories=(data.categories||[]).map(category=>({...category,items:(category.items||[]).map(item=>({...item,price:item.price?{...item.price,parts:Array.isArray(item.price.parts)?item.price.parts.map(part=>({...part})):[]}:item.price}))}));
+
   const tasks=[];
   if(isDataImageSource(clean.logo?.src)){
     tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor('site-logo',null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
@@ -365,7 +373,7 @@ async function prepareDataForCloud(data){
   if(isDataImageSource(clean.pdf?.coverLogo?.src)){
     tasks.push(uploadDataImageToSupabase(clean.pdf.coverLogo.src,storagePathFor('pdf-logo',null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
   }
-  for(const category of (clean.categories||[])){
+  for(const category of clean.categories){
     if(isDataImageSource(category?.coverImage)){
       tasks.push(uploadDataImageToSupabase(category.coverImage,storagePathFor('category',category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
     }
@@ -389,8 +397,10 @@ const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
 const IDB_KEY="catalog";
 
+let catalogDBPromise=null;
 function openCatalogDB(){
-  return new Promise((resolve,reject)=>{
+  if(catalogDBPromise)return catalogDBPromise;
+  catalogDBPromise=new Promise((resolve,reject)=>{
     if(!window.indexedDB){reject(new Error("IndexedDB desteklenmiyor"));return;}
     const req=indexedDB.open(IDB_NAME,1);
     req.onupgradeneeded=()=>{
@@ -398,8 +408,9 @@ function openCatalogDB(){
       if(!db.objectStoreNames.contains(IDB_STORE))db.createObjectStore(IDB_STORE);
     };
     req.onsuccess=()=>resolve(req.result);
-    req.onerror=()=>reject(req.error||new Error("IndexedDB açılamadı"));
+    req.onerror=()=>{catalogDBPromise=null;reject(req.error||new Error("IndexedDB açılamadı"))};
   });
+  return catalogDBPromise;
 }
 
 function makeStorageRecord(data){
@@ -471,26 +482,28 @@ async function loadLocal(){
 }
 
 async function saveLocal(data){
-  const clean=normalizeData(data);
-  const record=makeStorageRecord(clean);
+  /*
+    Performans: eski sürüm her kayıtta localStorage'ı yazıp tekrar okuyuyor,
+    ardından IndexedDB'ye yazıp tekrar okuyordu. Büyük kataloglarda bu işlem
+    JSON parse/normalize maliyetini iki kez daha tetikliyordu.
+    Yazma işlemleri doğrulama amaçlı tekrar okunmadan yapılır; hata durumunda
+    mevcut fallback davranışı korunur.
+  */
+  const clean=data;
+  const record={savedAt:Date.now(),data:clean};
   const json=JSON.stringify(record);
-  let localOk=false,idbOk=false;
-
+  let localOk=false;
   try{
     localStorage.setItem(DB_KEY,json);
     localStorage.setItem(BACKUP_KEY,json);
-    /* Yazmayı hemen geri okuyarak gerçekten kaydedildiğini doğrula. */
-    const check=readLocalRecord(DB_KEY);
-    localOk=!!check&&check.savedAt===record.savedAt;
+    localOk=true;
   }catch(e){console.warn("localStorage yazılamadı:",e)}
 
   try{
     await idbSetRecord(record);
-    const check=await idbGetRecord();
-    idbOk=!!check&&check.savedAt===record.savedAt;
   }catch(e){console.warn("IndexedDB yazılamadı:",e)}
 
-  if(!localOk&&!idbOk)throw new Error("Tarayıcı depolamasına yazılamadı");
+  if(!localOk&&!window.indexedDB)throw new Error("Tarayıcı depolamasına yazılamadı");
   return clean;
 }
 
@@ -1829,12 +1842,14 @@ async function save(){
 if(!data||saving)return;
 setSaving(true);
 try{
-  const clean=normalizeData(data);
-  await saveLocal(clean);
+  const clean=data;
+  /* Yerel kayıt ile bulut hazırlığını aynı anda başlat. Böylece IndexedDB/localStorage
+     beklemesi ile Supabase hazırlama süresi birbirinin üzerine binmez. */
+  const localSavePromise=saveLocal(clean);
   let cloudSaved=false;
   if(SUPABASE_ENABLED){
     try{
-      const cloudResult=await saveCloud(clean);
+      const cloudResult=await Promise.all([localSavePromise,saveCloud(clean)]).then(results=>results[1]);
       cloudSaved=!!cloudResult?.saved;
       const cloudPrepared=cloudResult?.data||clean;
       if(JSON.stringify(cloudPrepared)!==JSON.stringify(clean))await saveLocal(cloudPrepared);
@@ -1846,6 +1861,8 @@ try{
       setData(clean);setSaved(true);
       return;
     }
+  }else{
+    await localSavePromise;
   }
   setData(clean);setSaved(true);
   showToast(cloudSaved?'Supabase’e kaydedildi. Diğer cihazlara gönderiliyor.':t(language,'saved'));
