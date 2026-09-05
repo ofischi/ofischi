@@ -1050,32 +1050,19 @@ async function pdfLoadImageSafe(key){
   });
 }
 async function pdfImageAsset(src){
- const key=pdfImageSource(src);
- if(!key)return null;
+ const key=pdfImageSource(src); if(!key)return null;
  pdfImageAsset.cache=pdfImageAsset.cache||new Map();
  if(pdfImageAsset.cache.has(key))return pdfImageAsset.cache.get(key);
  const asset=await pdfLoadImageSafe(key);
  if(!asset){pdfImageAsset.cache.set(key,null);return null;}
- let data=key;
- /* PDF XObject olarak güvenilir biçimde gömülebilmesi için JPEG'e çevir.
-    Kaynak ister data URL ister Blob/Object URL olsun, burada görüntü önce gerçekten yüklenir. */
- if(!/^data:image\/jpe?g(?:;|,)/i.test(key)){
-   const c=document.createElement('canvas');
-   const max=2400;
-   const scale=Math.min(1,max/Math.max(asset.width,asset.height));
-   c.width=Math.max(1,Math.round(asset.width*scale));
-   c.height=Math.max(1,Math.round(asset.height*scale));
-   const cctx=c.getContext('2d',{alpha:false});
-   cctx.fillStyle='#ffffff';
-   cctx.fillRect(0,0,c.width,c.height);
-   cctx.drawImage(asset.im,0,0,c.width,c.height);
-   data=c.toDataURL('image/jpeg',.96);
- }
- const outWidth=/^data:image\/jpe?g(?:;|,)/i.test(data)?asset.width:Math.max(1,Math.round(asset.width*Math.min(1,2400/Math.max(asset.width,asset.height))));
- const outHeight=/^data:image\/jpe?g(?:;|,)/i.test(data)?asset.height:Math.max(1,Math.round(asset.height*Math.min(1,2400/Math.max(asset.width,asset.height))));
- const result={data,width:outWidth,height:outHeight,source:key};
- pdfImageAsset.cache.set(key,result);
- return result;
+ /* Acrobat-safe: normalize every image to RGB JPEG because the PDF XObject declares DeviceRGB. */
+ const c=document.createElement('canvas');
+ const max=2400,scale=Math.min(1,max/Math.max(asset.width,asset.height));
+ c.width=Math.max(1,Math.round(asset.width*scale)); c.height=Math.max(1,Math.round(asset.height*scale));
+ const cctx=c.getContext('2d',{alpha:false}); cctx.fillStyle='#ffffff'; cctx.fillRect(0,0,c.width,c.height);
+ cctx.drawImage(asset.im,0,0,c.width,c.height);
+ const data=c.toDataURL('image/jpeg',.96);
+ const result={data,width:c.width,height:c.height,source:key}; pdfImageAsset.cache.set(key,result); return result;
 }
 
 async function pdfLogoImageAsset(src){
@@ -1354,24 +1341,52 @@ async function buildPriceListPDF(rawData,lang){
  return await pdfCreateVectorDocument(pages);
 }
 
+function pdfValidateBlobBytes(bytes){
+ if(!(bytes instanceof Uint8Array)||bytes.length<32)throw new Error("PDF doğrulaması başarısız: dosya boş veya eksik.");
+ const ascii=new TextDecoder("latin1").decode(bytes);
+ if(!ascii.slice(0,8).startsWith("%PDF-"))throw new Error("PDF doğrulaması başarısız: geçersiz PDF başlığı.");
+ if(!ascii.includes("%%EOF"))throw new Error("PDF doğrulaması başarısız: PDF düzgün finalize edilmemiş.");
+ const pages=ascii.match(/\/Type\s*\/Page(?:\s|\/|>>)/g)||[];
+ if(pages.length<1)throw new Error("PDF doğrulaması başarısız: sayfa bulunamadı.");
+ const startMatch=ascii.match(/startxref\s+(\d+)\s+%%EOF\s*$/);
+ if(!startMatch)throw new Error("PDF doğrulaması başarısız: xref/final kayıt bulunamadı.");
+ const xrefPos=Number(startMatch[1]);
+ if(!Number.isSafeInteger(xrefPos)||xrefPos<0||xrefPos>=bytes.length||ascii.slice(xrefPos,xrefPos+4)!=="xref")throw new Error("PDF doğrulaması başarısız: xref tablosu geçersiz.");
+ const trailer=ascii.match(/trailer\s*<<[\s\S]*?\/Size\s+(\d+)[\s\S]*?\/Root\s+(\d+)\s+0\s+R[\s\S]*?>>/);
+ if(!trailer)throw new Error("PDF doğrulaması başarısız: trailer eksik.");
+ const size=Number(trailer[1]); if(!Number.isSafeInteger(size)||size<2)throw new Error("PDF doğrulaması başarısız: object sayısı geçersiz.");
+ return {size,pages:pages.length,bytes:bytes.length,mime:"application/pdf"};
+}
+
 async function pdfCreateVectorDocument(pages){
+ if(!Array.isArray(pages)||pages.length===0)throw new Error("PDF oluşturulamadı: sayfa bulunamadı.");
  const objs=[];const add=b=>{objs.push(b);return objs.length};
  const usedTexts=[];for(const p of pages)usedTexts.push(p.content);const usedCids=pdfCollectUsedCids(usedTexts);const fontObj=await pdfMakeFontAndToUnicode(objs,usedCids);
  const pageRefs=[];
  for(const page of pages){
-  const imageRefs=[];const imageMap=new Map();
+  const imageRefs=[];
   for(const asset of page.images.values()){
-   const bytes=pdfDataUriToBytes(asset.data);const io=add(pdfConcatBytes([pdfObjBytes(`<< /Type /XObject /Subtype /Image /Width ${asset.width} /Height ${asset.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`),bytes,pdfObjBytes("\nendstream")]));imageRefs.push({id:asset.id,obj:io});imageMap.set(asset.id,io);
+   if(!asset||!asset.data)continue;
+   const bytes=pdfDataUriToBytes(asset.data); if(!bytes.length)throw new Error("PDF oluşturulamadı: görsel verisi boş.");
+   const io=add(pdfConcatBytes([pdfObjBytes(`<< /Type /XObject /Subtype /Image /Width ${asset.width} /Height ${asset.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`),bytes,pdfObjBytes("\nendstream")]));
+   imageRefs.push({id:asset.id,obj:io});
   }
-  let res=`/Font << /F1 ${fontObj} 0 R >>`;if(imageRefs.length)res+=` /XObject << ${imageRefs.map(r=>`/Im${r.id} ${r.obj} 0 R`).join(" ")} >>`;
-  const contentBytes=pdfObjBytes(page.content);const co=add(pdfConcatBytes([pdfObjBytes(`<< /Length ${contentBytes.length} >>\nstream\n`),contentBytes,pdfObjBytes("\nendstream")]));
-  const po=add(pdfObjBytes(`<< /Type /Page /Parent PAGESREF /MediaBox [0 0 595.28 841.89] /Resources << ${res} >> /Contents ${co} 0 R >>`));pageRefs.push(po);
+  let res=`/ProcSet [/PDF /Text /ImageC] /Font << /F1 ${fontObj} 0 R >>`;
+  if(imageRefs.length)res+=` /XObject << ${imageRefs.map(r=>`/Im${r.id} ${r.obj} 0 R`).join(" ")} >>`;
+  const contentBytes=pdfObjBytes(page.content); if(!contentBytes.length)throw new Error("PDF oluşturulamadı: boş sayfa içeriği.");
+  const co=add(pdfConcatBytes([pdfObjBytes(`<< /Length ${contentBytes.length} >>\nstream\n`),contentBytes,pdfObjBytes("\nendstream")]));
+  pageRefs.push(add(pdfObjBytes(`<< /Type /Page /Parent PAGESREF /MediaBox [0 0 595.28 841.89] /Resources << ${res} >> /Contents ${co} 0 R >>`)));
  }
- const pagesObj=add(pdfObjBytes(`<< /Type /Pages /Kids [${pageRefs.map(n=>n+" 0 R").join(" ")}] /Count ${pageRefs.length} >>`));const catalog=add(pdfObjBytes(`<< /Type /Catalog /Pages ${pagesObj} 0 R /PageMode /UseNone >>`));
- for(const n of pageRefs){objs[n-1]=pdfObjBytes(new TextDecoder().decode(objs[n-1]).replace("PAGESREF",`${pagesObj} 0 R`))}
- const header=pdfObjBytes("%PDF-1.4\n%\xFF\xFF\xFF\xFF\n");const parts=[header],offsets=[0];let pos=header.length;
+ const pagesObj=add(pdfObjBytes(`<< /Type /Pages /Kids [${pageRefs.map(n=>n+" 0 R").join(" ")}] /Count ${pageRefs.length} >>`));
+ const info=add(pdfObjBytes(`<< /Producer (Ofischi Premium PDF) >>`));
+ const catalog=add(pdfObjBytes(`<< /Type /Catalog /Pages ${pagesObj} 0 R /PageMode /UseNone /ViewerPreferences << /DisplayDocTitle false >> >>`));
+ for(const n of pageRefs)objs[n-1]=pdfObjBytes(new TextDecoder().decode(objs[n-1]).replace("PAGESREF",`${pagesObj} 0 R`));
+ const header=new Uint8Array([0x25,0x50,0x44,0x46,0x2d,0x31,0x2e,0x34,0x0a,0x25,0xff,0xff,0xff,0xff,0x0a]);
+ const parts=[header],offsets=[0];let pos=header.length;
  for(let i=0;i<objs.length;i++){const head=pdfObjBytes(`${i+1} 0 obj\n`),tail=pdfObjBytes("\nendobj\n");offsets[i+1]=pos;parts.push(head,objs[i],tail);pos+=head.length+objs[i].length+tail.length}
- const xrefPos=pos;let xref=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objs.length;i++)xref+=String(offsets[i]).padStart(10,"0")+" 00000 n \n";xref+=`trailer\n<< /Size ${objs.length+1} /Root ${catalog} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;parts.push(pdfObjBytes(xref));return new Blob([pdfConcatBytes(parts)],{type:"application/pdf"});
+ const xrefPos=pos;let xref=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objs.length;i++)xref+=String(offsets[i]).padStart(10,"0")+" 00000 n \n";
+ xref+=`trailer\n<< /Size ${objs.length+1} /Root ${catalog} 0 R /Info ${info} 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;parts.push(pdfObjBytes(xref));
+ const bytes=pdfConcatBytes(parts); pdfValidateBlobBytes(bytes); return new Blob([bytes],{type:"application/pdf"});
 }
 
 /* -------------------- APP -------------------- */
@@ -1853,6 +1868,9 @@ async function createPDF(openPreview=false){
   const pdfCurrency=data.currency?.selected||"TRY";
   const pdfLang=pdfCurrency==="TRY"?"TR":"EN";
   const blob=await buildPriceListPDF(data,pdfLang);
+   if(!blob||blob.size<=0)throw new Error("PDF doğrulaması başarısız: dosya boyutu 0.");
+   if(blob.type!=="application/pdf")throw new Error("PDF doğrulaması başarısız: MIME type application/pdf değil.");
+   const pdfBytes=new Uint8Array(await blob.arrayBuffer()); pdfValidateBlobBytes(pdfBytes);
   const url=URL.createObjectURL(blob);
   const fileName=pdfCurrency==="TRY"?"OFISCHI-2026-2-TL-FIYAT-LISTESI.pdf":pdfCurrency==="USD"?"OFISCHI-2026-2-USD-PRICE-LIST.pdf":"OFISCHI-2026-2-EUR-PRICE-LIST.pdf";
   if(openPreview||isMobile){
