@@ -1713,7 +1713,8 @@ try{
   const fastLocal=readLocalRecord(DB_KEY)||readLocalRecord(BACKUP_KEY);
   const localData=fastLocal?.data||defaultData();
   setData(localData);
-  hydratedRef.current=true;
+  /* Supabase doğrulanana kadar hiçbir otomatik cloud yazımı yapılmaz. */
+  hydratedRef.current=false;
 
   const [pendingLoaded,idbLoaded]=await Promise.all([
     idbGetPendingSync().catch(e=>{console.warn("Bekleyen senkronizasyon okunamadı:",e);return null}),
@@ -1767,6 +1768,7 @@ try{
     console.warn("Merkezi katalog okunamadı; yerel fallback kullanılıyor.",cloud.error);
     setData(bestLocal);
   }
+  hydratedRef.current=true;
   requestPersistentStorage().catch(()=>{});
   setLanguage(localStorage.getItem(LANG_KEY)==="EN"?"EN":"TR");
   setActiveCat((bestLocal.categories?.[0]?.id)||null);
@@ -1894,7 +1896,7 @@ if(!p)return p;
 const copy=JSON.parse(JSON.stringify(p));
 callback(copy);
 setSaved(false);
-if(hydratedRef.current&&!realtimeApplyingRef.current)queueCloudSync(copy);
+if(hydratedRef.current&&!realtimeApplyingRef.current&&!panelOpenRef.current)queueCloudSync(copy);
 return copy;
 });
 }
@@ -1963,9 +1965,6 @@ if(!confirm(t(language,"catDelete")))return;
 const next=normalizeData(data);
 next.categories=next.categories.filter(c=>c.id!==id);
 try{
-  queueCloudSync(next);
-  await saveLocal(next);
-  if(SUPABASE_ENABLED)await syncPendingToCloud();
   setData(next);
   setOpenCategories(prev=>{const copy={...prev};delete copy[id];return copy});
   setActiveCat(prev=>prev===id?(next.categories[0]?.id||null):prev);
@@ -2033,8 +2032,7 @@ async function deleteItem(categoryId,itemId){
   setData(next);
   setSelectedProduct(prev=>prev?.id===itemId?null:prev);
   showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
-  queueCloudSync(next);
-  syncPendingToCloud().catch(e=>console.warn("Arka plan Supabase kayıt hatası:",e));
+
 }
 
 function moveItem(categoryId,itemId,direction){
@@ -2071,8 +2069,7 @@ async function deletePricePart(categoryId,itemId,partId){
     return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}};
   })});
   setData(next);
-  queueCloudSync(next);
-  syncPendingToCloud().catch(e=>console.warn("Arka plan Supabase kayıt hatası:",e));
+
 }
 
 async function save(){
@@ -2080,54 +2077,52 @@ async function save(){
   const clean=normalizeData(data);
   setSaving(true);
   try{
-    /* 1) Önce cihaz kaydını kesinleştir.
-       2) Pending kuyruğunu yaz.
-       3) Buluta göndermeyi dene.
-       4) Bulut gecikse/hata verse bile Kaydet ve Kapat paneli kapatır;
-          pendingSync internet geldiğinde veya 5 sn'lik döngüde tekrar denenir. */
+    /* YÖNETİM PANELİ KAYDI: yalnızca açıkça Kaydet'e basıldığında merkeze yaz. */
     await saveLocal(clean);
-    const version=Date.now();
-    pendingSyncRef.current=clean;
-    pendingSyncVersionRef.current=version;
-    localMutationAtRef.current=version;
-    /* Kaydet & Kapat'ın kritik yolunda IndexedDB beklenmez. */
-    idbSetPendingSync(clean,version).catch(e=>console.warn("Pending kayıt yazılamadı:",e));
-    if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current);
+    const remote=await loadCloudDetailed();
+    if(!remote.ok)throw remote.error||new Error("Merkezi katalog okunamadı.");
 
-    /* BULUTU BEKLEME: Kaydet & Kapat anında kapanır. Cloud sync arka planda
-       devam eder ve başarısız olursa 1 saniyelik döngü/online event ile tekrar dener. */
-    if(SUPABASE_ENABLED&&navigator.onLine){
-      syncPendingToCloud().catch(e=>console.warn("Arka plan Supabase kayıt hatası:",e));
+    let toSave=clean;
+    if(!remote.empty&&remote.data){
+      /* Panel açılırken alınan snapshot varsa, başka cihazdaki yeni değişiklikleri
+         koruyarak yalnızca bu panelde yapılan değişiklikleri merkeze uygula. */
+      const base=panelSnapshot.current||cloudBaseRef.current||remote.data;
+      toSave=mergeCatalogThreeWay(remote.data,clean,base);
     }
 
+    const cloud=await Promise.race([
+      saveCloud(toSave),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Bulut kaydı 15 saniyede tamamlanamadı.")),15000))
+    ]);
+    if(!cloud?.saved)throw new Error("Bulut kaydı doğrulanamadı.");
+
+    const finalData=normalizeData(cloud.data||toSave);
+    await saveLocal(finalData);
+    setData(finalData);
+    cloudBaseRef.current=cloneData(finalData);
+    cloudReadyRef.current=true;
+    lastCloudUpdatedAtRef.current=cloud.updatedAt||Date.now();
+    localMutationAtRef.current=0;
+    pendingSyncRef.current=null;
+    pendingSyncVersionRef.current=0;
+    await idbClearPendingSync().catch(()=>{});
+
     panelSnapshot.current=null;
     setPanelOpen(false);
     setSaved(true);
-    showToast(language==="EN"?"Saved. Cloud sync is running in the background.":"Kaydedildi. Bulut senkronizasyonu arka planda devam ediyor.");
+    showToast(t(language,'saved'));
     setTimeout(()=>setSaved(false),1200);
   }catch(e){
-    console.error("Kayıt hatası:",e);
-    /* Yerel kayıt başarılı olduysa kullanıcıyı panelde kilitleme. Pending kuyruk
-       korunur ve otomatik senkronizasyon daha sonra tekrar dener. */
-    try{
-      await saveLocal(clean);
-      const version=Date.now();
-      pendingSyncRef.current=clean;
-      pendingSyncVersionRef.current=version;
-      localMutationAtRef.current=version;
-      await idbSetPendingSync(clean,version);
-    }catch(localErr){console.error("Yerel kayıt da başarısız:",localErr)}
-    panelSnapshot.current=null;
-    setPanelOpen(false);
-    setSaved(true);
-    showToast(language==="EN"?"Local save completed; central sync is pending.":"Cihaza kaydedildi; merkezi senkronizasyon beklemede. Hata düzelince otomatik tekrar denenecek.");
-    setTimeout(()=>setSaved(false),1200);
+    console.error("MERKEZİ KAYIT HATASI:",e);
+    /* Cloud başarısızsa kullanıcıya başarılıymış gibi göstermiyoruz. Yerel kopya
+       korunur; panel açık kalır ve kullanıcı tekrar Kaydet'e basabilir. */
+    showToast(language==="EN"?"Save failed. Cloud database was not updated.":"Kayıt başarısız. Merkezi veritabanı güncellenmedi.");
   }finally{
     setSaving(false);
   }
 }
 
-function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
+function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));cloudBaseRef.current=cloneData(data);setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
 function closeAdminPanel(discard=true){
   if(discard && panelSnapshot.current){setData(panelSnapshot.current)}
   panelSnapshot.current=null;
