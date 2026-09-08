@@ -376,11 +376,17 @@ async function prepareDataForCloud(data){
 async function saveCloud(data){
   if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase bağlantısı etkin değil.");
   const clean=await prepareDataForCloud(data);
-  const result=await supabaseClient
+  /* Ağ isteği sonsuza kadar beklemesin; kullanıcı Kaydet ve Kapat'a basınca
+     panel kilitlenmesin. Başarısız olursa pendingSync kuyruğu tekrar dener. */
+  const request=supabaseClient
     .from(SUPABASE_TABLE)
     .upsert({id:SUPABASE_ROW_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:'id'})
     .select('id,updated_at')
     .single();
+  const result=await Promise.race([
+    request,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error("Supabase isteği zaman aşımına uğradı.")),20000))
+  ]);
   if(result.error)throw result.error;
   if(!result.data?.id)throw new Error("Bulut kaydı doğrulanamadı.");
   return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now()};
@@ -389,6 +395,7 @@ async function saveCloud(data){
 const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
 const IDB_KEY="catalog";
+const IDB_PENDING_KEY="pendingSync";
 
 function openCatalogDB(){
   return new Promise((resolve,reject)=>{
@@ -449,6 +456,38 @@ async function idbSetRecord(record){
   });
 }
 
+async function idbSetPendingSync(data,version){
+  const db=await openCatalogDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(IDB_STORE,"readwrite");
+    tx.objectStore(IDB_STORE).put({savedAt:Date.now(),version:Number(version)||Date.now(),data:normalizeData(data)},IDB_PENDING_KEY);
+    tx.oncomplete=()=>{db.close();resolve(true)};
+    tx.onerror=()=>{db.close();reject(tx.error||new Error("Bekleyen senkronizasyon yazılamadı"))};
+    tx.onabort=()=>{db.close();reject(tx.error||new Error("Bekleyen senkronizasyon iptal edildi"))};
+  });
+}
+async function idbGetPendingSync(){
+  const db=await openCatalogDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(IDB_STORE,"readonly");
+    const req=tx.objectStore(IDB_STORE).get(IDB_PENDING_KEY);
+    req.onsuccess=()=>resolve(req.result&&req.result.data?{savedAt:Number(req.result.savedAt)||0,version:Number(req.result.version)||0,data:normalizeData(req.result.data)}:null);
+    req.onerror=()=>reject(req.error||new Error("Bekleyen senkronizasyon okunamadı"));
+    tx.oncomplete=()=>db.close();
+    tx.onerror=()=>reject(tx.error||new Error("Bekleyen senkronizasyon okuma hatası"));
+  });
+}
+async function idbClearPendingSync(){
+  const db=await openCatalogDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(IDB_STORE,"readwrite");
+    tx.objectStore(IDB_STORE).delete(IDB_PENDING_KEY);
+    tx.oncomplete=()=>{db.close();resolve(true)};
+    tx.onerror=()=>{db.close();reject(tx.error||new Error("Bekleyen senkronizasyon silinemedi"))};
+    tx.onabort=()=>{db.close();reject(tx.error||new Error("Bekleyen senkronizasyon silme işlemi iptal edildi"))};
+  });
+}
+
 async function loadLocal(){
   const local=readLocalRecord(DB_KEY);
   const backup=readLocalRecord(BACKUP_KEY);
@@ -475,11 +514,12 @@ async function saveLocal(data){
   const clean=data;
   const record={savedAt:Date.now(),data:clean};
   const json=JSON.stringify(record);
+  /* Kritik yol: localStorage anında yazılır. IndexedDB yedeklemesi UI'ı bekletmez. */
   try{
     localStorage.setItem(DB_KEY,json);
     localStorage.setItem(BACKUP_KEY,json);
   }catch(e){console.warn("localStorage yazılamadı:",e)}
-  try{await idbSetRecord(record)}catch(e){console.warn("IndexedDB yazılamadı:",e)}
+  idbSetRecord(record).catch(e=>console.warn("IndexedDB yazılamadı:",e));
   return {savedAt:record.savedAt,data:clean};
 }
 
@@ -1476,7 +1516,7 @@ useEffect(()=>{
 },[data?.categories]);
 
 /* SUPABASE REALTIME + POLLING YEDEĞİ: diğer cihazlardaki değişiklikleri al. */
-const panelOpenRef=useRef(false), languageRef=useRef(language), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0), localMutationAtRef=useRef(0);
+const panelOpenRef=useRef(false), languageRef=useRef(language), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0), localMutationAtRef=useRef(0), autoSyncTimerRef=useRef(null), syncInFlightRef=useRef(false), pendingSyncRef=useRef(null), pendingSyncVersionRef=useRef(0), hydratedRef=useRef(false);
 useEffect(()=>{panelOpenRef.current=panelOpen},[panelOpen]);
 useEffect(()=>{languageRef.current=language},[language]);
 useEffect(()=>{
@@ -1511,14 +1551,18 @@ useEffect(()=>{
     });
 
   /* Realtime kapalı/engelli olsa bile en fazla birkaç saniyede güncel kalması için yedek okuma. */
+  let pollInFlight=false;
   const poll=async()=>{
-    if(!active||panelOpenRef.current||realtimeApplyingRef.current)return;
-    const cloud=await loadCloud();
-    if(cloud&&cloud.savedAt>lastCloudUpdatedAtRef.current){
-      await applyCloudPayload(cloud.data, new Date(cloud.savedAt).toISOString());
-    }
+    if(!active||pollInFlight||panelOpenRef.current||realtimeApplyingRef.current||pendingSyncRef.current)return;
+    pollInFlight=true;
+    try{
+      const cloud=await loadCloud();
+      if(cloud&&cloud.savedAt>lastCloudUpdatedAtRef.current){
+        await applyCloudPayload(cloud.data, new Date(cloud.savedAt).toISOString());
+      }
+    }finally{pollInFlight=false}
   };
-  const pollTimer=setInterval(poll,15000);
+  const pollTimer=setInterval(poll,2000);
   return()=>{active=false;clearInterval(pollTimer);supabaseClient.removeChannel(channel)};
 },[]);
 const productTranslationTimers=useRef({});
@@ -1587,30 +1631,40 @@ useEffect(()=>{
 let cancelled=false;
 async function init(){
 try{
-const [localLoaded,cloudLoaded]=await Promise.all([loadLocal(),loadCloud()]);
+/* Açılış hızını maksimuma çıkar: önce cihazdaki veriyle ekranı aç,
+   Supabase ve IndexedDB kontrollerini arka planda tamamla. */
+const localLoaded=await loadLocal();
+const pendingLoaded=await idbGetPendingSync().catch(e=>{console.warn("Bekleyen senkronizasyon okunamadı:",e);return null});
 let loaded=null;
-/* Supabase is the cross-device source of truth. Local storage is only the
-   offline fallback, so an old browser copy can never overwrite a newer cloud copy. */
-if(cloudLoaded){
-  loaded=cloudLoaded.data;
-  lastCloudUpdatedAtRef.current=cloudLoaded.savedAt||Date.now();
+if(pendingLoaded?.data){
+  loaded=pendingLoaded.data;
+  pendingSyncRef.current=loaded;
+  pendingSyncVersionRef.current=Number(pendingLoaded.version)||Date.now();
+  localMutationAtRef.current=pendingSyncVersionRef.current;
 }else if(localLoaded){
   loaded=localLoaded.data;
-  /* If cloud is unavailable, keep working locally. A later successful Save
-     will publish this state to Supabase. */
 }else{
   loaded=defaultData();
   await saveLocal(loaded);
-  if(SUPABASE_ENABLED){
-    try{
-      const cloud=await saveCloud(loaded);
-      lastCloudUpdatedAtRef.current=cloud.updatedAt||Date.now();
-    }catch(e){console.warn('İlk Supabase kaydı yapılamadı:',e)}
-  }
 }
-await requestPersistentStorage();
 if(cancelled)return;
 setData(loaded);
+hydratedRef.current=true;
+await requestPersistentStorage();
+/* Bulut doğrulaması ekran açıldıktan sonra yapılır; kullanıcıyı bekletmez. */
+if(SUPABASE_ENABLED&&navigator.onLine&&!pendingSyncRef.current){
+  loadCloud().then(cloud=>{
+    if(cancelled||!cloud)return;
+    if(cloud.savedAt>lastCloudUpdatedAtRef.current&&cloud.savedAt>localMutationAtRef.current){
+      lastCloudUpdatedAtRef.current=cloud.savedAt;
+      setData(current=>{
+        if(panelOpenRef.current||pendingSyncRef.current)return current;
+        return cloud.data;
+      });
+      saveLocal(cloud.data).catch(()=>{});
+    }
+  }).catch(e=>console.warn("Arka plan bulut okuma hatası:",e));
+}
 setLanguage(localStorage.getItem(LANG_KEY)==="EN"?"EN":"TR");
 setActiveCat(loaded.categories?.[0]?.id||null);
 }catch(e){console.error(e);setData(defaultData())}
@@ -1643,6 +1697,59 @@ useEffect(()=>{
 },[data]);
 
 function showToast(message){setToast(message);if(toastTimerRef.current)clearTimeout(toastTimerRef.current);toastTimerRef.current=setTimeout(()=>setToast(""),3500)}
+
+/* OTOMATİK BULUT SENKRONİZASYONU
+   - Her gerçek değişiklik önce cihazda kalıcılaşır.
+   - İnternet varsa kısa bir gecikmeyle Supabase'e otomatik gönderilir.
+   - İnternet yoksa son değişiklik IndexedDB'de pendingSync olarak tutulur.
+   - İnternet geri gelince otomatik gönderilir.
+   - Aynı anda iki cloud write çalışmaz; arada yapılan son değişiklik korunur. */
+async function syncPendingToCloud(){
+  if(!SUPABASE_ENABLED||!supabaseClient||!navigator.onLine)return false;
+  if(syncInFlightRef.current)return false;
+  const pending=pendingSyncRef.current;
+  if(!pending)return false;
+  syncInFlightRef.current=true;
+  const version=pendingSyncVersionRef.current;
+  const snapshot=normalizeData(pending);
+  try{
+    const cloud=await saveCloud(snapshot);
+    if(!cloud?.saved)throw new Error("Bulut kaydı doğrulanamadı.");
+    await saveLocal(cloud.data||snapshot);
+    lastCloudUpdatedAtRef.current=cloud.updatedAt||Date.now();
+    /* Kullanıcı bu sırada yeni bir değişiklik yaptıysa pending'i silme. */
+    if(version===pendingSyncVersionRef.current){
+      pendingSyncRef.current=null;
+      await idbClearPendingSync().catch(()=>{});
+    }
+    return true;
+  }catch(e){
+    console.warn("Otomatik Supabase senkronizasyonu beklemede:",e);
+    return false;
+  }finally{
+    syncInFlightRef.current=false;
+  }
+}
+function queueCloudSync(data){
+  if(!data)return;
+  const clean=normalizeData(data);
+  const version=Date.now();
+  pendingSyncRef.current=clean;
+  pendingSyncVersionRef.current=version;
+  localMutationAtRef.current=version;
+  saveLocal(clean).catch(e=>console.warn("Yerel otomatik kayıt hatası:",e));
+  idbSetPendingSync(clean,version).catch(e=>console.warn("Bulut bekleme kuyruğu yazılamadı:",e));
+  if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current);
+  autoSyncTimerRef.current=setTimeout(()=>{syncPendingToCloud()},300);
+}
+useEffect(()=>{
+  const online=()=>{
+    if(pendingSyncRef.current)syncPendingToCloud();
+  };
+  window.addEventListener("online",online);
+  const timer=setInterval(()=>{if(pendingSyncRef.current)syncPendingToCloud()},2000);
+  return()=>{window.removeEventListener("online",online);clearInterval(timer);if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current)};
+},[]);
 function updateData(callback){
 setData(p=>{
 if(!p)return p;
@@ -1651,6 +1758,7 @@ if(!p)return p;
 const copy=JSON.parse(JSON.stringify(p));
 callback(copy);
 setSaved(false);
+if(hydratedRef.current&&!realtimeApplyingRef.current)queueCloudSync(copy);
 return copy;
 });
 }
@@ -1719,8 +1827,9 @@ if(!confirm(t(language,"catDelete")))return;
 const next=normalizeData(data);
 next.categories=next.categories.filter(c=>c.id!==id);
 try{
+  queueCloudSync(next);
   await saveLocal(next);
-  if(SUPABASE_ENABLED)await saveCloud(next);
+  if(SUPABASE_ENABLED)await syncPendingToCloud();
   setData(next);
   setOpenCategories(prev=>{const copy={...prev};delete copy[id];return copy});
   setActiveCat(prev=>prev===id?(next.categories[0]?.id||null):prev);
@@ -1788,12 +1897,8 @@ async function deleteItem(categoryId,itemId){
   setData(next);
   setSelectedProduct(prev=>prev?.id===itemId?null:prev);
   showToast(language==="EN"?"Product deleted.":"Ürün silindi.");
-  setTimeout(async()=>{
-    try{
-      await saveLocal(next);
-      if(SUPABASE_ENABLED)await saveCloud(next);
-    }catch(e){console.warn("Arka plan Supabase kayıt hatası:",e)}
-  },0);
+  queueCloudSync(next);
+  syncPendingToCloud().catch(e=>console.warn("Arka plan Supabase kayıt hatası:",e));
 }
 
 function moveItem(categoryId,itemId,direction){
@@ -1830,12 +1935,8 @@ async function deletePricePart(categoryId,itemId,partId){
     return {...i,price:{...p,parts:p.parts.filter(part=>part.id!==partId)}};
   })});
   setData(next);
-  setTimeout(async()=>{
-    try{
-      await saveLocal(next);
-      if(SUPABASE_ENABLED)await saveCloud(next);
-    }catch(e){console.warn("Arka plan Supabase kayıt hatası:",e)}
-  },0);
+  queueCloudSync(next);
+  syncPendingToCloud().catch(e=>console.warn("Arka plan Supabase kayıt hatası:",e));
 }
 
 async function save(){
@@ -1843,26 +1944,48 @@ async function save(){
   const clean=normalizeData(data);
   setSaving(true);
   try{
-    /* First persist locally so the current device is protected even if the
-       network drops. Then wait for the real cloud write before saying Saved. */
+    /* 1) Önce cihaz kaydını kesinleştir.
+       2) Pending kuyruğunu yaz.
+       3) Buluta göndermeyi dene.
+       4) Bulut gecikse/hata verse bile Kaydet ve Kapat paneli kapatır;
+          pendingSync internet geldiğinde veya 5 sn'lik döngüde tekrar denenir. */
     await saveLocal(clean);
-    if(SUPABASE_ENABLED){
-      const cloudResult=await saveCloud(clean);
-      if(!cloudResult?.saved)throw new Error("Bulut kaydı başarısız.");
-      const finalData=normalizeData(cloudResult.data||clean);
-      await saveLocal(finalData);
-      setData(finalData);
-      lastCloudUpdatedAtRef.current=cloudResult.updatedAt||Date.now();
+    const version=Date.now();
+    pendingSyncRef.current=clean;
+    pendingSyncVersionRef.current=version;
+    localMutationAtRef.current=version;
+    await idbSetPendingSync(clean,version);
+    if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current);
+
+    let ok=false;
+    if(SUPABASE_ENABLED&&navigator.onLine){
+      ok=await syncPendingToCloud();
     }
-    localMutationAtRef.current=Date.now();
+
     panelSnapshot.current=null;
     setPanelOpen(false);
     setSaved(true);
-    showToast(t(language,'saved'));
+    showToast(ok||!SUPABASE_ENABLED
+      ?t(language,'saved')
+      :(language==="EN"?"Saved on this device; cloud sync is pending.":"Kaydedildi. Bulut senkronizasyonu arka planda devam ediyor."));
     setTimeout(()=>setSaved(false),1200);
   }catch(e){
     console.error("Kayıt hatası:",e);
-    showToast(language==="EN"?"Save failed: cloud data could not be published.":"Kayıt başarısız: buluta gönderilemedi.");
+    /* Yerel kayıt başarılı olduysa kullanıcıyı panelde kilitleme. Pending kuyruk
+       korunur ve otomatik senkronizasyon daha sonra tekrar dener. */
+    try{
+      await saveLocal(clean);
+      const version=Date.now();
+      pendingSyncRef.current=clean;
+      pendingSyncVersionRef.current=version;
+      localMutationAtRef.current=version;
+      await idbSetPendingSync(clean,version);
+    }catch(localErr){console.error("Yerel kayıt da başarısız:",localErr)}
+    panelSnapshot.current=null;
+    setPanelOpen(false);
+    setSaved(true);
+    showToast(language==="EN"?"Saved on this device; cloud sync is pending.":"Cihaza kaydedildi; bulut senkronizasyonu beklemede. Otomatik tekrar denenecek.");
+    setTimeout(()=>setSaved(false),1200);
   }finally{
     setSaving(false);
   }
@@ -2006,7 +2129,7 @@ try{
 const imported=await readJSONFile(file);
 if(!confirm("İçe aktarılan katalog mevcut katalogla değiştirilecek. Mevcut verinizin yedeği önce alınacak. Devam edilsin mi?"))return;
 if(data)downloadJSON(data);
-await saveLocal(imported);setData(imported);setActiveCat(imported.categories?.[0]?.id||null);showToast("Katalog içe aktarıldı.");
+queueCloudSync(imported);await saveLocal(imported);setData(imported);setActiveCat(imported.categories?.[0]?.id||null);showToast("Katalog içe aktarıldı.");
 }catch(err){console.error(err);showToast("JSON dosyası okunamadı.")}
 finally{e.target.value=""}
 }
