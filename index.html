@@ -1633,24 +1633,30 @@ async function init(){
 try{
 /* Açılış hızını maksimuma çıkar: önce cihazdaki veriyle ekranı aç,
    Supabase ve IndexedDB kontrollerini arka planda tamamla. */
-const localLoaded=await loadLocal();
-const pendingLoaded=await idbGetPendingSync().catch(e=>{console.warn("Bekleyen senkronizasyon okunamadı:",e);return null});
-let loaded=null;
-if(pendingLoaded?.data){
-  loaded=pendingLoaded.data;
-  pendingSyncRef.current=loaded;
-  pendingSyncVersionRef.current=Number(pendingLoaded.version)||Date.now();
-  localMutationAtRef.current=pendingSyncVersionRef.current;
-}else if(localLoaded){
-  loaded=localLoaded.data;
-}else{
-  loaded=defaultData();
-  await saveLocal(loaded);
-}
+/* Kritik yol yalnızca localStorage: IndexedDB açılış ekranını bloke etmez. */
+const fastLocal=readLocalRecord(DB_KEY)||readLocalRecord(BACKUP_KEY);
+let loaded=fastLocal?.data||defaultData();
 if(cancelled)return;
 setData(loaded);
 hydratedRef.current=true;
-await requestPersistentStorage();
+/* IndexedDB ve pending kuyruk arka planda okunur; daha yeni bir pending kayıt varsa ekrana uygulanır. */
+Promise.all([
+  idbGetPendingSync().catch(e=>{console.warn("Bekleyen senkronizasyon okunamadı:",e);return null}),
+  idbGetRecord().catch(e=>{console.warn("IndexedDB okunamadı:",e);return null})
+]).then(([pendingLoaded,idbLoaded])=>{
+  if(cancelled)return;
+  if(pendingLoaded?.data){
+    pendingSyncRef.current=pendingLoaded.data;
+    pendingSyncVersionRef.current=Number(pendingLoaded.version)||Date.now();
+    localMutationAtRef.current=pendingSyncVersionRef.current;
+    setData(current=>pendingLoaded.data);
+    return;
+  }
+  if(idbLoaded?.data && Number(idbLoaded.savedAt||0)>Number(fastLocal?.savedAt||0)){
+    setData(current=>idbLoaded.data);
+  }
+});
+requestPersistentStorage().catch(()=>{});
 /* Bulut doğrulaması ekran açıldıktan sonra yapılır; kullanıcıyı bekletmez. */
 if(SUPABASE_ENABLED&&navigator.onLine&&!pendingSyncRef.current){
   loadCloud().then(cloud=>{
@@ -1732,15 +1738,18 @@ async function syncPendingToCloud(){
 }
 function queueCloudSync(data){
   if(!data)return;
-  const clean=normalizeData(data);
+  const clean=data;
   const version=Date.now();
   pendingSyncRef.current=clean;
   pendingSyncVersionRef.current=version;
   localMutationAtRef.current=version;
+  /* localStorage hızlı yedek; ağır IndexedDB işlemi her tuş vuruşunda yapılmaz. */
   saveLocal(clean).catch(e=>console.warn("Yerel otomatik kayıt hatası:",e));
-  idbSetPendingSync(clean,version).catch(e=>console.warn("Bulut bekleme kuyruğu yazılamadı:",e));
   if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current);
-  autoSyncTimerRef.current=setTimeout(()=>{syncPendingToCloud()},300);
+  autoSyncTimerRef.current=setTimeout(async()=>{
+    try{await idbSetPendingSync(clean,version)}catch(e){console.warn("Bulut bekleme kuyruğu yazılamadı:",e)}
+    await syncPendingToCloud();
+  },500);
 }
 useEffect(()=>{
   const online=()=>{
@@ -1954,7 +1963,8 @@ async function save(){
     pendingSyncRef.current=clean;
     pendingSyncVersionRef.current=version;
     localMutationAtRef.current=version;
-    await idbSetPendingSync(clean,version);
+    /* Kaydet & Kapat'ın kritik yolunda IndexedDB beklenmez. */
+    idbSetPendingSync(clean,version).catch(e=>console.warn("Pending kayıt yazılamadı:",e));
     if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current);
 
     let ok=false;
