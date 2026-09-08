@@ -328,64 +328,66 @@ function dataUrlToBlob(dataUrl){
   }
   return new Blob([decodeURIComponent(body)],{type:mime});
 }
-function storagePathFor(kind,categoryId,itemId,src){
-  const ext=/^data:image\/(png|webp|gif|svg\+xml)/i.test(String(src||''))?
-    (String(src).match(/^data:image\/(png|webp|gif)/i)?.[1]||'png'):'jpg';
-  if(kind==='product')return `products/${encodeURIComponent(String(categoryId))}/${encodeURIComponent(String(itemId))}.${ext}`;
-  if(kind==='category')return `categories/${encodeURIComponent(String(categoryId))}.${ext}`;
-  if(kind==='site-logo')return `branding/site-logo.${ext}`;
-  if(kind==='pdf-logo')return `branding/pdf-cover-logo.${ext}`;
-  return `branding/${kind}.${ext}`;
+function storagePathFor(kind,categoryId,itemId,src,index=0){
+  const mime=String(src||"").match(/^data:image\/([^;,]+)/i)?.[1]?.toLowerCase()||"jpeg";
+  const ext=mime==="svg+xml"?"svg":(mime==="jpeg"?"jpg":mime);
+  const nonce=(typeof crypto!=="undefined"&&crypto.randomUUID)?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if(kind==="product")return `products/${encodeURIComponent(String(categoryId))}/${encodeURIComponent(String(itemId))}/${Date.now()}-${nonce}-${index}.${ext}`;
+  if(kind==="category")return `categories/${encodeURIComponent(String(categoryId))}/${Date.now()}-${nonce}.${ext}`;
+  if(kind==="site-logo")return `branding/site-logo/${Date.now()}-${nonce}.${ext}`;
+  if(kind==="pdf-logo")return `branding/pdf-cover-logo/${Date.now()}-${nonce}.${ext}`;
+  return `branding/${kind}/${Date.now()}-${nonce}.${ext}`;
 }
 async function uploadDataImageToSupabase(src,path){
   if(!isDataImageSource(src))return src;
-  if(!SUPABASE_ENABLED||!supabaseClient)throw new Error('Supabase yapılandırılmadı');
+  if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase yapılandırılmadı");
   const blob=dataUrlToBlob(src);
   const {error}=await supabaseClient.storage.from(SUPABASE_BUCKET).upload(path,blob,{
-    cacheControl:'31536000',
-    contentType:blob.type||'image/jpeg',
-    upsert:true
+    cacheControl:"3600",contentType:blob.type||"image/jpeg",upsert:false
   });
   if(error)throw error;
   const {data}=supabaseClient.storage.from(SUPABASE_BUCKET).getPublicUrl(path);
-  if(!data?.publicUrl)throw new Error('Supabase görsel URL oluşturamadı.');
-  return data.publicUrl;
+  if(!data?.publicUrl)throw new Error("Supabase görsel URL oluşturamadı.");
+  return `${data.publicUrl}${data.publicUrl.includes("?")?"&":"?"}v=${encodeURIComponent(path.split("/").pop())}`;
 }
 async function prepareDataForCloud(data){
-  const clean=normalizeData(data);
-  const tasks=[];
-  if(isDataImageSource(clean.logo?.src)){
-    tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor('site-logo',null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
-  }
-  if(isDataImageSource(clean.pdf?.coverLogo?.src)){
-    tasks.push(uploadDataImageToSupabase(clean.pdf.coverLogo.src,storagePathFor('pdf-logo',null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
-  }
+  const clean=normalizeData(data),tasks=[];
+  if(isDataImageSource(clean.logo?.src))tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor("site-logo",null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
+  if(isDataImageSource(clean.pdf?.coverLogo?.src))tasks.push(uploadDataImageToSupabase(clean.pdf.coverLogo.src,storagePathFor("pdf-logo",null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
   for(const category of (clean.categories||[])){
-    if(isDataImageSource(category?.coverImage)){
-      tasks.push(uploadDataImageToSupabase(category.coverImage,storagePathFor('category',category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
-    }
+    if(isDataImageSource(category?.coverImage))tasks.push(uploadDataImageToSupabase(category.coverImage,storagePathFor("category",category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
     for(const item of (category.items||[])){
-      if(isDataImageSource(item?.image)){
-        tasks.push(uploadDataImageToSupabase(item.image,storagePathFor('product',category.id,item.id,item.image)).then(url=>{item.image=url}));
-      }
+      const images=Array.isArray(item.images)?item.images.filter(Boolean):(item.image?[item.image]:[]);
+      if(isDataImageSource(item.image)&&!images.includes(item.image))images.unshift(item.image);
+      const uploads=images.map((src,index)=>isDataImageSource(src)?uploadDataImageToSupabase(src,storagePathFor("product",category.id,item.id,src,index)):Promise.resolve(src));
+      tasks.push(Promise.all(uploads).then(urls=>{item.images=urls.filter(Boolean);item.image=item.images[0]||null}));
     }
   }
   if(tasks.length)await Promise.all(tasks);
   return clean;
 }
-async function saveCloud(data){
+async function saveCloud(data,expectedUpdatedAtIso=null){
   if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase bağlantısı etkin değil.");
-  const clean=await prepareDataForCloud(data);
-  const result=await supabaseClient
-    .from(SUPABASE_TABLE)
-    .upsert({id:SUPABASE_ROW_ID,data:clean,updated_at:new Date().toISOString()},{onConflict:'id'})
-    .select('id,updated_at')
-    .single();
-  if(result.error)throw result.error;
+  const clean=await prepareDataForCloud(data),nextUpdatedAt=new Date().toISOString();
+  if(expectedUpdatedAtIso){
+    const result=await supabaseClient.from(SUPABASE_TABLE)
+      .update({data:clean,updated_at:nextUpdatedAt})
+      .eq("id",SUPABASE_ROW_ID).eq("updated_at",expectedUpdatedAtIso)
+      .select("id,updated_at").maybeSingle();
+    if(result.error)throw result.error;
+    if(!result.data?.id){const e=new Error("Bu katalog başka bir cihazda güncellendi.");e.code="CATALOG_CONFLICT";throw e;}
+    return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};
+  }
+  const result=await supabaseClient.from(SUPABASE_TABLE)
+    .insert({id:SUPABASE_ROW_ID,data:clean,updated_at:nextUpdatedAt})
+    .select("id,updated_at").maybeSingle();
+  if(result.error){
+    if(String(result.error.code)==="23505"){const e=new Error("Bu katalog başka bir cihazda oluşturuldu.");e.code="CATALOG_CONFLICT";throw e;}
+    throw result.error;
+  }
   if(!result.data?.id)throw new Error("Bulut kaydı doğrulanamadı.");
-  return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now()};
+  return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};
 }
-
 const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
 const IDB_KEY="catalog";
@@ -1590,7 +1592,7 @@ async function loadCloudDetailed(){
     const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
     if(error)throw error;
     if(!data?.data||typeof data.data!=='object'||!Object.keys(data.data).length)return {ok:true,empty:true,data:null,savedAt:0};
-    return {ok:true,empty:false,data:normalizeData(data.data),savedAt:Date.parse(data.updated_at)||0};
+    return {ok:true,empty:false,data:normalizeData(data.data),savedAt:Date.parse(data.updated_at)||0,updatedAtIso:data.updated_at||null};
   }catch(error){return {ok:false,empty:false,error};}
 }
 useEffect(()=>{
@@ -1756,13 +1758,20 @@ try{
     const migrationData=normalizeData(bestLocal);
     cloudBaseRef.current=cloneData(migrationData);
     cloudReadyRef.current=true;
-    pendingSyncRef.current=migrationData;
-    pendingSyncVersionRef.current=Date.now();
-    localMutationAtRef.current=pendingSyncVersionRef.current;
-    await idbSetPendingSync(migrationData,pendingSyncVersionRef.current).catch(()=>{});
-    const migrated=await syncPendingToCloud();
-    if(migrated){setData(migrationData);await saveLocal(migrationData).catch(()=>{});}
-    else setData(migrationData);
+    try{
+      const migrated=await saveCloud(migrationData,null);
+      if(migrated?.saved){
+        lastCloudUpdatedAtRef.current=migrated.updatedAt||Date.now();
+        await idbClearPendingSync().catch(()=>{});
+        pendingSyncRef.current=null;
+        pendingSyncVersionRef.current=0;
+        await saveLocal(migrated.data).catch(()=>{});
+        setData(migrated.data);
+      }else setData(migrationData);
+    }catch(migrationError){
+      console.warn("İlk merkezi migration başarısız:",migrationError);
+      setData(migrationData);
+    }
   }else{
     /* Supabase erişilemiyorsa veri kaybolmaz; yalnızca offline fallback kullanılır. */
     console.warn("Merkezi katalog okunamadı; yerel fallback kullanılıyor.",cloud.error);
@@ -1771,7 +1780,7 @@ try{
   hydratedRef.current=true;
   requestPersistentStorage().catch(()=>{});
   setLanguage(localStorage.getItem(LANG_KEY)==="EN"?"EN":"TR");
-  setActiveCat((bestLocal.categories?.[0]?.id)||null);
+  setActiveCat(((cloud.ok&&!cloud.empty&&cloud.data)?cloud.data:bestLocal)?.categories?.[0]?.id||null);
 }catch(e){console.error(e);setData(defaultData())}
 finally{if(!cancelled)setLoading(false)}
 }
@@ -1779,115 +1788,25 @@ init();
 return()=>{cancelled=true}
 },[]);
 
-/* Sayfa kapanırken/yenilenirken son state'i de yedekle. */
+/* Sayfa kapanırken katalog verisi otomatik kaydedilmez. Yalnızca kaydedilmemiş
+   admin değişikliği varsa tarayıcı ayrılma uyarısı gösterebilir. */
 useEffect(()=>{
-  if(!data)return;
-  let persisted=false;
-  const persist=()=>{
-    if(persisted)return;
-    persisted=true;
-    try{
-      const clean=normalizeData(data);
-      const json=JSON.stringify(clean);
-      localStorage.setItem(DB_KEY,json);
-      localStorage.setItem(BACKUP_KEY,json);
-    }catch(e){}
+  const warn=(event)=>{
+    if(!panelOpenRef.current||!panelSnapshot.current||!data)return;
+    const dirty=JSON.stringify(normalizeData(data))!==JSON.stringify(normalizeData(panelSnapshot.current));
+    if(!dirty)return;
+    event.preventDefault();event.returnValue="";
   };
-  window.addEventListener("pagehide",persist,{once:true});
-  window.addEventListener("beforeunload",persist,{once:true});
-  return()=>{
-    window.removeEventListener("pagehide",persist);
-    window.removeEventListener("beforeunload",persist);
-  };
+  window.addEventListener("beforeunload",warn);
+  return()=>window.removeEventListener("beforeunload",warn);
 },[data]);
 
 function showToast(message){setToast(message);if(toastTimerRef.current)clearTimeout(toastTimerRef.current);toastTimerRef.current=setTimeout(()=>setToast(""),3500)}
 
-/* OTOMATİK BULUT SENKRONİZASYONU
-   - Her gerçek değişiklik önce cihazda kalıcılaşır.
-   - İnternet varsa kısa bir gecikmeyle Supabase'e otomatik gönderilir.
-   - İnternet yoksa son değişiklik IndexedDB'de pendingSync olarak tutulur.
-   - İnternet geri gelince otomatik gönderilir.
-   - Aynı anda iki cloud write çalışmaz; arada yapılan son değişiklik korunur. */
-async function syncPendingToCloud(){
-  if(!SUPABASE_ENABLED||!supabaseClient||!navigator.onLine)return false;
-  if(syncInFlightRef.current)return false;
-  const pending=pendingSyncRef.current;
-  if(!pending)return false;
-  syncInFlightRef.current=true;
-  const version=pendingSyncVersionRef.current;
-  const snapshot=normalizeData(pending);
-  try{
-    /* Görsel yüklemeleri de dahil olmak üzere TÜM bulut işlemi süre sınırına bağlı.
-       Kaydet & Kapat hiçbir zaman bu işlemi beklemek zorunda değildir. */
-    /* Yazmadan hemen önce merkezi sürümü tekrar oku. Böylece eski bir cihazın
-       localStorage/IndexedDB snapshot'ı başka cihazın yeni kataloğunu ezemez. */
-    const remote=await loadCloudDetailed();
-    if(!remote.ok)throw remote.error||new Error("Merkezi katalog okunamadı.");
-    let toSave=snapshot;
-    if(!remote.empty&&remote.data){
-      const remoteStamp=Number(remote.savedAt||0);
-      const base=cloudBaseRef.current;
-      if(remoteStamp>Number(lastCloudUpdatedAtRef.current||0) && base){
-        toSave=mergeCatalogThreeWay(remote.data,snapshot,base);
-      }else if(remoteStamp>Number(localMutationAtRef.current||0) && !base){
-        /* Eski istemcide taban snapshot yoksa güvenli davran: remote'u koru,
-           sadece local'deki benzersiz ürün/kategori kayıtlarını ekle. */
-        toSave=mergeCatalogPreservingBoth(remote.data,snapshot);
-      }
-      cloudBaseRef.current=cloneData(remote.data);
-    }
-    const cloud=await Promise.race([
-      saveCloud(toSave),
-      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Bulut senkronizasyonu zaman aşımına uğradı.")),15000))
-    ]);
-    if(!cloud?.saved)throw new Error("Bulut kaydı doğrulanamadı.");
-    await saveLocal(cloud.data||toSave);
-    cloudBaseRef.current=cloneData(cloud.data||toSave);
-    cloudReadyRef.current=true;
-    lastCloudUpdatedAtRef.current=cloud.updatedAt||Date.now();
-    /* Kullanıcı bu sırada yeni bir değişiklik yaptıysa pending'i silme. */
-    if(version===pendingSyncVersionRef.current){
-      pendingSyncRef.current=null;
-      await idbClearPendingSync().catch(()=>{});
-    }
-    return true;
-  }catch(e){
-    console.warn("Otomatik Supabase senkronizasyonu beklemede:",e);
-    return false;
-  }finally{
-    syncInFlightRef.current=false;
-    /* İstek sırasında yeni değişiklik geldiyse bekleyen son sürümü hemen ele al. */
-    if(pendingSyncRef.current&&pendingSyncVersionRef.current!==version&&navigator.onLine){
-      setTimeout(()=>syncPendingToCloud().catch(()=>{}),50);
-    }
-  }
-}
-function queueCloudSync(data){
-  if(!data)return;
-  const clean=data;
-  const version=Date.now();
-  pendingSyncRef.current=clean;
-  pendingSyncVersionRef.current=version;
-  localMutationAtRef.current=version;
-  /* Her tuş vuruşunda JSON.stringify + localStorage yazmak yerine tek bir
-     kısa debounce kullanıyoruz. Bu, özellikle çok fotoğraflı kataloglarda
-     yönetim panelini belirgin biçimde hızlandırır. */
-  if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current);
-  autoSyncTimerRef.current=setTimeout(async()=>{
-    try{await saveLocal(clean)}catch(e){console.warn("Yerel otomatik kayıt hatası:",e)}
-    try{await idbSetPendingSync(clean,version)}catch(e){console.warn("Bulut bekleme kuyruğu yazılamadı:",e)}
-    syncPendingToCloud().catch(e=>console.warn("Arka plan bulut senkronizasyonu:",e));
-  },250);
-}
-useEffect(()=>{
-  const online=()=>{
-    if(pendingSyncRef.current)syncPendingToCloud();
-  };
-  window.addEventListener("online",online);
-  const timer=setInterval(()=>{if(pendingSyncRef.current)syncPendingToCloud()},1000);
-  return()=>{window.removeEventListener("online",online);clearInterval(timer);if(autoSyncTimerRef.current)clearTimeout(autoSyncTimerRef.current)};
-},[]);
+/* Katalog değişiklikleri otomatik olarak Supabase'e gönderilmez.
+   Kalıcı kayıt yalnızca admin açıkça Kaydet ve Kapat'a bastığında yapılır.
+   pendingSync yalnızca başarısız explicit Save için taslak/yedek olarak tutulur. */
+
 function updateData(callback){
 setData(p=>{
 if(!p)return p;
@@ -1896,7 +1815,7 @@ if(!p)return p;
 const copy=JSON.parse(JSON.stringify(p));
 callback(copy);
 setSaved(false);
-if(hydratedRef.current&&!realtimeApplyingRef.current&&!panelOpenRef.current)queueCloudSync(copy);
+/* Kalıcı kayıt yalnızca explicit Save ile yapılır. */
 return copy;
 });
 }
@@ -2077,21 +1996,18 @@ async function save(){
   const clean=normalizeData(data);
   setSaving(true);
   try{
-    /* YÖNETİM PANELİ KAYDI: yalnızca açıkça Kaydet'e basıldığında merkeze yaz. */
-    await saveLocal(clean);
+    /* Yalnızca bu butonla kalıcı kayıt yapılır. Önce güncel merkezi sürüm okunur. */
     const remote=await loadCloudDetailed();
     if(!remote.ok)throw remote.error||new Error("Merkezi katalog okunamadı.");
 
     let toSave=clean;
     if(!remote.empty&&remote.data){
-      /* Panel açılırken alınan snapshot varsa, başka cihazdaki yeni değişiklikleri
-         koruyarak yalnızca bu panelde yapılan değişiklikleri merkeze uygula. */
       const base=panelSnapshot.current||cloudBaseRef.current||remote.data;
       toSave=mergeCatalogThreeWay(remote.data,clean,base);
     }
 
     const cloud=await Promise.race([
-      saveCloud(toSave),
+      saveCloud(toSave,remote.empty?null:remote.updatedAtIso),
       new Promise((_,reject)=>setTimeout(()=>reject(new Error("Bulut kaydı 15 saniyede tamamlanamadı.")),15000))
     ]);
     if(!cloud?.saved)throw new Error("Bulut kaydı doğrulanamadı.");
@@ -2114,9 +2030,16 @@ async function save(){
     setTimeout(()=>setSaved(false),1200);
   }catch(e){
     console.error("MERKEZİ KAYIT HATASI:",e);
-    /* Cloud başarısızsa kullanıcıya başarılıymış gibi göstermiyoruz. Yerel kopya
-       korunur; panel açık kalır ve kullanıcı tekrar Kaydet'e basabilir. */
-    showToast(language==="EN"?"Save failed. Cloud database was not updated.":"Kayıt başarısız. Merkezi veritabanı güncellenmedi.");
+    try{
+      pendingSyncRef.current=clean;
+      pendingSyncVersionRef.current=Date.now();
+      await idbSetPendingSync(clean,pendingSyncVersionRef.current);
+    }catch(draftError){console.warn("Taslak korunamadı:",draftError)}
+    if(e?.code==="CATALOG_CONFLICT"){
+      showToast(language==="EN"?"Another device updated the catalog. Reload the latest data before saving.":"Bu katalog başka bir cihazda güncellendi. Kaydetmeden önce güncel veriyi yeniden yükleyin.");
+    }else{
+      showToast(language==="EN"?"Save failed. Your changes were not saved to the server.":"Kaydetme başarısız oldu. Değişiklikleriniz henüz sunucuya kaydedilmedi.");
+    }
   }finally{
     setSaving(false);
   }
@@ -2252,7 +2175,7 @@ next.subtitle=base.subtitle;next.subtitle_en=base.subtitle_en;
 next.eyebrow=base.eyebrow;next.eyebrow_en=base.eyebrow_en;
 next.phone=base.phone;next.logo={...base.logo};next.theme={...base.theme};
 next.cardImgSize=base.cardImgSize;next.currency={...base.currency};
-try{const clean=await saveLocal(next);setData(clean);showToast("Genel ayarlar varsayılana döndürüldü. Ürünler korunuyor.")}catch(e){console.error(e);showToast("Varsayılan ayarlar kaydedilemedi.")}
+setData(next);showToast("Genel ayarlar varsayılana döndürüldü. Kaydet'e basın.");
 }
 async function handleImport(e){
 const file=e.target.files?.[0];if(!file)return;
@@ -2260,7 +2183,7 @@ try{
 const imported=await readJSONFile(file);
 if(!confirm("İçe aktarılan katalog mevcut katalogla değiştirilecek. Mevcut verinizin yedeği önce alınacak. Devam edilsin mi?"))return;
 if(data)downloadJSON(data);
-queueCloudSync(imported);await saveLocal(imported);setData(imported);setActiveCat(imported.categories?.[0]?.id||null);showToast("Katalog içe aktarıldı.");
+setData(imported);setActiveCat(imported.categories?.[0]?.id||null);setSaved(false);showToast("Katalog içe aktarıldı. Kaydet'e basın.");
 }catch(err){console.error(err);showToast("JSON dosyası okunamadı.")}
 finally{e.target.value=""}
 }
