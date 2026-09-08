@@ -374,7 +374,7 @@ async function prepareDataForCloud(data){
   return clean;
 }
 async function saveCloud(data){
-  if(!SUPABASE_ENABLED||!supabaseClient)return {saved:false,data};
+  if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase bağlantısı etkin değil.");
   const clean=await prepareDataForCloud(data);
   const result=await supabaseClient
     .from(SUPABASE_TABLE)
@@ -382,7 +382,8 @@ async function saveCloud(data){
     .select('id,updated_at')
     .single();
   if(result.error)throw result.error;
-  return {saved:!!result.data,data:clean};
+  if(!result.data?.id)throw new Error("Bulut kaydı doğrulanamadı.");
+  return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now()};
 }
 
 const IDB_NAME="ofischi_premium_storage_v2";
@@ -1588,13 +1589,24 @@ async function init(){
 try{
 const [localLoaded,cloudLoaded]=await Promise.all([loadLocal(),loadCloud()]);
 let loaded=null;
-if(cloudLoaded&&localLoaded){loaded=(cloudLoaded.savedAt||0)>=(localLoaded.savedAt||0)?cloudLoaded.data:localLoaded.data}
-else if(cloudLoaded)loaded=cloudLoaded.data;
-else loaded=localLoaded?.data||null;
-if(!loaded){
-loaded=defaultData();
-await saveLocal(loaded);
-if(SUPABASE_ENABLED){try{await saveCloud(loaded)}catch(e){console.warn('İlk Supabase kaydı yapılamadı:',e)}}
+/* Supabase is the cross-device source of truth. Local storage is only the
+   offline fallback, so an old browser copy can never overwrite a newer cloud copy. */
+if(cloudLoaded){
+  loaded=cloudLoaded.data;
+  lastCloudUpdatedAtRef.current=cloudLoaded.savedAt||Date.now();
+}else if(localLoaded){
+  loaded=localLoaded.data;
+  /* If cloud is unavailable, keep working locally. A later successful Save
+     will publish this state to Supabase. */
+}else{
+  loaded=defaultData();
+  await saveLocal(loaded);
+  if(SUPABASE_ENABLED){
+    try{
+      const cloud=await saveCloud(loaded);
+      lastCloudUpdatedAtRef.current=cloud.updatedAt||Date.now();
+    }catch(e){console.warn('İlk Supabase kaydı yapılamadı:',e)}
+  }
 }
 await requestPersistentStorage();
 if(cancelled)return;
@@ -1829,28 +1841,31 @@ async function deletePricePart(categoryId,itemId,partId){
 async function save(){
   if(!data||saving)return;
   const clean=normalizeData(data);
-  setSaving(false);
-  setSaved(true);
-  panelSnapshot.current=null;
-  setPanelOpen(false);
-  showToast(t(language,'saved'));
-  setTimeout(()=>setSaved(false),800);
-
-  setTimeout(async()=>{
-    try{
-      await saveLocal(clean);
-      if(SUPABASE_ENABLED){
-        const cloudResult=await saveCloud(clean);
-        if(cloudResult?.data && JSON.stringify(cloudResult.data)!==JSON.stringify(clean)){
-          await saveLocal(cloudResult.data);
-          setData(cloudResult.data);
-        }
-        lastCloudUpdatedAtRef.current=Date.now();
-      }
-    }catch(e){
-      console.warn("Supabase arka plan kayıt hatası:",e);
+  setSaving(true);
+  try{
+    /* First persist locally so the current device is protected even if the
+       network drops. Then wait for the real cloud write before saying Saved. */
+    await saveLocal(clean);
+    if(SUPABASE_ENABLED){
+      const cloudResult=await saveCloud(clean);
+      if(!cloudResult?.saved)throw new Error("Bulut kaydı başarısız.");
+      const finalData=normalizeData(cloudResult.data||clean);
+      await saveLocal(finalData);
+      setData(finalData);
+      lastCloudUpdatedAtRef.current=cloudResult.updatedAt||Date.now();
     }
-  },0);
+    localMutationAtRef.current=Date.now();
+    panelSnapshot.current=null;
+    setPanelOpen(false);
+    setSaved(true);
+    showToast(t(language,'saved'));
+    setTimeout(()=>setSaved(false),1200);
+  }catch(e){
+    console.error("Kayıt hatası:",e);
+    showToast(language==="EN"?"Save failed: cloud data could not be published.":"Kayıt başarısız: buluta gönderilemedi.");
+  }finally{
+    setSaving(false);
+  }
 }
 
 function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
