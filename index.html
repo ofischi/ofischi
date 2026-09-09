@@ -239,7 +239,7 @@ categories:createDefaultCategories(),language:"TR",
 pdf:{title:"2026-2 TL FİYAT LİSTESİ",footer:"www.ofishci.com",showPageNumbers:true,website:"www.ofishci.com",useCategoryCovers:true,coverLogo:{src:DEFAULT_PDF_COVER_LOGO}}
 }}
 function normalizePrice(price){
-if(!price)return{contactOnly:true,amount:null,parts:[]};
+if(!price)return{contactOnly:true,amount:null,manualTotal:null,autoCollect:true,parts:[]};
 let parts=Array.isArray(price.parts)?price.parts.map(p=>({
 id:p.id||uid(),name:typeof p.name==="string"?p.name:"Yeni Parça",
 name_en:typeof p.name_en==="string"?p.name_en:"",
@@ -250,7 +250,22 @@ contactOnly:!!p.contactOnly
 })):[]; 
 if(parts.length===0&&price.amount!==null&&price.amount!==undefined&&price.amount!=="")
 parts.push({id:uid(),name:"Ürün",name_en:"Product",dims:"",dims_en:"",amount:Number(price.amount),contactOnly:!!price.contactOnly});
-return{contactOnly:!!price.contactOnly&&parts.length===0,amount:price.amount??null,parts};
+const autoCollect=price.autoCollect!==false;
+const manualRaw=price.manualTotal===null||price.manualTotal===undefined||price.manualTotal===""?price.amount:price.manualTotal;
+const manualTotal=manualRaw===null||manualRaw===undefined||manualRaw===""?null:Number(manualRaw);
+return{contactOnly:!!price.contactOnly&&parts.length===0,amount:price.amount??null,manualTotal,autoCollect,parts};
+}
+function pricePartsTotal(price){
+const p=normalizePrice(price);
+const valid=p.parts.filter(part=>!part.contactOnly&&part.amount!==null&&part.amount!==undefined&&part.amount!==""&&Number.isFinite(Number(part.amount)));
+return valid.length?valid.reduce((sum,part)=>sum+Number(part.amount),0):null;
+}
+function priceTotalAmount(price){
+const p=normalizePrice(price);
+if(p.autoCollect&&p.parts.length)return pricePartsTotal(p);
+if(!p.autoCollect&&p.manualTotal!==null&&p.manualTotal!==undefined&&p.manualTotal!==""&&Number.isFinite(Number(p.manualTotal)))return Number(p.manualTotal);
+if(p.amount!==null&&p.amount!==undefined&&p.amount!==""&&Number.isFinite(Number(p.amount)))return Number(p.amount);
+return null;
 }
 function normalizeItem(item){
 item=item||{};
@@ -560,6 +575,7 @@ currency:"Para Birimi",search:"Ürün ara...",clearSearch:"Aramayı temizle",
 products:"ürün",clear:"Aramayı temizle",found:"ürün bulundu",
 notFound:"Aradığınız ürün bulunamadı.",empty:"Henüz ürün eklenmedi.",
 detailedPrices:"Detaylı fiyatlar",dimensions:"Ölçüler",prices:"Fiyatlar",
+autoCollect:"Otomatik Topla",manualTotal:"Manuel Toplam Fiyat",
 contactPrice:"Fiyat için iletişime geçin",call:"Fiyat / Bilgi İçin Ara",
 premium:"Premium",admin:"Yönetim Girişi",wrongPin:"Hatalı PIN.",cancel:"Vazgeç",
 login:"Giriş Yap",adminPanel:"Yönetim Paneli",general:"Genel",catalog:"Ürün Kataloğu",
@@ -576,6 +592,7 @@ currency:"Currency",search:"Search products...",clearSearch:"Clear search",
 products:"products",clear:"Clear search",found:"products found",
 notFound:"No products found.",empty:"No products have been added yet.",
 detailedPrices:"Detailed pricing",dimensions:"Dimensions",prices:"Prices",
+autoCollect:"Auto Sum",manualTotal:"Manual Total Price",
 contactPrice:"Contact us for price",call:"Call for Price / Information",
 premium:"Premium",admin:"Admin Login",wrongPin:"Incorrect PIN.",cancel:"Cancel",
 login:"Log In",adminPanel:"Admin Panel",general:"General",catalog:"Product Catalog",
@@ -907,11 +924,9 @@ function pdfMoney(data,amount){
 }
 function pdfTotal(data,item){
  const p=normalizePrice(item?.price);
- if(p.parts.length){
-   const n=p.parts.filter(x=>!x.contactOnly&&x.amount!==null&&x.amount!==undefined&&x.amount!=="").reduce((a,x)=>a+Number(x.amount),0);
-   return n>0?pdfMoney(data,n):(p.parts.some(x=>x.contactOnly)?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):"—");
- }
- return p.contactOnly?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):pdfMoney(data,p.amount);
+ const total=priceTotalAmount(p);
+ if(total!==null)return pdfMoney(data,total);
+ return p.contactOnly||p.parts.some(x=>x.contactOnly)?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):"—";
 }
 function pdfCleanDims(value){return String(value||"—").replace(/\b(kg|m³|m3)\b/gi,"").replace(/\s{2,}/g," ").trim()||"—"}
 function pdfDimsParts(value){
@@ -1851,13 +1866,11 @@ if(!part||part.contactOnly||part.amount===null||part.amount===undefined||part.am
 return formatAmount(part.amount)||t(language,"contactPrice");
 }
 function productMainPrice(item){
-const p=normalizePrice(item.price);
-if(p.parts.length){
-const total=p.parts.filter(a=>!a.contactOnly&&a.amount!==null&&a.amount!==undefined&&a.amount!=="").reduce((s,a)=>s+Number(a.amount),0);
-return total>0?(formatAmount(total)||t(language,"contactPrice")):t(language,"contactPrice");
-}
-if(p.amount!==null&&p.amount!==undefined&&p.amount!=="")return formatAmount(p.amount)||t(language,"contactPrice");
-return t(language,"contactPrice");
+ const p=normalizePrice(item.price);
+ const total=priceTotalAmount(p);
+ if(total!==null)return formatAmount(total)||t(language,"contactPrice");
+ if(p.autoCollect&&p.parts.some(part=>part.contactOnly))return t(language,"contactPrice");
+ return t(language,"contactPrice");
 }
 function switchLanguage(next){
   /* TR ve EN kesin olarak aynı ana sayfa JSX'ini kullanır; yalnızca metin dili değişir. */
@@ -1960,6 +1973,22 @@ updateData(x=>{x.categories=x.categories.map(c=>{if(c.id!==categoryId)return c;c
 function addPricePart(categoryId,itemId){
 const part={id:uid(),name:"Yeni Parça",name_en:"New Part",dims:"",dims_en:"",amount:null,contactOnly:false};
 updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,contactOnly:false,parts:[...p.parts,part]}}})})})
+}
+function togglePriceAutoCollect(categoryId,itemId,enabled){
+  updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{
+    if(i.id!==itemId)return i;
+    const p=normalizePrice(i.price);
+    if(enabled)return {...i,price:{...p,autoCollect:true}};
+    const currentTotal=priceTotalAmount({...p,autoCollect:true});
+    return {...i,price:{...p,autoCollect:false,manualTotal:currentTotal??p.manualTotal??p.amount??null}};
+  })})});
+}
+function updateManualTotal(categoryId,itemId,value){
+  updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{
+    if(i.id!==itemId)return i;
+    const p=normalizePrice(i.price);
+    return {...i,price:{...p,autoCollect:false,manualTotal:value===""?null:Number(value)}};
+  })})});
 }
 function updatePricePart(categoryId,itemId,partId,field,value){
   if(field!=="name"){
@@ -2393,6 +2422,13 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 
 <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 mb-2">
 <div className="flex items-center justify-between mb-3"><div><div className="text-[10px] uppercase tracking-widest font-bold" style={{color:theme.accent}}>{t("TR","parts")}</div><div className="text-[9px] text-neutral-500 mt-1">{t("TR","partHint")}</div></div><button onClick={()=>addPricePart(category.id,item.id)} className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white flex items-center gap-1" style={{background:theme.accent}}><Icon type="plus" size={12}/>{t("TR","addPrice")}</button></div>
+<label className="flex items-center justify-between gap-3 rounded-lg bg-neutral-800 px-3 py-2.5 mb-3 cursor-pointer">
+  <span className="text-xs font-semibold text-neutral-200">{t("TR","autoCollect")}</span>
+  <span className="flex items-center gap-2">
+    <span className="text-[9px] font-bold uppercase tracking-wider" style={{color:normalizePrice(item.price).autoCollect?theme.accent:"#737373"}}>{normalizePrice(item.price).autoCollect?"ON":"OFF"}</span>
+    <input type="checkbox" checked={normalizePrice(item.price).autoCollect!==false} onChange={e=>togglePriceAutoCollect(category.id,item.id,e.target.checked)} />
+  </span>
+</label>
 {normalizePrice(item.price).parts.length===0&&<div className="text-[10px] text-neutral-500 py-2 text-center">Henüz fiyat kalemi eklenmedi.</div>}
 {normalizePrice(item.price).parts.map(part=><div key={part.id} className="bg-neutral-800 rounded-lg p-2 mb-2">
 <div className="mb-2">
@@ -2405,6 +2441,15 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div>
 <label className="flex items-center gap-2 mt-2 text-[10px] text-neutral-400"><input type="checkbox" checked={!!part.contactOnly} onChange={e=>updatePricePart(category.id,item.id,part.id,"contactOnly",e.target.checked)}/>{t("TR","contactOnly")}</label>
 </div>)}
+{normalizePrice(item.price).autoCollect!==false?
+  <div className="mt-3 rounded-lg px-3 py-2.5 flex items-center justify-between" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"25"}}>
+    <span className="text-[10px] uppercase tracking-widest font-bold opacity-60">{t("TR","total")}</span>
+    <span className="text-sm font-bold" style={{color:theme.accent}}>{(()=>{const total=priceTotalAmount(item.price);return total!==null?(formatAmount(total)||"—"):"—"})()}</span>
+  </div>
+: <label className="block mt-3">
+    <AdminLabel>{t("TR","manualTotal")}</AdminLabel>
+    <input type="number" step="0.01" value={normalizePrice(item.price).manualTotal??""} onChange={e=>updateManualTotal(category.id,item.id,e.target.value)} placeholder="₺" className="admin-input" style={{fontSize:"12px"}}/>
+  </label>}
 </div>
 
 <div className="flex justify-end gap-1">
