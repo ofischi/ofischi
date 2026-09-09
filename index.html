@@ -266,7 +266,7 @@ dims:typeof p.dims==="string"?p.dims:"",
 dims_en:typeof p.dims_en==="string"?p.dims_en:"",
 amount:priceNumber(p.amount),
 contactOnly:!!p.contactOnly
-})) : [];
+})):[];
 const legacyAmount=priceNumber(price.amount);
 const manualTotal=priceNumber(price.manualTotal!==undefined?price.manualTotal:price.amount);
 const autoCollect=price.autoCollect===undefined?true:!!price.autoCollect;
@@ -935,11 +935,10 @@ function pdfMoney(data,amount){
  return formatAmountByData(data,amount)||"—";
 }
 function pdfTotal(data,item){
- const p=normalizePrice(item?.price);
- const total=priceTotal(p);
+ const total=priceTotal(item?.price);
  if(total!==null)return pdfMoney(data,total);
- if(p.parts.length)return p.parts.some(x=>x.contactOnly)?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):"—";
- return p.contactOnly?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):pdfMoney(data,p.amount);
+ const p=normalizePrice(item?.price);
+ return p.parts.some(x=>x.contactOnly)?(data?.currency?.selected==="TRY"?"İletişime geçin":"Contact us"):"—";
 }
 function pdfCleanDims(value){return String(value||"—").replace(/\b(kg|m³|m3)\b/gi,"").replace(/\s{2,}/g," ").trim()||"—"}
 function pdfDimsParts(value){
@@ -1540,9 +1539,20 @@ useEffect(()=>{
 },[data?.categories]);
 
 /* SUPABASE REALTIME + POLLING YEDEĞİ: diğer cihazlardaki değişiklikleri al. */
-const panelOpenRef=useRef(false), languageRef=useRef(language), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0), localMutationAtRef=useRef(0), autoSyncTimerRef=useRef(null), syncInFlightRef=useRef(false), pendingSyncRef=useRef(null), pendingSyncVersionRef=useRef(0), hydratedRef=useRef(false), cloudBaseRef=useRef(null), cloudReadyRef=useRef(false);
+const panelOpenRef=useRef(false), languageRef=useRef(language), dataRef=useRef(data), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0), localMutationAtRef=useRef(0), autoSyncTimerRef=useRef(null), syncInFlightRef=useRef(false), pendingSyncRef=useRef(null), pendingSyncVersionRef=useRef(0), hydratedRef=useRef(false), cloudBaseRef=useRef(null), cloudReadyRef=useRef(false);
 useEffect(()=>{panelOpenRef.current=panelOpen},[panelOpen]);
 useEffect(()=>{languageRef.current=language},[language]);
+useEffect(()=>{dataRef.current=data},[data]);
+useEffect(()=>{
+  if(!data||!selectedProduct)return;
+  let fresh=null;
+  for(const category of (data.categories||[])){
+    fresh=(category.items||[]).find(item=>item.id===selectedProduct.id);
+    if(fresh)break;
+  }
+  if(!fresh){setSelectedProduct(null);return;}
+  setSelectedProduct(fresh);
+},[data]);
 
 /* MERKEZİ VERİ KAYNAĞI KURALI
    - Supabase varsa açılışta ana kaynak Supabase'dir.
@@ -1628,20 +1638,21 @@ useEffect(()=>{
   let active=true;
   const applyCloudPayload=async (payloadData,updatedAt)=>{
     if(!active||!payloadData||typeof payloadData!=="object")return;
-    const stamp=Date.parse(updatedAt||"")||Date.now();
-    /* Ignore a stale realtime event that was already older than our latest
-       local save/delete. This prevents deleted products from reappearing. */
-    if(stamp<=lastCloudUpdatedAtRef.current || stamp<=localMutationAtRef.current)return;
-    lastCloudUpdatedAtRef.current=stamp;
-    if(panelOpenRef.current){
-      cloudBaseRef.current=cloneData(normalizeData(payloadData));
-      cloudReadyRef.current=true;
-      showToast(languageRef.current==="EN"?"Cloud update received. Save your changes first.":"Bulut güncellemesi geldi. Önce kendi değişikliklerinizi kaydedin.");
-      return;
-    }
     const incoming=normalizeData(payloadData);
+    const stamp=Date.parse(updatedAt||"")||Date.now();
+    /* The database is authoritative. Ignore only events that are truly older
+       than the latest accepted cloud snapshot or a locally pending unsaved save. */
+    if(stamp<=lastCloudUpdatedAtRef.current || stamp<=localMutationAtRef.current)return;
+    const current=dataRef.current;
+    const panelDirty=panelOpenRef.current&&panelSnapshot.current&&current&&JSON.stringify(normalizeData(current))!==JSON.stringify(normalizeData(panelSnapshot.current));
+    lastCloudUpdatedAtRef.current=stamp;
     cloudBaseRef.current=cloneData(incoming);
     cloudReadyRef.current=true;
+    if(panelDirty){
+      showToast(languageRef.current==="EN"?"Cloud update received. Your unsaved changes are protected.":"Bulut güncellemesi geldi. Kaydedilmemiş değişiklikleriniz korundu.");
+      return;
+    }
+    if(panelOpenRef.current)panelSnapshot.current=cloneData(incoming);
     realtimeApplyingRef.current=true;
     try{await saveLocal(incoming)}catch(e){console.warn("Bulut verisi yerel kayda yazılamadı:",e)}
     setData(incoming);
@@ -1653,9 +1664,17 @@ useEffect(()=>{
       const row=payload.new||{};
       applyCloudPayload(row.data,row.updated_at);
     })
-    .subscribe(status=>{
-      if(status==="SUBSCRIBED")console.info("Ofischi Supabase Realtime aktif.");
-      else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED")console.warn("Supabase Realtime bağlantısı yeniden denenecek.",status);
+    .subscribe(async(status,err)=>{
+      if(status==="SUBSCRIBED"){
+        console.info("Ofischi Supabase Realtime aktif.");
+        /* Close the small race between initial DB read and WebSocket join. */
+        const cloud=await loadCloud();
+        if(cloud&&cloud.savedAt>lastCloudUpdatedAtRef.current){
+          await applyCloudPayload(cloud.data,new Date(cloud.savedAt).toISOString());
+        }
+      }else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){
+        console.warn("Supabase Realtime bağlantısı yeniden denenecek.",status,err||"");
+      }
     });
 
   /* Realtime kapalı/engelli olsa bile en fazla birkaç saniyede güncel kalması için yedek okuma. */
@@ -1879,12 +1898,8 @@ if(!part||part.contactOnly||part.amount===null||part.amount===undefined||part.am
 return formatAmount(part.amount)||t(language,"contactPrice");
 }
 function productMainPrice(item){
-const p=normalizePrice(item.price);
-const total=priceTotal(p);
-if(total!==null)return formatAmount(total)||t(language,"contactPrice");
-if(p.parts.length)return p.parts.some(a=>a.contactOnly)?t(language,"contactPrice"):t(language,"contactPrice");
-if(p.amount!==null)return formatAmount(p.amount)||t(language,"contactPrice");
-return t(language,"contactPrice");
+const total=priceTotal(item?.price);
+return total!==null?(formatAmount(total)||t(language,"contactPrice")):null;
 }
 function switchLanguage(next){
   /* TR ve EN kesin olarak aynı ana sayfa JSX'ini kullanır; yalnızca metin dili değişir. */
@@ -1936,7 +1951,7 @@ async function moveCategory(id,direction){
 updateData(x=>{const l=[...x.categories],i=l.findIndex(a=>a.id===id),j=i+direction;if(i<0||j<0||j>=l.length)return;[l[i],l[j]]=[l[j],l[i]];x.categories=l})
 }
 function addItem(categoryId){
-const item={id:uid(),isDemo:true,name:"Yeni Ürün",name_en:"New Product",desc:"",desc_en:"",dims:"",dims_en:"",image:null,price:{contactOnly:true,amount:null,parts:[]}};
+const item={id:uid(),isDemo:true,name:"Yeni Ürün",name_en:"New Product",desc:"",desc_en:"",dims:"",dims_en:"",image:null,price:{contactOnly:true,amount:null,manualTotal:null,autoCollect:true,parts:[]}};
 updateData(x=>{x.categories=x.categories.map(c=>c.id===categoryId?{...c,items:[...c.items,item]}:c)});
 openCategory(categoryId);
 }
@@ -1987,6 +2002,16 @@ updateData(x=>{x.categories=x.categories.map(c=>{if(c.id!==categoryId)return c;c
 function addPricePart(categoryId,itemId){
 const part={id:uid(),name:"Yeni Parça",name_en:"New Part",dims:"",dims_en:"",amount:null,contactOnly:false};
 updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{if(i.id!==itemId)return i;const p=normalizePrice(i.price);return {...i,price:{...p,contactOnly:false,parts:[...p.parts,part]}}})})})
+}
+function setPriceAutoCollect(categoryId,itemId,enabled){
+updateData(x=>{x.categories=x.categories.map(c=>c.id!==categoryId?c:{...c,items:c.items.map(i=>{
+if(i.id!==itemId)return i;
+const p=normalizePrice(i.price);
+if(enabled)return {...i,price:{...p,autoCollect:true}};
+const current=priceTotal({...p,autoCollect:true});
+const manual=p.manualTotal!==null?p.manualTotal:current;
+return {...i,price:{...p,autoCollect:false,manualTotal:manual}};
+})})});
 }
 function updatePricePart(categoryId,itemId,partId,field,value){
   if(field!=="name"){
@@ -2296,7 +2321,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 {visibleProducts.length===0&&<div className="col-span-full text-center py-16 opacity-50">{search.trim()?t(language,"notFound"):t(language,"empty")}</div>}
 {visibleProducts.map((item,index)=><article key={item.id} onClick={()=>{setSelectedProduct(item);setDetailGalleryIndex(0)}} className="product-card rounded-2xl overflow-hidden cursor-pointer" style={{background:theme.card,boxShadow:"0 5px 18px rgba(0,0,0,.14)",animationDelay:`${Math.min(index,8)*45}ms`}}>
 <div className="product-image" style={{height:data.cardImgSize,backgroundColor:theme.accent+"12",display:"block",position:"relative"}}>{(()=>{const g=Array.isArray(item.images)&&item.images.length?item.images:(item.image?[item.image]:[]);const idx=(galleryIndex[item.id]||0)%Math.max(g.length,1);if(!g.length)return <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon type="image" size={28}/></div>;return <div className="product-gallery-frame" onPointerDown={e=>{if(g.length<2)return;e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{if(g.length<2)return;const el=e.currentTarget,sx=Number(el.dataset.sx||0),sy=Number(el.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy;if(Math.abs(dx)>35&&Math.abs(dx)>Math.abs(dy)){el.dataset.swiped="1";setGalleryIndex(p=>({...p,[item.id]:(idx+(dx<0?1:-1)+g.length)%g.length}))}}} onClick={e=>{if(e.currentTarget.dataset.swiped==="1"){e.stopPropagation();delete e.currentTarget.dataset.swiped}}} style={{touchAction:"pan-y"}}><img key={`${item.id}-${idx}`} className="product-gallery-img" src={g[idx]} alt={productDisplay(item)} loading="lazy" decoding="async" fetchpriority="low" draggable="false"/>{g.length>1&&<div className="gallery-dots">{g.slice(0,7).map((_,i)=><span key={i} className={'gallery-dot '+(i===idx?'active':'')}/>)}</div>}</div>})()}</div>
-<div className="p-3 flex flex-col"><div className="font-semibold text-sm leading-tight">{productDisplay(item)}</div>{productDesc(item)&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{productDesc(item)}</div>}<div className="mt-3 pt-3 border-t" style={{borderColor:theme.text+"12"}}><div className="flex items-center justify-between gap-2"><span className="text-[9px] uppercase tracking-widest font-bold opacity-45">{t(language,"total")}</span><span className="text-[13px] font-bold" style={{color:theme.accent}}>{productMainPrice(item)}</span></div><div className="mt-1 text-[9px] opacity-40 flex items-center gap-1">{t(language,"detailedPrices")}<Icon type="arrow" size={10}/></div></div></div>
+<div className="p-3 flex flex-col"><div className="font-semibold text-sm leading-tight">{productDisplay(item)}</div>{productDesc(item)&&<div className="text-[11px] opacity-55 mt-1 leading-snug line-clamp-2">{productDesc(item)}</div>}{priceTotal(item.price)!==null&&<div className="mt-3 pt-3 border-t" style={{borderColor:theme.text+"12"}}><div className="flex items-center justify-between gap-2"><span className="text-[9px] uppercase tracking-widest font-bold opacity-45">{t(language,"total")}</span><span className="text-[13px] font-bold" style={{color:theme.accent}}>{productMainPrice(item)}</span></div><div className="mt-1 text-[9px] opacity-40 flex items-center gap-1">{t(language,"detailedPrices")}<Icon type="arrow" size={10}/></div></div>}</div>
 </article>)}</main>
 
 {selectedProduct&&<div className="fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={()=>setSelectedProduct(null)}>
@@ -2306,7 +2331,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <h2 className="text-2xl font-bold">{productDisplay(selectedProduct)}</h2>
 {productDesc(selectedProduct)&&<p className="text-sm opacity-65 mt-2 leading-relaxed">{productDesc(selectedProduct)}</p>}
 <div className="mt-5"><div className="text-[10px] uppercase tracking-widest font-bold opacity-50 mb-3">{t(language,"prices")}</div>
-{normalizePrice(selectedProduct.price).parts.length>0?<div className="space-y-2">{normalizePrice(selectedProduct.price).parts.map(part=><div key={part.id} className="price-row rounded-xl p-3 flex items-center justify-between gap-3"><div className="text-sm font-medium"><div>{partDisplay(part)}</div>{partDimensionDisplay(part)&&<div className="text-[10px] opacity-50 mt-1"><span className="uppercase tracking-wide opacity-60">{t(language,"dimensions")}:</span> {partDimensionDisplay(part)}</div>}</div><div className="text-sm font-bold whitespace-nowrap" style={{color:theme.accent}}>{priceText(part)}</div></div>)}</div>:<div className="rounded-xl p-4 text-center" style={{background:theme.accent+"12",color:theme.accent}}>{t(language,"contactPrice")}</div>}<div className="mt-3 rounded-xl p-4 flex items-center justify-between" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"28"}}><span className="text-[10px] uppercase tracking-widest font-bold opacity-55">{t(language,"total")}</span><span className="text-base font-bold" style={{color:theme.accent}}>{productMainPrice(selectedProduct)}</span></div></div>
+{normalizePrice(selectedProduct.price).parts.length>0?<div className="space-y-2">{normalizePrice(selectedProduct.price).parts.map(part=><div key={part.id} className="price-row rounded-xl p-3 flex items-center justify-between gap-3"><div className="text-sm font-medium"><div>{partDisplay(part)}</div>{partDimensionDisplay(part)&&<div className="text-[10px] opacity-50 mt-1"><span className="uppercase tracking-wide opacity-60">{t(language,"dimensions")}:</span> {partDimensionDisplay(part)}</div>}</div><div className="text-sm font-bold whitespace-nowrap" style={{color:theme.accent}}>{priceText(part)}</div></div>)}</div>:<div className="rounded-xl p-4 text-center" style={{background:theme.accent+"12",color:theme.accent}}>{t(language,"contactPrice")}</div>}{priceTotal(selectedProduct.price)!==null&&<div className="mt-3 rounded-xl p-4 flex items-center justify-between" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"28"}}><span className="text-[10px] uppercase tracking-widest font-bold opacity-55">{t(language,"total")}</span><span className="text-base font-bold" style={{color:theme.accent}}>{productMainPrice(selectedProduct)}</span></div>}</div>
 {data.phone&&<a href={"tel:"+data.phone.replace(/\s/g,"")} className="mt-5 w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-sm" style={{background:theme.accent,color:"#fff"}}><Icon type="phone" size={16}/>{t(language,"call")}</a>}
 </div></div></div>}
 
@@ -2419,7 +2444,11 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div>
 
 <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-3 mb-2">
-<div className="flex items-center justify-between mb-3"><div><div className="text-[10px] uppercase tracking-widest font-bold" style={{color:theme.accent}}>{t("TR","parts")}</div><div className="text-[9px] text-neutral-500 mt-1">{t("TR","partHint")}</div></div><div className="flex items-center gap-2"><label className="flex items-center gap-2 text-[10px] text-neutral-400 whitespace-nowrap"><input type="checkbox" checked={normalizePrice(item.price).autoCollect} onChange={e=>updateItem(category.id,item.id,"price",{...normalizePrice(item.price),autoCollect:e.target.checked})}/><span>Otomatik Topla</span></label><button onClick={()=>addPricePart(category.id,item.id)} className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white flex items-center gap-1" style={{background:theme.accent}}><Icon type="plus" size={12}/>{t("TR","addPrice")}</button></div></div>
+<div className="flex items-center justify-between mb-3"><div><div className="text-[10px] uppercase tracking-widest font-bold" style={{color:theme.accent}}>{t("TR","parts")}</div><div className="text-[9px] text-neutral-500 mt-1">{t("TR","partHint")}</div></div><button onClick={()=>addPricePart(category.id,item.id)} className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white flex items-center gap-1" style={{background:theme.accent}}><Icon type="plus" size={12}/>{t("TR","addPrice")}</button></div>
+<div className="rounded-lg bg-neutral-800 p-2.5 mb-3">
+<label className="flex items-center justify-between gap-3 text-[11px] font-semibold text-neutral-200"><span>Otomatik Topla</span><input type="checkbox" checked={normalizePrice(item.price).autoCollect!==false} onChange={e=>setPriceAutoCollect(category.id,item.id,e.target.checked)}/></label>
+{normalizePrice(item.price).autoCollect===false?<label className="block mt-2"><AdminLabel>Manuel Toplam Fiyat</AdminLabel><input type="text" inputMode="decimal" value={normalizePrice(item.price).manualTotal??""} onChange={e=>updateItem(category.id,item.id,"price",{...normalizePrice(item.price),manualTotal:priceNumber(e.target.value)})} placeholder="Örn. 18.500" className="admin-input" style={{padding:"8px",fontSize:"11px"}}/></label>:<div className="mt-2 text-[10px] text-neutral-400">Güncel toplam: <strong style={{color:theme.accent}}>{priceTotal(item.price)!==null?formatAmount(priceTotal(item.price)):"—"}</strong></div>}
+</div>
 {normalizePrice(item.price).parts.length===0&&<div className="text-[10px] text-neutral-500 py-2 text-center">Henüz fiyat kalemi eklenmedi.</div>}
 {normalizePrice(item.price).parts.map(part=><div key={part.id} className="bg-neutral-800 rounded-lg p-2 mb-2">
 <div className="mb-2">
@@ -2432,11 +2461,6 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div>
 <label className="flex items-center gap-2 mt-2 text-[10px] text-neutral-400"><input type="checkbox" checked={!!part.contactOnly} onChange={e=>updatePricePart(category.id,item.id,part.id,"contactOnly",e.target.checked)}/>{t("TR","contactOnly")}</label>
 </div>)}
-{!normalizePrice(item.price).autoCollect&&<div className="mt-2">
-<div className="text-[10px] uppercase tracking-widest font-bold text-neutral-400 mb-1">Manuel Toplam Fiyat</div>
-<input type="text" inputMode="decimal" value={normalizePrice(item.price).manualTotal===null?"":normalizePrice(item.price).manualTotal} onChange={e=>updateItem(category.id,item.id,"price",{...normalizePrice(item.price),autoCollect:false,manualTotal:priceNumber(e.target.value)})} placeholder="₺" className="admin-input" style={{padding:"8px",fontSize:"11px"}}/>
-</div>}
-{normalizePrice(item.price).autoCollect&&normalizePrice(item.price).parts.length>0&&<div className="mt-2 pt-2 border-t border-neutral-800 flex items-center justify-between text-[10px]"><span className="text-neutral-500">Toplam</span><span className="font-bold" style={{color:theme.accent}}>{productMainPrice(item)}</span></div>}
 </div>
 
 <div className="flex justify-end gap-1">
