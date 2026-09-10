@@ -347,44 +347,41 @@ return r;
   - Tarayıcıya yalnızca Supabase publishable/anon key konur; service_role/secret key asla konmaz.
 */
 const SUPABASE_CACHE_UPDATED_AT_KEY="ofischi_supabase_catalog_updated_at_v1";
-
-function getCachedCloudUpdatedAt(){
-  try{return localStorage.getItem(SUPABASE_CACHE_UPDATED_AT_KEY)||""}catch(e){return""}
-}
-function setCachedCloudUpdatedAt(value){
-  try{
-    if(value)localStorage.setItem(SUPABASE_CACHE_UPDATED_AT_KEY,String(value));
-  }catch(e){}
-}
-
-/* EGRESS OPTIMIZATION:
-   Önce yalnızca updated_at kontrol edilir. Katalog değişmediyse mevcut
-   localStorage kopyası kullanılır ve ~80 KB'lık JSON tekrar indirilmez.
-   Katalog değişmişse tam veri yalnızca o zaman Supabase'den alınır.
-*/
+const SUPABASE_CACHE_CHECKED_AT_KEY="ofischi_supabase_catalog_checked_at_v1";
+const SUPABASE_CACHE_TTL_MS=10*60*1000;
+let cloudMemorySnapshot=null,cloudCheckInFlight=null,cloudFullFetchInFlight=null;
+function getCachedCloudUpdatedAt(){try{return localStorage.getItem(SUPABASE_CACHE_UPDATED_AT_KEY)||""}catch(e){return""}}
+function setCachedCloudUpdatedAt(value){try{if(value)localStorage.setItem(SUPABASE_CACHE_UPDATED_AT_KEY,String(value))}catch(e){}}
+function getCloudCacheCheckedAt(){try{return Number(localStorage.getItem(SUPABASE_CACHE_CHECKED_AT_KEY)||0)}catch(e){return 0}}
+function setCloudCacheCheckedAt(value=Date.now()){try{localStorage.setItem(SUPABASE_CACHE_CHECKED_AT_KEY,String(value))}catch(e){}}
+function getLocalCatalogFast(){const local=readLocalRecord(DB_KEY)||readLocalRecord(BACKUP_KEY);return local?.data?{savedAt:Number(local.savedAt)||0,data:normalizeData(local.data)}:null}
 async function loadCloud(){
   if(!SUPABASE_ENABLED||!supabaseClient)return null;
-  try{
-    const versionResult=await supabaseClient.from(SUPABASE_TABLE)
-      .select('updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
-    if(versionResult.error)throw versionResult.error;
-
-    const remoteUpdatedAt=versionResult.data?.updated_at||"";
-    const remoteStamp=Date.parse(remoteUpdatedAt)||0;
-    const cached=readLocalRecord(DB_KEY)||readLocalRecord(BACKUP_KEY);
-    const cachedVersion=getCachedCloudUpdatedAt();
-
-    if(cached?.data && remoteUpdatedAt && cachedVersion===remoteUpdatedAt){
-      return {savedAt:remoteStamp,data:normalizeData(cached.data)};
-    }
-
-    const {data,error}=await supabaseClient.from(SUPABASE_TABLE)
-      .select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
-    if(error)throw error;
-    if(!data?.data||typeof data.data!=='object'||!Object.keys(data.data).length)return null;
-    setCachedCloudUpdatedAt(data.updated_at||remoteUpdatedAt);
-    return {savedAt:Date.parse(data.updated_at)||remoteStamp,data:normalizeData(data.data)};
-  }catch(e){console.warn('Supabase okunamadı:',e);return null}
+  if(cloudMemorySnapshot)return cloudMemorySnapshot;
+  const local=getLocalCatalogFast(),cachedUpdatedAt=getCachedCloudUpdatedAt(),checkedAt=getCloudCacheCheckedAt();
+  if(local&&cachedUpdatedAt&&Date.now()-checkedAt<SUPABASE_CACHE_TTL_MS){cloudMemorySnapshot={savedAt:Date.parse(cachedUpdatedAt)||local.savedAt||0,data:local.data};return cloudMemorySnapshot}
+  if(cloudCheckInFlight)return cloudCheckInFlight;
+  cloudCheckInFlight=(async()=>{
+    try{
+      const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+      if(error)throw error;
+      setCloudCacheCheckedAt();
+      const remoteUpdatedAt=data?.updated_at||"",remoteStamp=Date.parse(remoteUpdatedAt)||0;
+      if(local&&cachedUpdatedAt&&remoteUpdatedAt&&remoteUpdatedAt===cachedUpdatedAt){cloudMemorySnapshot={savedAt:remoteStamp||local.savedAt||0,data:local.data};return cloudMemorySnapshot}
+      if(!data){cloudMemorySnapshot=null;return null}
+      if(cloudFullFetchInFlight)return cloudFullFetchInFlight;
+      cloudFullFetchInFlight=(async()=>{
+        const full=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+        if(full.error)throw full.error;
+        if(!full.data?.data||typeof full.data.data!=="object"||!Object.keys(full.data.data).length){cloudMemorySnapshot=null;return null}
+        const snapshot={savedAt:Date.parse(full.data.updated_at)||remoteStamp||Date.now(),data:normalizeData(full.data.data)};
+        cloudMemorySnapshot=snapshot;setCachedCloudUpdatedAt(full.data.updated_at||remoteUpdatedAt);setCloudCacheCheckedAt();return snapshot;
+      })();
+      try{return await cloudFullFetchInFlight}finally{cloudFullFetchInFlight=null}
+    }catch(e){console.warn('Supabase okunamadı:',e);return local||null}
+    finally{cloudCheckInFlight=null}
+  })();
+  return cloudCheckInFlight;
 }
 function isDataImageSource(src){
   return typeof src==='string' && /^data:image\//i.test(src);
@@ -450,8 +447,7 @@ async function saveCloud(data,expectedUpdatedAtIso=null){
       .select("id,updated_at").maybeSingle();
     if(result.error)throw result.error;
     if(!result.data?.id){const e=new Error("Bu katalog başka bir cihazda güncellendi.");e.code="CATALOG_CONFLICT";throw e;}
-    setCachedCloudUpdatedAt(result.data.updated_at);
-    return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};
+    const saved={saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};cloudMemorySnapshot={savedAt:saved.updatedAt,data:normalizeData(clean)};setCachedCloudUpdatedAt(result.data.updated_at);setCloudCacheCheckedAt();return saved;
   }
   const result=await supabaseClient.from(SUPABASE_TABLE)
     .insert({id:SUPABASE_ROW_ID,data:clean,updated_at:nextUpdatedAt})
@@ -461,8 +457,7 @@ async function saveCloud(data,expectedUpdatedAtIso=null){
     throw result.error;
   }
   if(!result.data?.id)throw new Error("Bulut kaydı doğrulanamadı.");
-  setCachedCloudUpdatedAt(result.data.updated_at);
-  return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};
+  const saved={saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};cloudMemorySnapshot={savedAt:saved.updatedAt,data:normalizeData(clean)};setCachedCloudUpdatedAt(result.data.updated_at);setCloudCacheCheckedAt();return saved;
 }
 const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
@@ -1144,7 +1139,7 @@ async function pdfLoadImageSafe(key){
   // cross-origin kaynak yüzünden "Tainted canvases may not be exported" vermez.
   if(/^https?:\/\//i.test(key)){
     try{
-      const r=await fetch(key,{mode:"cors",cache:"no-store"});
+      const r=await fetch(key,{mode:"cors",cache:"force-cache"});
       if(r.ok){
         const blob=await r.blob();
         const objectUrl=URL.createObjectURL(blob);
@@ -1693,7 +1688,6 @@ useEffect(()=>{
     const current=dataRef.current;
     const panelDirty=panelOpenRef.current&&panelSnapshot.current&&current&&JSON.stringify(normalizeData(current))!==JSON.stringify(normalizeData(panelSnapshot.current));
     lastCloudUpdatedAtRef.current=stamp;
-    setCachedCloudUpdatedAt(updatedAt||new Date(stamp).toISOString());
     cloudBaseRef.current=cloneData(incoming);
     cloudReadyRef.current=true;
     if(panelDirty){
@@ -1751,7 +1745,7 @@ useEffect(()=>{
     }finally{pollInFlight=false}
   };
 
-  const pollTimer=setInterval(poll,300000);
+  const pollTimer=setInterval(poll,900000);
 
   const fallbackVisibilityHandler=()=>{
     if(document.visibilityState==="visible"&&!realtimeSubscribed)poll();
@@ -1851,12 +1845,13 @@ try{
     localMutationAtRef.current=pendingSyncVersionRef.current;
   }
 
-  /* ANA KAYNAK: önce Supabase'i doğrula. */
-  const cloud=await loadCloudDetailed();
+  /* ANA KAYNAK: cache varsa kullan; değişiklik varsa tam katalogu indir. */
+  const cachedCloud=await loadCloud();
+  if(cancelled)return;
+  const cloud=cachedCloud?{ok:true,empty:false,data:cachedCloud.data,savedAt:cachedCloud.savedAt,updatedAtIso:getCachedCloudUpdatedAt()||null}:await loadCloudDetailed();
   if(cancelled)return;
   if(cloud.ok&&!cloud.empty&&cloud.data){
     lastCloudUpdatedAtRef.current=cloud.savedAt||Date.now();
-    if(cloud.updatedAtIso)setCachedCloudUpdatedAt(cloud.updatedAtIso);
     cloudBaseRef.current=cloneData(cloud.data);
     cloudReadyRef.current=true;
     /* Eski pending varsa, merkezdeki veriyi körlemesine ezme. Sadece iki taraftaki
@@ -2400,7 +2395,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 
 {selectedProduct&&<div className="fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5" onClick={()=>setSelectedProduct(null)}>
 <div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl" style={{background:theme.card,color:theme.text,animation:"pop .22s ease"}} onClick={e=>e.stopPropagation()}>
-<div className="relative"><div className="detail-gallery" onPointerDown={e=>{e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{const sx=Number(e.currentTarget.dataset.sx||0),sy=Number(e.currentTarget.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy,g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);if(g.length>1&&Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy))setDetailGalleryIndex(v=>(v+(dx<0?1:-1)+g.length)%g.length)}} style={{backgroundColor:theme.accent+"12",touchAction:"pan-y"}}>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);const idx=(detailGalleryIndex||0)%Math.max(g.length,1);return g.length?<img key={`detail-${selectedProduct.id}-${idx}`} src={g[idx]} alt={productDisplay(selectedProduct)} className="detail-gallery-img" decoding="async" draggable="false" onPointerUp={e=>{e.stopPropagation();if(Math.abs(Number(e.currentTarget.dataset.downX||e.clientX)-e.clientX)<12&&Math.abs(Number(e.currentTarget.dataset.downY||e.clientY)-e.clientY)<12){setFullScreenImage({images:g,index:idx});setLightboxZoom(1)}}} onPointerDown={e=>{e.stopPropagation();e.currentTarget.dataset.downX=String(e.clientX);e.currentTarget.dataset.downY=String(e.clientY)}} onClick={e=>e.stopPropagation()}/>:<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon type="image" size={40}/></div>})()}</div>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);return g.length>1&&<div className="detail-gallery-dots">{g.map((_,i)=><span key={i} className={'detail-gallery-dot '+(i===detailGalleryIndex?'active':'')}/>)}</div>})()}<button type="button" onClick={()=>setSelectedProduct(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.55)",color:"#fff"}}><Icon type="x" size={20}/></button></div>
+<div className="relative"><div className="detail-gallery" onPointerDown={e=>{e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{const sx=Number(e.currentTarget.dataset.sx||0),sy=Number(e.currentTarget.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy,g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);if(g.length>1&&Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy))setDetailGalleryIndex(v=>(v+(dx<0?1:-1)+g.length)%g.length)}} style={{backgroundColor:theme.accent+"12",touchAction:"pan-y"}}>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);const idx=(detailGalleryIndex||0)%Math.max(g.length,1);return g.length?<img key={`detail-${selectedProduct.id}-${idx}`} loading="lazy" src={g[idx]} alt={productDisplay(selectedProduct)} className="detail-gallery-img" decoding="async" draggable="false" onPointerUp={e=>{e.stopPropagation();if(Math.abs(Number(e.currentTarget.dataset.downX||e.clientX)-e.clientX)<12&&Math.abs(Number(e.currentTarget.dataset.downY||e.clientY)-e.clientY)<12){setFullScreenImage({images:g,index:idx});setLightboxZoom(1)}}} onPointerDown={e=>{e.stopPropagation();e.currentTarget.dataset.downX=String(e.clientX);e.currentTarget.dataset.downY=String(e.clientY)}} onClick={e=>e.stopPropagation()}/>:<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon type="image" size={40}/></div>})()}</div>{(()=>{const g=Array.isArray(selectedProduct.images)&&selectedProduct.images.length?selectedProduct.images:(selectedProduct.image?[selectedProduct.image]:[]);return g.length>1&&<div className="detail-gallery-dots">{g.map((_,i)=><span key={i} className={'detail-gallery-dot '+(i===detailGalleryIndex?'active':'')}/>)}</div>})()}<button type="button" onClick={()=>setSelectedProduct(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.55)",color:"#fff"}}><Icon type="x" size={20}/></button></div>
 <div className="p-5"><div className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{color:theme.accent}}>{t(language,"premium")}</div>
 <h2 className="text-2xl font-bold">{productDisplay(selectedProduct)}</h2>
 {productDesc(selectedProduct)&&<p className="text-sm opacity-65 mt-2 leading-relaxed">{productDesc(selectedProduct)}</p>}
@@ -2413,7 +2408,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <button onClick={openAdmin} className="fixed bottom-5 right-[18px] z-30 rounded-full shadow-xl flex items-center justify-center" style={{width:52,height:52,background:theme.text,color:theme.bg}}><Icon type="settings" size={20}/></button>
 {toast&&<div className="fixed bottom-24 right-[18px] z-[150] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2"><Icon type="check" size={15}/>{toast}</div>}
 
-{fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-3 sm:p-8" onClick={()=>{setFullScreenImage(null);setLightboxZoom(1)}}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()} onWheel={e=>{e.preventDefault();setLightboxZoom(z=>Math.min(3,Math.max(.75,z+(e.deltaY<0?.15:-.15))))}} onPointerDown={e=>{e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{const sx=Number(e.currentTarget.dataset.sx||0),sy=Number(e.currentTarget.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy,imgs=fullScreenImage.images||[];if(imgs.length>1&&Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){setFullScreenImage(prev=>({...prev,index:(prev.index+(dx<0?1:-1)+imgs.length)%imgs.length}));setLightboxZoom(1)}}} style={{touchAction:"pan-y"}}><img src={fullScreenImage.images?.[fullScreenImage.index]||fullScreenImage.images?.[0]} alt="Ürün fotoğrafı" style={{transform:`scale(${lightboxZoom})`,transition:"transform .22s cubic-bezier(.22,1,.36,1)",cursor:lightboxZoom>1?"grab":"zoom-in"}} onDoubleClick={()=>setLightboxZoom(z=>z>1?1:2)}/>{(fullScreenImage.images||[]).length>1&&<div className="lightbox-count">{fullScreenImage.index+1} / {fullScreenImage.images.length}</div>}<button type="button" onClick={()=>{setFullScreenImage(null);setLightboxZoom(1)}} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
+{fullScreenImage&&<div className="fixed inset-0 z-[300] image-lightbox flex items-center justify-center p-3 sm:p-8" onClick={()=>{setFullScreenImage(null);setLightboxZoom(1)}}><div className="image-lightbox-card relative" onClick={e=>e.stopPropagation()} onWheel={e=>{e.preventDefault();setLightboxZoom(z=>Math.min(3,Math.max(.75,z+(e.deltaY<0?.15:-.15))))}} onPointerDown={e=>{e.currentTarget.setPointerCapture?.(e.pointerId);e.currentTarget.dataset.sx=String(e.clientX);e.currentTarget.dataset.sy=String(e.clientY)}} onPointerUp={e=>{const sx=Number(e.currentTarget.dataset.sx||0),sy=Number(e.currentTarget.dataset.sy||0),dx=e.clientX-sx,dy=e.clientY-sy,imgs=fullScreenImage.images||[];if(imgs.length>1&&Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){setFullScreenImage(prev=>({...prev,index:(prev.index+(dx<0?1:-1)+imgs.length)%imgs.length}));setLightboxZoom(1)}}} style={{touchAction:"pan-y"}}><img loading="lazy" src={fullScreenImage.images?.[fullScreenImage.index]||fullScreenImage.images?.[0]} alt="Ürün fotoğrafı" style={{transform:`scale(${lightboxZoom})`,transition:"transform .22s cubic-bezier(.22,1,.36,1)",cursor:lightboxZoom>1?"grab":"zoom-in"}} onDoubleClick={()=>setLightboxZoom(z=>z>1?1:2)}/>{(fullScreenImage.images||[]).length>1&&<div className="lightbox-count">{fullScreenImage.index+1} / {fullScreenImage.images.length}</div>}<button type="button" onClick={()=>{setFullScreenImage(null);setLightboxZoom(1)}} className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center border border-white/15 shadow-xl" style={{background:"rgba(25,25,28,.94)",color:"#fff"}}><Icon type="x" size={19}/></button></div></div>}
 
 {pinModal&&<div className="fixed inset-0 z-[200] bg-black/75 flex items-center justify-center p-4"><div className="w-full max-w-xs bg-neutral-950 border border-neutral-800 rounded-2xl p-6"><div className="flex items-center gap-2 mb-4 text-white"><Icon type="lock" size={18}/><h2 className="font-bold">{t("TR","admin")}</h2></div><input autoFocus type="password" inputMode="numeric" maxLength="8" value={pinInput} onChange={e=>{setPinInput(e.target.value.replace(/\D/g,""));setPinError(false)}} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="PIN" className="admin-input tracking-[.3em]"/>{pinError&&<div className="text-xs text-red-400 mt-2">{t("TR","wrongPin")}</div>}<div className="text-[11px] text-neutral-500 mt-2 mb-4">Varsayılan PIN: 1234</div><div className="flex gap-2"><button onClick={()=>setPinModal(false)} className="flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300">{t("TR","cancel")}</button><button onClick={tryUnlock} className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white" style={{background:theme.accent}}>{t("TR","login")}</button></div></div></div>}
 
