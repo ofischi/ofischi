@@ -346,13 +346,44 @@ return r;
   - Supabase kapalı veya bağlantısızsa mevcut yerel sistem çalışmaya devam eder.
   - Tarayıcıya yalnızca Supabase publishable/anon key konur; service_role/secret key asla konmaz.
 */
+const SUPABASE_CACHE_UPDATED_AT_KEY="ofischi_supabase_catalog_updated_at_v1";
+
+function getCachedCloudUpdatedAt(){
+  try{return localStorage.getItem(SUPABASE_CACHE_UPDATED_AT_KEY)||""}catch(e){return""}
+}
+function setCachedCloudUpdatedAt(value){
+  try{
+    if(value)localStorage.setItem(SUPABASE_CACHE_UPDATED_AT_KEY,String(value));
+  }catch(e){}
+}
+
+/* EGRESS OPTIMIZATION:
+   Önce yalnızca updated_at kontrol edilir. Katalog değişmediyse mevcut
+   localStorage kopyası kullanılır ve ~80 KB'lık JSON tekrar indirilmez.
+   Katalog değişmişse tam veri yalnızca o zaman Supabase'den alınır.
+*/
 async function loadCloud(){
   if(!SUPABASE_ENABLED||!supabaseClient)return null;
   try{
-    const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+    const versionResult=await supabaseClient.from(SUPABASE_TABLE)
+      .select('updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+    if(versionResult.error)throw versionResult.error;
+
+    const remoteUpdatedAt=versionResult.data?.updated_at||"";
+    const remoteStamp=Date.parse(remoteUpdatedAt)||0;
+    const cached=readLocalRecord(DB_KEY)||readLocalRecord(BACKUP_KEY);
+    const cachedVersion=getCachedCloudUpdatedAt();
+
+    if(cached?.data && remoteUpdatedAt && cachedVersion===remoteUpdatedAt){
+      return {savedAt:remoteStamp,data:normalizeData(cached.data)};
+    }
+
+    const {data,error}=await supabaseClient.from(SUPABASE_TABLE)
+      .select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
     if(error)throw error;
     if(!data?.data||typeof data.data!=='object'||!Object.keys(data.data).length)return null;
-    return {savedAt:Date.parse(data.updated_at)||0,data:normalizeData(data.data)};
+    setCachedCloudUpdatedAt(data.updated_at||remoteUpdatedAt);
+    return {savedAt:Date.parse(data.updated_at)||remoteStamp,data:normalizeData(data.data)};
   }catch(e){console.warn('Supabase okunamadı:',e);return null}
 }
 function isDataImageSource(src){
@@ -419,6 +450,7 @@ async function saveCloud(data,expectedUpdatedAtIso=null){
       .select("id,updated_at").maybeSingle();
     if(result.error)throw result.error;
     if(!result.data?.id){const e=new Error("Bu katalog başka bir cihazda güncellendi.");e.code="CATALOG_CONFLICT";throw e;}
+    setCachedCloudUpdatedAt(result.data.updated_at);
     return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};
   }
   const result=await supabaseClient.from(SUPABASE_TABLE)
@@ -429,6 +461,7 @@ async function saveCloud(data,expectedUpdatedAtIso=null){
     throw result.error;
   }
   if(!result.data?.id)throw new Error("Bulut kaydı doğrulanamadı.");
+  setCachedCloudUpdatedAt(result.data.updated_at);
   return {saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};
 }
 const IDB_NAME="ofischi_premium_storage_v2";
@@ -1660,6 +1693,7 @@ useEffect(()=>{
     const current=dataRef.current;
     const panelDirty=panelOpenRef.current&&panelSnapshot.current&&current&&JSON.stringify(normalizeData(current))!==JSON.stringify(normalizeData(panelSnapshot.current));
     lastCloudUpdatedAtRef.current=stamp;
+    setCachedCloudUpdatedAt(updatedAt||new Date(stamp).toISOString());
     cloudBaseRef.current=cloneData(incoming);
     cloudReadyRef.current=true;
     if(panelDirty){
@@ -1822,6 +1856,7 @@ try{
   if(cancelled)return;
   if(cloud.ok&&!cloud.empty&&cloud.data){
     lastCloudUpdatedAtRef.current=cloud.savedAt||Date.now();
+    if(cloud.updatedAtIso)setCachedCloudUpdatedAt(cloud.updatedAtIso);
     cloudBaseRef.current=cloneData(cloud.data);
     cloudReadyRef.current=true;
     /* Eski pending varsa, merkezdeki veriyi körlemesine ezme. Sadece iki taraftaki
