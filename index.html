@@ -1552,7 +1552,7 @@ useEffect(()=>{
  return()=>clearInterval(timer);
 },[data?.categories]);
 
-/* SUPABASE REALTIME + POLLING YEDEĞİ: diğer cihazlardaki değişiklikleri al. */
+/* SUPABASE REALTIME: diğer cihazlardaki değişiklikleri anlık alır; bağlantı yoksa 5 dk fallback kullanılır. */
 const panelOpenRef=useRef(false), languageRef=useRef(language), dataRef=useRef(data), realtimeApplyingRef=useRef(false), lastCloudUpdatedAtRef=useRef(0), localMutationAtRef=useRef(0), autoSyncTimerRef=useRef(null), syncInFlightRef=useRef(false), pendingSyncRef=useRef(null), pendingSyncVersionRef=useRef(0), hydratedRef=useRef(false), cloudBaseRef=useRef(null), cloudReadyRef=useRef(false);
 useEffect(()=>{panelOpenRef.current=panelOpen},[panelOpen]);
 useEffect(()=>{languageRef.current=language},[language]);
@@ -1679,6 +1679,7 @@ useEffect(()=>{
       applyCloudPayload(row.data,row.updated_at);
     })
     .subscribe(async(status,err)=>{
+      realtimeSubscribed=status==="SUBSCRIBED";
       if(status==="SUBSCRIBED"){
         console.info("Ofischi Supabase Realtime aktif.");
         /* Close the small race between initial DB read and WebSocket join. */
@@ -1690,21 +1691,45 @@ useEffect(()=>{
         console.warn("Supabase Realtime bağlantısı yeniden denenecek.",status,err||"");
       }
     });
+  /*
+    EGRESS OPTIMIZATION:
+    Realtime is the primary sync mechanism. The old 2-second fallback polling
+    downloaded the complete catalog JSON repeatedly even when nothing changed.
+    That created unnecessary Supabase egress.
 
-  /* Realtime kapalı/engelli olsa bile en fazla birkaç saniyede güncel kalması için yedek okuma. */
+    New behavior:
+    - If Realtime is connected, there is NO polling.
+    - If Realtime is unavailable, a fallback check runs every 5 minutes.
+    - Save/update behavior and all catalog data remain unchanged.
+  */
   let pollInFlight=false;
+  let realtimeSubscribed=false;
+
   const poll=async()=>{
-    if(!active||pollInFlight||panelOpenRef.current||realtimeApplyingRef.current)return;
+    if(!active||realtimeSubscribed||pollInFlight||panelOpenRef.current||realtimeApplyingRef.current)return;
+    if(document.visibilityState==="hidden")return;
     pollInFlight=true;
     try{
       const cloud=await loadCloud();
       if(cloud&&cloud.savedAt>lastCloudUpdatedAtRef.current){
-        await applyCloudPayload(cloud.data, new Date(cloud.savedAt).toISOString());
+        await applyCloudPayload(cloud.data,new Date(cloud.savedAt).toISOString());
       }
     }finally{pollInFlight=false}
   };
-  const pollTimer=setInterval(poll,2000);
-  return()=>{active=false;clearInterval(pollTimer);supabaseClient.removeChannel(channel)};
+
+  const pollTimer=setInterval(poll,300000);
+
+  const fallbackVisibilityHandler=()=>{
+    if(document.visibilityState==="visible"&&!realtimeSubscribed)poll();
+  };
+  document.addEventListener("visibilitychange",fallbackVisibilityHandler);
+
+  return()=>{
+    active=false;
+    clearInterval(pollTimer);
+    document.removeEventListener("visibilitychange",fallbackVisibilityHandler);
+    supabaseClient.removeChannel(channel);
+  };
 },[]);
 const productTranslationTimers=useRef({});
 const productTranslationSeq=useRef({});
