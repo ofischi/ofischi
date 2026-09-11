@@ -2252,6 +2252,18 @@ async function save(){
   }
 }
 
+const logoPressTimer=useRef(null);
+function startLogoLongPress(e){
+  if(e?.button!==undefined&&e.button!==0)return;
+  if(logoPressTimer.current)clearTimeout(logoPressTimer.current);
+  logoPressTimer.current=setTimeout(()=>{
+    logoPressTimer.current=null;
+    openAdmin();
+  },2000);
+}
+function cancelLogoLongPress(){
+  if(logoPressTimer.current){clearTimeout(logoPressTimer.current);logoPressTimer.current=null;}
+}
 function openAdmin(){if(unlocked){panelSnapshot.current=JSON.parse(JSON.stringify(data));cloudBaseRef.current=cloneData(data);setPanelOpen(true);return}setPinInput("");setPinError(false);setPinModal(true)}
 function closeAdminPanel(discard=true){
   if(discard && panelSnapshot.current){setData(panelSnapshot.current)}
@@ -2457,8 +2469,16 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 {search!==""&&<div className="fixed left-4 right-4 z-40" style={{top:"max(108px,calc(env(safe-area-inset-top, 0px) + 84px))"}}><div className="max-w-5xl mx-auto relative"><input autoFocus value={search.trim()} onChange={e=>setSearch(e.target.value)} placeholder={t(language,"search")} className="search-input" style={{color:theme.text}}/></div></div>}
 
 <header className="px-6 pt-28 pb-8 max-w-5xl mx-auto">
-<div style={{width:"100%",display:"flex",justifyContent:data.logo.position==="left"?"flex-start":data.logo.position==="right"?"flex-end":"center",marginBottom:18}}>
-{data.logo.src?<CachedImage loading="lazy" decoding="async" src={data.logo.src} alt="Premium" style={{width:data.logo.width||data.logo.size||110,height:data.logo.height||data.logo.size||110,maxWidth:"70vw",objectFit:"contain",display:"block"}}/>:<div style={{fontSize:50,fontWeight:800,color:theme.accent}}>O</div>}
+<div
+  onPointerDown={e=>{if(e.pointerType==="mouse"&&e.button!==0)return;e.preventDefault();startLogoLongPress(e)}}
+  onPointerUp={cancelLogoLongPress}
+  onPointerCancel={cancelLogoLongPress}
+  onPointerLeave={cancelLogoLongPress}
+  onContextMenu={e=>e.preventDefault()}
+  title=""
+  style={{width:"100%",display:"flex",justifyContent:data.logo.position==="left"?"flex-start":data.logo.position==="right"?"flex-end":"center",marginBottom:18,cursor:"pointer",userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",touchAction:"manipulation"}}
+>
+{data.logo.src?<CachedImage loading="lazy" decoding="async" src={data.logo.src} alt="Premium" draggable="false" style={{width:data.logo.width||data.logo.size||110,height:data.logo.height||data.logo.size||110,maxWidth:"70vw",objectFit:"contain",display:"block",pointerEvents:"none"}}/>:<div style={{fontSize:50,fontWeight:800,color:theme.accent,pointerEvents:"none"}}>O</div>}
 </div>
 <div className="text-center">
 <div className="text-[10px] font-bold tracking-[.28em] mb-2" style={{color:theme.accent}}>{eyebrow}</div>
@@ -2491,7 +2511,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 </div></div></div>}
 
 <button onClick={()=>createPDF(false)} disabled={pdfBusy} className="fixed bottom-5 left-[18px] z-30 rounded-full px-4 h-12 shadow-xl flex items-center justify-center gap-2 font-bold text-xs disabled:opacity-60" style={{background:theme.accent,color:"#fff"}}><Icon type="download" size={16}/><span className="hidden sm:inline">{language==="EN"?"PDF PRICE LIST":"PDF FİYAT LİSTESİ"}</span></button>
-<button onClick={openAdmin} className="fixed bottom-5 right-[18px] z-30 rounded-full shadow-xl flex items-center justify-center" style={{width:52,height:52,background:theme.text,color:theme.bg}}><Icon type="settings" size={20}/></button>
+
 {toast&&<div className="fixed bottom-24 right-[18px] z-[150] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2"><Icon type="check" size={15}/>{toast}</div>}
 
 <ProductImageLightbox fullScreenImage={fullScreenImage} setFullScreenImage={setFullScreenImage} onClose={()=>{setFullScreenImage(null);setLightboxZoom(1)}}/>
