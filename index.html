@@ -1623,7 +1623,37 @@ function mergeCatalogThreeWay(remote,local,base){
     return cloneData(rv);
   };
   const mergeItems=(rc,lc,bc)=>{
-    const rm=new Map((rc||[]).map(x=>[x.id,x])), lm=new Map((lc||[]).map(x=>[x.id,x])), bm=new Map((bc||[]).map(x=>[x.id,x]));
+    const remoteItems=Array.isArray(rc)?rc:[], localItems=Array.isArray(lc)?lc:[], baseItems=Array.isArray(bc)?bc:[];
+    const rm=new Map(remoteItems.map(x=>[x.id,x])), lm=new Map(localItems.map(x=>[x.id,x])), bm=new Map(baseItems.map(x=>[x.id,x]));
+    const remoteOrder=remoteItems.map(x=>x.id), localOrder=localItems.map(x=>x.id), baseOrder=baseItems.map(x=>x.id);
+    const ids=[...new Set([...remoteOrder,...localOrder,...baseOrder])];
+    const mergedById=new Map();
+    for(const id of ids){
+      const rv=rm.get(id),lv=lm.get(id),bv=bm.get(id);
+      let item=null;
+      if(bv && !lv){ if(rv && JSON.stringify(rv)!==JSON.stringify(bv)) item=rv; }
+      else if(bv && !rv){ if(lv && JSON.stringify(lv)!==JSON.stringify(bv)) item=lv; }
+      else if(!bv){ item=cloneData(lv||rv); }
+      else{
+        item={...rv};
+        const keys=new Set([...Object.keys(rv||{}),...Object.keys(lv||{}),...Object.keys(bv||{})]);
+        for(const k of keys)item[k]=choose(rv?.[k],lv?.[k],bv?.[k]);
+      }
+      if(item)mergedById.set(id,item);
+    }
+    const sameOrder=(a,b)=>{
+      const aa=(a||[]).filter(id=>mergedById.has(id)), bb=(b||[]).filter(id=>mergedById.has(id));
+      return aa.length===bb.length && aa.every((id,i)=>id===bb[i]);
+    };
+    const localOrderChanged=!sameOrder(localOrder,baseOrder);
+    const remoteOrderChanged=!sameOrder(remoteOrder,baseOrder);
+    const preferredOrder=localOrderChanged?localOrder:(remoteOrderChanged?remoteOrder:(remoteOrder.length?remoteOrder:localOrder));
+    const finalIds=[];
+    for(const id of preferredOrder)if(mergedById.has(id)&&!finalIds.includes(id))finalIds.push(id);
+    for(const id of ids)if(mergedById.has(id)&&!finalIds.includes(id))finalIds.push(id);
+    return finalIds.map(id=>mergedById.get(id)).filter(Boolean);
+  };
+  const rm=new Map((rc||[]).map(x=>[x.id,x])), lm=new Map((lc||[]).map(x=>[x.id,x])), bm=new Map((bc||[]).map(x=>[x.id,x]));
     const ids=[...new Set([...(rc||[]).map(x=>x.id),...(lc||[]).map(x=>x.id),...(bc||[]).map(x=>x.id)])];
     const result=[];
     for(const id of ids){
