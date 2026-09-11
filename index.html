@@ -11,11 +11,11 @@
 <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<script defer src="https://cdn.tailwindcss.com"></script>
-<script defer crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script defer crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script defer crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box}html,body,#root{margin:0;padding:0;width:100%;min-height:100%;touch-action:pan-x pan-y}
 body{background:#141416;overflow-x:hidden;-webkit-font-smoothing:antialiased}
@@ -1652,24 +1652,6 @@ function mergeCatalogThreeWay(remote,local,base){
     for(const id of preferredOrder)if(mergedById.has(id)&&!finalIds.includes(id))finalIds.push(id);
     for(const id of ids)if(mergedById.has(id)&&!finalIds.includes(id))finalIds.push(id);
     return finalIds.map(id=>mergedById.get(id)).filter(Boolean);
-  };
-  const rm=new Map((rc||[]).map(x=>[x.id,x])), lm=new Map((lc||[]).map(x=>[x.id,x])), bm=new Map((bc||[]).map(x=>[x.id,x]));
-    const ids=[...new Set([...(rc||[]).map(x=>x.id),...(lc||[]).map(x=>x.id),...(bc||[]).map(x=>x.id)])];
-    const result=[];
-    for(const id of ids){
-      const rv=rm.get(id),lv=lm.get(id),bv=bm.get(id);
-      /* Deletion is a real edit when an entity existed in the base. */
-      if(bv && !lv){ if(rv && JSON.stringify(rv)!==JSON.stringify(bv)) result.push(rv); else continue; }
-      else if(bv && !rv){ if(lv && JSON.stringify(lv)!==JSON.stringify(bv)) result.push(lv); else continue; }
-      else if(!bv){ result.push(cloneData(lv||rv)); }
-      else{
-        const item={...rv};
-        const keys=new Set([...Object.keys(rv||{}),...Object.keys(lv||{}),...Object.keys(bv||{})]);
-        for(const k of keys)item[k]=choose(rv?.[k],lv?.[k],bv?.[k]);
-        result.push(item);
-      }
-    }
-    return result.filter(Boolean);
   };
   const rm=new Map((r.categories||[]).map(x=>[x.id,x])), lm=new Map((l.categories||[]).map(x=>[x.id,x])), bm=new Map((b.categories||[]).map(x=>[x.id,x]));
   const ids=[...new Set([...(r.categories||[]).map(x=>x.id),...(l.categories||[]).map(x=>x.id),...(b.categories||[]).map(x=>x.id)])];
