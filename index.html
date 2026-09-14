@@ -206,10 +206,10 @@ const {useState,useEffect,useRef}=React;
 
 /*
   OFISCHI PREMIUM
-  - Supabase YOK
-  - Veriler localStorage + IndexedDB'de tutulur
-  - Mevcut katalog verisini silmez
-  - İlk kullanımda mevcut katalog JSON'u içe aktarılabilir
+  - Katalog verisi Supabase'te, görseller Cloudflare R2'de tutulur
+  - localStorage + IndexedDB yerel önbellek/yedek olarak kullanılır
+  - Supabase Storage'daki mevcut orijinaller silinmez
+  - Yönetici yazma işlemleri Ofischi Gateway üzerinden yapılır
   - İngilizce alanlar Türkçe alanlardan ayrı tutulur
 */
 
@@ -227,6 +227,8 @@ const SUPABASE_PUBLISHABLE_KEY=typeof OFISCHI_CONFIG.SUPABASE_PUBLISHABLE_KEY===
 const SUPABASE_TABLE="ofischi_catalog";
 const SUPABASE_ROW_ID="main";
 const SUPABASE_BUCKET="catalog-assets";
+const OFISCHI_GATEWAY_URL=SUPABASE_URL?`${SUPABASE_URL.replace(/\/$/,"")}/functions/v1/ofischi-gateway`:"";
+let activeAdminPin="";
 const SUPABASE_ENABLED=!!(SUPABASE_URL&&SUPABASE_PUBLISHABLE_KEY&&window.supabase?.createClient);
 /* -------------------- SECURITY: INPUT DEFENSE / THROTTLING -------------------- */
 const SECURITY_LIMITS=Object.freeze({
@@ -502,29 +504,33 @@ function storagePathFor(kind,categoryId,itemId,src,index=0){
   if(kind==="pdf-logo")return `branding/pdf-cover-logo/${Date.now()}-${nonce}.${ext}`;
   return `branding/${kind}/${Date.now()}-${nonce}.${ext}`;
 }
-async function uploadDataImageToSupabase(src,path){
+async function uploadDataImageToR2(src,path){
   if(!isDataImageSource(src))return src;
-  if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase yapılandırılmadı");
+  if(!OFISCHI_GATEWAY_URL)throw new Error("Ofischi gateway yapılandırılmadı");
   const blob=dataUrlToBlob(src);
-  await enforceClientRateLimit("supabase:storage:upload",10,60*1000);
-  const {error}=await supabaseClient.storage.from(SUPABASE_BUCKET).upload(path,blob,{
-    cacheControl:"31536000",contentType:blob.type||"image/jpeg",upsert:false
-  });
-  if(error)throw error;
-  const {data}=supabaseClient.storage.from(SUPABASE_BUCKET).getPublicUrl(path);
-  if(!data?.publicUrl)throw new Error("Supabase görsel URL oluşturamadı.");
-  return `${data.publicUrl}${data.publicUrl.includes("?")?"&":"?"}v=${encodeURIComponent(path.split("/").pop())}`;
+  if(blob.size>SECURITY_LIMITS.imageBytes)throw new Error("Görsel boyutu sınırı aşıldı.");
+  const fd=new FormData();
+  fd.append("action","r2-upload");
+  fd.append("path",path);
+  fd.append("file",blob,path.split("/").pop()||"image.jpg");
+  await enforceClientRateLimit("r2:storage:upload",10,60*1000);
+  const response=await fetch(OFISCHI_GATEWAY_URL,{method:"POST",headers:{"x-ofischi-pin":getAdminPinForGateway()},body:fd});
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(payload.error||"R2 görsel yükleme başarısız.");
+  if(!payload.url)throw new Error("R2 görsel URL oluşturulamadı.");
+  return `${payload.url}${payload.url.includes("?")?"&":"?"}v=${encodeURIComponent(path.split("/").pop()||"1")}`;
 }
+function getAdminPinForGateway(){return activeAdminPin}
 async function prepareDataForCloud(data){
   const clean=sanitizeCatalogData(data),tasks=[];
-  if(isDataImageSource(clean.logo?.src))tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor("site-logo",null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
-  if(isDataImageSource(clean.pdf?.coverLogo?.src))tasks.push(uploadDataImageToSupabase(clean.pdf.coverLogo.src,storagePathFor("pdf-logo",null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
+  if(isDataImageSource(clean.logo?.src))tasks.push(uploadDataImageToR2(clean.logo.src,storagePathFor("site-logo",null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
+  if(isDataImageSource(clean.pdf?.coverLogo?.src))tasks.push(uploadDataImageToR2(clean.pdf.coverLogo.src,storagePathFor("pdf-logo",null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
   for(const category of (clean.categories||[])){
-    if(isDataImageSource(category?.coverImage))tasks.push(uploadDataImageToSupabase(category.coverImage,storagePathFor("category",category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
+    if(isDataImageSource(category?.coverImage))tasks.push(uploadDataImageToR2(category.coverImage,storagePathFor("category",category.id,null,category.coverImage)).then(url=>{category.coverImage=url}));
     for(const item of (category.items||[])){
       const images=Array.isArray(item.images)?item.images.filter(Boolean):(item.image?[item.image]:[]);
       if(isDataImageSource(item.image)&&!images.includes(item.image))images.unshift(item.image);
-      const uploads=images.map((src,index)=>isDataImageSource(src)?uploadDataImageToSupabase(src,storagePathFor("product",category.id,item.id,src,index)):Promise.resolve(src));
+      const uploads=images.map((src,index)=>isDataImageSource(src)?uploadDataImageToR2(src,storagePathFor("product",category.id,item.id,src,index)):Promise.resolve(src));
       tasks.push(Promise.all(uploads).then(urls=>{item.images=urls.filter(Boolean);item.image=item.images[0]||null}));
     }
   }
@@ -538,27 +544,26 @@ async function prepareDataForCloud(data){
   be enforced server-side/at the edge for admin writes and custom endpoints.
 */
 async function saveCloud(data,expectedUpdatedAtIso=null){
-  if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase bağlantısı etkin değil.");
-  await enforceClientRateLimit("supabase:catalog:save",6,60*1000);
-  const clean=await prepareDataForCloud(data),nextUpdatedAt=new Date().toISOString();
-  if(expectedUpdatedAtIso){
-    const result=await supabaseClient.from(SUPABASE_TABLE)
-      .update({data:clean,updated_at:nextUpdatedAt})
-      .eq("id",SUPABASE_ROW_ID).eq("updated_at",expectedUpdatedAtIso)
-      .select("id,updated_at").maybeSingle();
-    if(result.error)throw result.error;
-    if(!result.data?.id){const e=new Error("Bu katalog başka bir cihazda güncellendi.");e.code="CATALOG_CONFLICT";throw e;}
-    const saved={saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};cloudMemorySnapshot={savedAt:saved.updatedAt,data:normalizeData(clean)};setCachedCloudUpdatedAt(result.data.updated_at);setCloudCacheCheckedAt();return saved;
+  if(!OFISCHI_GATEWAY_URL)throw new Error("Ofischi gateway yapılandırılmadı.");
+  if(!activeAdminPin)throw new Error("Yönetim oturumu bulunamadı.");
+  await enforceClientRateLimit("gateway:catalog:save",6,60*1000);
+  const clean=await prepareDataForCloud(data);
+  const response=await fetch(OFISCHI_GATEWAY_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-ofischi-pin":getAdminPinForGateway()},
+    body:JSON.stringify({action:"catalog-save",data:clean,expectedUpdatedAt:expectedUpdatedAtIso||null})
+  });
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok){
+    if(payload.code==="CATALOG_CONFLICT"){const e=new Error(payload.error||"Bu katalog başka bir cihazda güncellendi.");e.code="CATALOG_CONFLICT";throw e;}
+    throw new Error(payload.error||"Katalog kaydedilemedi.");
   }
-  const result=await supabaseClient.from(SUPABASE_TABLE)
-    .insert({id:SUPABASE_ROW_ID,data:clean,updated_at:nextUpdatedAt})
-    .select("id,updated_at").maybeSingle();
-  if(result.error){
-    if(String(result.error.code)==="23505"){const e=new Error("Bu katalog başka bir cihazda oluşturuldu.");e.code="CATALOG_CONFLICT";throw e;}
-    throw result.error;
-  }
-  if(!result.data?.id)throw new Error("Bulut kaydı doğrulanamadı.");
-  const saved={saved:true,data:clean,updatedAt:Date.parse(result.data.updated_at)||Date.now(),updatedAtIso:result.data.updated_at};cloudMemorySnapshot={savedAt:saved.updatedAt,data:normalizeData(clean)};setCachedCloudUpdatedAt(result.data.updated_at);setCloudCacheCheckedAt();return saved;
+  if(!payload.saved||!payload.updatedAtIso)throw new Error("Bulut kayıt doğrulaması başarısız.");
+  const saved={saved:true,data:normalizeData(payload.data||clean),updatedAt:Date.parse(payload.updatedAtIso)||Date.now(),updatedAtIso:payload.updatedAtIso};
+  cloudMemorySnapshot={savedAt:saved.updatedAt,data:normalizeData(saved.data)};
+  setCachedCloudUpdatedAt(saved.updatedAtIso);
+  setCloudCacheCheckedAt();
+  return saved;
 }
 const IDB_NAME="ofischi_premium_storage_v2";
 const IDB_STORE="catalog";
@@ -2458,7 +2463,7 @@ async function tryUnlock(){
   if(!/^\d{4,8}$/.test(candidate)){setPinError(true);return;}
   if(candidate===String(data?.pin||"1234")){
     clearPinLock();
-    setUnlocked(true);setPinModal(false);panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);setPinInput("");
+    activeAdminPin=candidate;setUnlocked(true);setPinModal(false);panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);setPinInput("");
     return;
   }
   pinFailureCount++;
