@@ -232,7 +232,7 @@ const SUPABASE_ENABLED=!!(SUPABASE_URL&&SUPABASE_PUBLISHABLE_KEY&&window.supabas
 const SECURITY_LIMITS=Object.freeze({
   text:4000,shortText:500,search:120,id:160,jsonFileBytes:10*1024*1024,
   imageBytes:15*1024*1024,imageCount:20,apiWindowMs:60*1000,
-  apiCallsPerWindow:30,pinAttempts:5
+  apiCallsPerWindow:30,pinAttempts:3
 });
 function safeText(value,max=SECURITY_LIMITS.text){
   return String(value??"").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,"").replace(/[\u2028\u2029]/g," ").slice(0,max);
@@ -2430,21 +2430,44 @@ function removeProductImage(categoryId,itemId,index=0){
 }
 
 function removeLogo(){if(!confirm("Logo kaldırılsın mı?"))return;setPath(["logo","src"],null)}
+const PIN_LOCK_STORAGE_KEY="ofischi_pin_lock_v1";
 let pinFailureCount=0,pinBlockedUntil=0;
+try{
+  const stored=JSON.parse(localStorage.getItem(PIN_LOCK_STORAGE_KEY)||"null");
+  if(stored&&Number.isFinite(stored.blockedUntil)&&stored.blockedUntil>Date.now()){
+    pinBlockedUntil=stored.blockedUntil;pinFailureCount=SECURITY_LIMITS.pinAttempts;
+  }else if(stored){localStorage.removeItem(PIN_LOCK_STORAGE_KEY);}
+}catch(_){}
+function persistPinLock(){
+  try{localStorage.setItem(PIN_LOCK_STORAGE_KEY,JSON.stringify({blockedUntil:pinBlockedUntil,failedAt:Date.now()}));}catch(_){}
+}
+function clearPinLock(){
+  pinFailureCount=0;pinBlockedUntil=0;
+  try{localStorage.removeItem(PIN_LOCK_STORAGE_KEY);}catch(_){}
+}
 async function tryUnlock(){
   const now=Date.now();
-  if(now<pinBlockedUntil){setPinError(true);showToast("Çok fazla hatalı deneme. Lütfen biraz sonra tekrar deneyin.");return;}
+  if(now<pinBlockedUntil){
+    setPinError(true);
+    const remaining=Math.max(1,Math.ceil((pinBlockedUntil-now)/60000));
+    showToast(`Çok fazla hatalı PIN denemesi. Yönetim girişi ${remaining} dakika boyunca kilitli.`);
+    return;
+  }
+  if(pinBlockedUntil){clearPinLock();}
   const candidate=String(pinInput||"").replace(/\D/g,"").slice(0,8);
   if(!/^\d{4,8}$/.test(candidate)){setPinError(true);return;}
   if(candidate===String(data?.pin||"1234")){
-    pinFailureCount=0;pinBlockedUntil=0;
+    clearPinLock();
     setUnlocked(true);setPinModal(false);panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);setPinInput("");
     return;
   }
   pinFailureCount++;
   if(pinFailureCount>=SECURITY_LIMITS.pinAttempts){
-    pinBlockedUntil=now+5*60*1000;pinFailureCount=0;
-    showToast("Çok fazla hatalı PIN denemesi. 5 dakika bekleyin.");
+    pinBlockedUntil=now+60*60*1000;
+    persistPinLock();
+    showToast("3 hatalı PIN denemesi. Yönetim girişi 1 saat boyunca kilitlendi.");
+  }else{
+    showToast(`Hatalı PIN. Kalan deneme: ${SECURITY_LIMITS.pinAttempts-pinFailureCount}`);
   }
   setPinError(true);
 }
