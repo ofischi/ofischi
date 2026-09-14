@@ -214,12 +214,81 @@ const {useState,useEffect,useRef}=React;
 */
 
 const DB_KEY="ofischi_premium_catalog_v4";
-const SUPABASE_URL="https://xjkydcegmhjfjikizotz.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY="sb_publishable_AYLPJs6IdI9mYGRs3OKrNg_yacLOapM";
+/*
+  SECURITY CONFIGURATION
+  Credentials are injected by the hosting layer at runtime.
+  Example deployment bootstrap (NOT part of this HTML):
+    window.__OFISCHI_CONFIG__={SUPABASE_URL:"...",SUPABASE_PUBLISHABLE_KEY:"..."};
+  Never expose service_role/secret keys in browser code.
+*/
+const OFISCHI_CONFIG=(window.__OFISCHI_CONFIG__&&typeof window.__OFISCHI_CONFIG__==="object")?window.__OFISCHI_CONFIG__:{};
+const SUPABASE_URL=typeof OFISCHI_CONFIG.SUPABASE_URL==="string"?OFISCHI_CONFIG.SUPABASE_URL.trim():"";
+const SUPABASE_PUBLISHABLE_KEY=typeof OFISCHI_CONFIG.SUPABASE_PUBLISHABLE_KEY==="string"?OFISCHI_CONFIG.SUPABASE_PUBLISHABLE_KEY.trim():"";
 const SUPABASE_TABLE="ofischi_catalog";
 const SUPABASE_ROW_ID="main";
 const SUPABASE_BUCKET="catalog-assets";
 const SUPABASE_ENABLED=!!(SUPABASE_URL&&SUPABASE_PUBLISHABLE_KEY&&window.supabase?.createClient);
+/* -------------------- SECURITY: INPUT DEFENSE / THROTTLING -------------------- */
+const SECURITY_LIMITS=Object.freeze({
+  text:4000,shortText:500,search:120,id:160,jsonFileBytes:10*1024*1024,
+  imageBytes:15*1024*1024,imageCount:20,apiWindowMs:60*1000,
+  apiCallsPerWindow:30,pinAttempts:5
+});
+function safeText(value,max=SECURITY_LIMITS.text){
+  return String(value??"").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,"").replace(/[\u2028\u2029]/g," ").slice(0,max);
+}
+function safeShortText(value,max=SECURITY_LIMITS.shortText){return safeText(value,max).trim();}
+function safeSearchText(value){return safeText(value,SECURITY_LIMITS.search).trim();}
+function safeId(value){
+  const s=safeShortText(value,SECURITY_LIMITS.id);
+  return /^[A-Za-z0-9._~-]+$/.test(s)?s:"";
+}
+function safeAssetSource(value){
+  const s=String(value??"").trim();
+  if(/^data:image\/(?:png|jpe?g|webp|gif|svg\+xml);/i.test(s))return s;
+  if(/^blob:/i.test(s))return s;
+  try{const u=new URL(s,window.location.origin);return(u.protocol==="https:"||u.protocol==="http:")?u.href:"";}catch(_){return"";}
+}
+function validateUploadFile(file,{maxBytes=SECURITY_LIMITS.imageBytes,types=["image/jpeg","image/png","image/webp","image/gif"]}={}){
+  if(!file||typeof file!=="object")throw new Error("Geçersiz dosya.");
+  const mime=String(file.type||"").toLowerCase();
+  if(!types.includes(mime))throw new Error("Desteklenmeyen dosya türü.");
+  if(!Number.isFinite(file.size)||file.size<=0||file.size>maxBytes)throw new Error("Dosya boyutu izin verilen sınırın dışında.");
+  const name=safeShortText(file.name||"",180);
+  if(!name||/[\/\\\u0000-\u001F]/.test(name))throw new Error("Geçersiz dosya adı.");
+  return true;
+}
+const rateState=new Map();
+function consumeClientRateLimit(bucket,limit=SECURITY_LIMITS.apiCallsPerWindow,windowMs=SECURITY_LIMITS.apiWindowMs){
+  const key=safeShortText(bucket,120)||"default",now=Date.now(),state=rateState.get(key);
+  if(!state||now-state.startedAt>=windowMs){rateState.set(key,{startedAt:now,count:1});return true;}
+  if(state.count>=limit)return false;
+  state.count++;return true;
+}
+async function enforceClientRateLimit(bucket,limit,windowMs){
+  if(!consumeClientRateLimit(bucket,limit,windowMs))throw new Error("Çok fazla istek. Lütfen kısa süre sonra tekrar deneyin.");
+}
+function sanitizeCatalogData(data){
+  const clean=normalizeData(data);
+  for(const k of ["siteName","siteName_en","subtitle","subtitle_en","eyebrow","eyebrow_en"])clean[k]=safeText(clean[k]);
+  clean.phone=safeShortText(clean.phone,80);
+  clean.pin=String(clean.pin??"").replace(/\D/g,"").slice(0,8);
+  if(clean.logo)clean.logo.src=safeAssetSource(clean.logo.src)||null;
+  if(clean.pdf?.coverLogo)clean.pdf.coverLogo.src=safeAssetSource(clean.pdf.coverLogo.src)||DEFAULT_PDF_COVER_LOGO;
+  for(const c of clean.categories||[]){
+    c.id=safeId(c.id)||uid();c.name=safeText(c.name);c.name_en=safeText(c.name_en);
+    c.coverImage=safeAssetSource(c.coverImage)||null;
+    for(const item of c.items||[]){
+      item.id=safeId(item.id)||uid();
+      for(const k of ["name","name_en","desc","desc_en"])item[k]=safeText(item[k]);
+      item.dims=safeText(item.dims,500);item.dims_en=safeText(item.dims_en,500);
+      item.image=safeAssetSource(item.image)||null;
+      item.images=(Array.isArray(item.images)?item.images:[]).map(safeAssetSource).filter(Boolean).slice(0,SECURITY_LIMITS.imageCount);
+    }
+  }
+  return clean;
+}
+
 const supabaseClient=SUPABASE_ENABLED?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}}):null;
 
 const BACKUP_KEY="ofischi_premium_catalog_backup_v4";
@@ -376,7 +445,8 @@ async function loadCloud(){
   if(cloudCheckInFlight)return cloudCheckInFlight;
   cloudCheckInFlight=(async()=>{
     try{
-      const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+      await enforceClientRateLimit("supabase:catalog:version",12,60*1000);
+       const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
       if(error)throw error;
       setCloudCacheCheckedAt();
       const remoteUpdatedAt=data?.updated_at||"",remoteStamp=Date.parse(remoteUpdatedAt)||0;
@@ -384,7 +454,8 @@ async function loadCloud(){
       if(!data){cloudMemorySnapshot=null;return null}
       if(cloudFullFetchInFlight)return cloudFullFetchInFlight;
       cloudFullFetchInFlight=(async()=>{
-        const full=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+        await enforceClientRateLimit("supabase:catalog:full-read",6,60*1000);
+         const full=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
         if(full.error)throw full.error;
         if(!full.data?.data||typeof full.data.data!=="object"||!Object.keys(full.data.data).length){cloudMemorySnapshot=null;return null}
         const snapshot={savedAt:Date.parse(full.data.updated_at)||remoteStamp||Date.now(),data:normalizeData(full.data.data)};
@@ -401,8 +472,8 @@ function getCachedImageObjectUrl(src){
   return Promise.resolve(src);
 }
 function CachedImage({src,...props}){
-  const raw=String(src||"");
-  return <img {...props} src={raw||undefined}/>;
+  const raw=safeAssetSource(src);
+  return <img {...props} src={raw||undefined} referrerPolicy="no-referrer"/>;
 }
 function isDataImageSource(src){
   return typeof src==='string' && /^data:image\//i.test(src);
@@ -424,8 +495,9 @@ function storagePathFor(kind,categoryId,itemId,src,index=0){
   const mime=String(src||"").match(/^data:image\/([^;,]+)/i)?.[1]?.toLowerCase()||"jpeg";
   const ext=mime==="svg+xml"?"svg":(mime==="jpeg"?"jpg":mime);
   const nonce=(typeof crypto!=="undefined"&&crypto.randomUUID)?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  if(kind==="product")return `products/${encodeURIComponent(String(categoryId))}/${encodeURIComponent(String(itemId))}/${Date.now()}-${nonce}-${index}.${ext}`;
-  if(kind==="category")return `categories/${encodeURIComponent(String(categoryId))}/${Date.now()}-${nonce}.${ext}`;
+  const safeCategoryId=safeId(categoryId)||"category",safeItemId=safeId(itemId)||"item",safeIndex=Math.max(0,Math.min(SECURITY_LIMITS.imageCount-1,Number(index)||0));
+  if(kind==="product")return `products/${encodeURIComponent(safeCategoryId)}/${encodeURIComponent(safeItemId)}/${Date.now()}-${nonce}-${safeIndex}.${ext}`;
+  if(kind==="category")return `categories/${encodeURIComponent(safeId(categoryId)||"category")}/${Date.now()}-${nonce}.${ext}`;
   if(kind==="site-logo")return `branding/site-logo/${Date.now()}-${nonce}.${ext}`;
   if(kind==="pdf-logo")return `branding/pdf-cover-logo/${Date.now()}-${nonce}.${ext}`;
   return `branding/${kind}/${Date.now()}-${nonce}.${ext}`;
@@ -434,6 +506,7 @@ async function uploadDataImageToSupabase(src,path){
   if(!isDataImageSource(src))return src;
   if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase yapılandırılmadı");
   const blob=dataUrlToBlob(src);
+  await enforceClientRateLimit("supabase:storage:upload",10,60*1000);
   const {error}=await supabaseClient.storage.from(SUPABASE_BUCKET).upload(path,blob,{
     cacheControl:"31536000",contentType:blob.type||"image/jpeg",upsert:false
   });
@@ -443,7 +516,7 @@ async function uploadDataImageToSupabase(src,path){
   return `${data.publicUrl}${data.publicUrl.includes("?")?"&":"?"}v=${encodeURIComponent(path.split("/").pop())}`;
 }
 async function prepareDataForCloud(data){
-  const clean=normalizeData(data),tasks=[];
+  const clean=sanitizeCatalogData(data),tasks=[];
   if(isDataImageSource(clean.logo?.src))tasks.push(uploadDataImageToSupabase(clean.logo.src,storagePathFor("site-logo",null,null,clean.logo.src)).then(url=>{clean.logo.src=url}));
   if(isDataImageSource(clean.pdf?.coverLogo?.src))tasks.push(uploadDataImageToSupabase(clean.pdf.coverLogo.src,storagePathFor("pdf-logo",null,null,clean.pdf.coverLogo.src)).then(url=>{clean.pdf.coverLogo.src=url}));
   for(const category of (clean.categories||[])){
@@ -458,8 +531,15 @@ async function prepareDataForCloud(data){
   if(tasks.length)await Promise.all(tasks);
   return clean;
 }
+/*
+  SECURITY NOTE:
+  Browser throttling is defense-in-depth only. A determined attacker can bypass
+  JavaScript and call PostgREST directly. Production-grade rate limiting must also
+  be enforced server-side/at the edge for admin writes and custom endpoints.
+*/
 async function saveCloud(data,expectedUpdatedAtIso=null){
   if(!SUPABASE_ENABLED||!supabaseClient)throw new Error("Supabase bağlantısı etkin değil.");
+  await enforceClientRateLimit("supabase:catalog:save",6,60*1000);
   const clean=await prepareDataForCloud(data),nextUpdatedAt=new Date().toISOString();
   if(expectedUpdatedAtIso){
     const result=await supabaseClient.from(SUPABASE_TABLE)
@@ -599,7 +679,7 @@ async function loadLocal(){
 }
 
 async function saveLocal(data){
-  const clean=data;
+  const clean=sanitizeCatalogData(data);
   const record={savedAt:Date.now(),data:clean};
   const json=JSON.stringify(record);
   /* Kritik yol: localStorage anında yazılır. IndexedDB yedeklemesi UI'ı bekletmez. */
@@ -630,12 +710,24 @@ a.click();
 setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 function readJSONFile(file){
-return new Promise((resolve,reject)=>{
-const r=new FileReader();
-r.onload=()=>{try{resolve(normalizeData(JSON.parse(r.result)))}catch(e){reject(e)}};
-r.onerror=()=>reject(r.error);
-r.readAsText(file);
-});
+  return new Promise((resolve,reject)=>{
+    try{
+      if(!file||file.type!=="application/json")throw new Error("Yalnızca JSON dosyası kabul edilir.");
+      if(!Number.isFinite(file.size)||file.size<=0||file.size>SECURITY_LIMITS.jsonFileBytes)throw new Error("JSON dosyası boyutu izin verilen sınırın dışında.");
+      const r=new FileReader();
+      r.onload=()=>{
+        try{
+          const raw=String(r.result||"");
+          if(raw.length>SECURITY_LIMITS.jsonFileBytes)throw new Error("JSON içeriği çok büyük.");
+          const parsed=JSON.parse(raw);
+          if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error("Geçersiz katalog yapısı.");
+          resolve(sanitizeCatalogData(parsed));
+        }catch(e){reject(e)}
+      };
+      r.onerror=()=>reject(r.error||new Error("Dosya okunamadı."));
+      r.readAsText(file);
+    }catch(e){reject(e)}
+  });
 }
 
 /*
@@ -813,8 +905,10 @@ if(exact[source])return exact[source];
 /* Network translation fallback. No API key is required. If the service is unavailable,
    the deterministic professional catalog dictionary below is used. */
 try{
-  const url="https://translate.googleapis.com/translate_a/single?client=gtx&sl=tr&tl=en&dt=t&q="+encodeURIComponent(source);
-  const response=await fetch(url,{method:"GET",headers:{Accept:"application/json"}});
+  const translationSource=safeText(source,SECURITY_LIMITS.text);
+  await enforceClientRateLimit("translation",10,60*1000);
+  const url="https://translate.googleapis.com/translate_a/single?client=gtx&sl=tr&tl=en&dt=t&q="+encodeURIComponent(translationSource);
+  const response=await fetch(url,{method:"GET",headers:{Accept:"application/json"},cache:"force-cache"});
   if(response.ok){
     const json=await response.json();
     const translated=Array.isArray(json?.[0])?json[0].map(x=>Array.isArray(x)?x[0]:"").join("").trim():"";
@@ -1755,7 +1849,8 @@ function mergeCatalogPreservingBoth(remote,local){
 async function loadCloudDetailed(){
   if(!SUPABASE_ENABLED||!supabaseClient)return {ok:false,empty:false,error:new Error('Supabase etkin değil')};
   try{
-    const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
+    await enforceClientRateLimit("supabase:catalog:detailed-read",6,60*1000);
+     const {data,error}=await supabaseClient.from(SUPABASE_TABLE).select('id,data,updated_at').eq('id',SUPABASE_ROW_ID).maybeSingle();
     if(error)throw error;
     if(!data?.data||typeof data.data!=='object'||!Object.keys(data.data).length)return {ok:true,empty:true,data:null,savedAt:0};
     return {ok:true,empty:false,data:normalizeData(data.data),savedAt:Date.parse(data.updated_at)||0,updatedAtIso:data.updated_at||null};
@@ -2016,9 +2111,10 @@ if(!p)return p;
    normalizeData tekrar varsayılan değeri yazar ve input sabitmiş gibi görünür. */
 const copy=JSON.parse(JSON.stringify(p));
 callback(copy);
-setSaved(false);
+  const protectedCopy=sanitizeCatalogData(copy);
+  setSaved(false);
 /* Kalıcı kayıt yalnızca explicit Save ile yapılır. */
-return copy;
+return protectedCopy;
 });
 }
 function setPath(path,value){updateData(copy=>{let target=copy;for(let i=0;i<path.length-1;i++){const key=path[i];target[key]={...(target[key]||{})};target=target[key]}target[path[path.length-1]]=value})}
@@ -2273,7 +2369,7 @@ function closeAdminPanel(discard=true){
 function uploadLogoLocal(e){const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{updateData(x=>{x.logo={...x.logo,src:reader.result}});showToast("Logo yüklendi. Kaydet'e basın.")};reader.onerror=()=>showToast("Logo yüklenemedi.");reader.readAsDataURL(file);e.target.value=""}
 async function uploadPdfCoverLogo(e){const file=e.target.files?.[0];if(!file)return;try{const src=await pdfLogoToTransparentDataURL(file);updateData(x=>{x.pdf={...x.pdf,coverLogo:{src}}});showToast("PDF kapak logosu yüklendi. Kaydet'e basın.")}catch(err){showToast("PDF kapak logosu yüklenemedi.")}finally{e.target.value=""}}
 async function pdfLogoToTransparentDataURL(file){
-  if(!file||!file.type.startsWith("image/"))throw new Error("Geçersiz logo");
+  validateUploadFile(file,{maxBytes:8*1024*1024,types:["image/jpeg","image/png","image/webp","image/svg+xml"]});
   if(file.type.includes("svg")){return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=()=>reject(r.error);r.readAsDataURL(file)})}
   const raw=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.readAsDataURL(file)});
   const img=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>reject(new Error("Logo açılamadı"));im.src=raw});
@@ -2286,7 +2382,7 @@ async function pdfLogoToTransparentDataURL(file){
 }
 function removePdfCoverLogo(){if(!confirm("PDF kapak logosu kaldırılsın mı?"))return;setPath(["pdf","coverLogo"],null)}
 async function fileToOptimizedDataURL(file,maxSize=1800,quality=.82){
-  if(!file||!file.type.startsWith("image/"))throw new Error("Geçersiz görsel");
+  validateUploadFile(file);
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
     reader.onerror=()=>reject(reader.error||new Error("Dosya okunamadı"));
@@ -2309,7 +2405,8 @@ async function fileToOptimizedDataURL(file,maxSize=1800,quality=.82){
 async function uploadProductImage(categoryId,itemId,e){
   const files=Array.from(e.target.files||[]);if(!files.length)return;
   try{
-    const valid=files.filter(f=>f.type.startsWith("image/"));
+    if(files.length>SECURITY_LIMITS.imageCount)throw new Error(`En fazla ${SECURITY_LIMITS.imageCount} görsel seçebilirsiniz.`);
+     const valid=files.filter(f=>{try{validateUploadFile(f);return true}catch(_){return false}});
     if(!valid.length)throw new Error("Lütfen görsel dosyaları seçin.");
     const srcs=await Promise.all(valid.map(f=>fileToOptimizedDataURL(f,1800,.82)));
     const item=(data.categories.find(c=>c.id===categoryId)?.items||[]).find(i=>i.id===itemId);
@@ -2333,9 +2430,23 @@ function removeProductImage(categoryId,itemId,index=0){
 }
 
 function removeLogo(){if(!confirm("Logo kaldırılsın mı?"))return;setPath(["logo","src"],null)}
-function tryUnlock(){
-if(pinInput===String(data?.pin||"1234")){setUnlocked(true);setPinModal(false);panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);setPinInput("")}
-else setPinError(true);
+let pinFailureCount=0,pinBlockedUntil=0;
+async function tryUnlock(){
+  const now=Date.now();
+  if(now<pinBlockedUntil){setPinError(true);showToast("Çok fazla hatalı deneme. Lütfen biraz sonra tekrar deneyin.");return;}
+  const candidate=String(pinInput||"").replace(/\D/g,"").slice(0,8);
+  if(!/^\d{4,8}$/.test(candidate)){setPinError(true);return;}
+  if(candidate===String(data?.pin||"1234")){
+    pinFailureCount=0;pinBlockedUntil=0;
+    setUnlocked(true);setPinModal(false);panelSnapshot.current=JSON.parse(JSON.stringify(data));setPanelOpen(true);setPinInput("");
+    return;
+  }
+  pinFailureCount++;
+  if(pinFailureCount>=SECURITY_LIMITS.pinAttempts){
+    pinBlockedUntil=now+5*60*1000;pinFailureCount=0;
+    showToast("Çok fazla hatalı PIN denemesi. 5 dakika bekleyin.");
+  }
+  setPinError(true);
 }
 
 async function createPDF(openPreview=false){
@@ -2380,7 +2491,7 @@ async function createPDF(openPreview=false){
 }
 async function uploadCategoryCover(categoryId,e){
  const file=e.target.files?.[0];if(!file)return;
- try{const src=await fileToOptimizedDataURL(file,2200,.86);updateData(x=>{x.categories=x.categories.map(c=>c.id===categoryId?{...c,coverImage:src}:c)});showToast("Kategori kapak görseli yüklendi. Kaydet'e basın.")}
+ try{validateUploadFile(file);await enforceClientRateLimit("admin:category-cover-upload",10,60*1000);const src=await fileToOptimizedDataURL(file,2200,.86);updateData(x=>{x.categories=x.categories.map(c=>c.id===categoryId?{...c,coverImage:src}:c)});showToast("Kategori kapak görseli yüklendi. Kaydet'e basın.")}
  catch(err){showToast("Kapak görseli yüklenemedi.")}
  finally{e.target.value=""}
 }
@@ -2412,7 +2523,7 @@ if(!data)return <div style={{minHeight:"100vh",background:"#141416",color:"#f871
 const categories=data.categories||[];
 const activeCategory=categories.find(c=>c.id===activeCat)||categories[0]||null;
 const allProducts=categories.flatMap(c=>(c.items||[]).map(i=>({...i,categoryName:c.name,categoryName_en:c.name_en})));
-const q=search.trim().toLocaleLowerCase("tr-TR");
+const q=safeSearchText(search).toLocaleLowerCase("tr-TR");
 const visibleProducts=q?allProducts.filter(i=>{
 const text=[i.name,i.name_en,i.desc,i.desc_en,i.dims,i.dims_en,i.categoryName,i.categoryName_en].filter(Boolean).join(" ");
 return text.toLocaleLowerCase("tr-TR").includes(q)||text.toLocaleLowerCase("en-US").includes(q);
@@ -2466,7 +2577,7 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <button onClick={()=>setSearch(search?"":" ")} className="w-10 h-10 rounded-full flex items-center justify-center" style={{background:"rgba(0,0,0,.25)",backdropFilter:"blur(15px)",color:theme.text}}><Icon type="search" size={18}/></button>
 </div></div>
 
-{search!==""&&<div className="fixed left-4 right-4 z-40" style={{top:"max(108px,calc(env(safe-area-inset-top, 0px) + 84px))"}}><div className="max-w-5xl mx-auto relative"><input autoFocus value={search.trim()} onChange={e=>setSearch(e.target.value)} placeholder={t(language,"search")} className="search-input" style={{color:theme.text}}/></div></div>}
+{search!==""&&<div className="fixed left-4 right-4 z-40" style={{top:"max(108px,calc(env(safe-area-inset-top, 0px) + 84px))"}}><div className="max-w-5xl mx-auto relative"><input autoFocus value={search.trim()} onChange={e=>setSearch(safeSearchText(e.target.value))} placeholder={t(language,"search")} className="search-input" style={{color:theme.text}}/></div></div>}
 
 <header className="px-6 pt-28 pb-8 max-w-5xl mx-auto">
 <div
@@ -2578,12 +2689,12 @@ return <div className="luxury-bg" style={{minHeight:"100vh",backgroundColor:them
 <div className="bg-neutral-900 rounded-xl p-4 mb-5">
 <div className="text-xs text-neutral-400 mb-3">Fiyatlar TL olarak girilir. Kur değerleri manuel belirlenir.</div>
 <div className="grid grid-cols-3 gap-2 mb-4">{CURRENCIES.map(c=><button key={c.id} onClick={()=>setPath(["currency","selected"],c.id)} className="py-2.5 rounded-lg text-xs font-bold" style={{background:currency.id===c.id?theme.accent:"#171717",color:currency.id===c.id?"#fff":"#999",border:"1px solid "+(currency.id===c.id?theme.accent:"#333")}}>{c.symbol} {c.name}</button>)}</div>
-<label className="block mb-3"><AdminLabel>1 USD = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.usdRate} onChange={e=>setPath(["currency","usdRate"],e.target.value)}/></label>
-<label className="block"><AdminLabel>1 EUR = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.eurRate} onChange={e=>setPath(["currency","eurRate"],e.target.value)}/></label>
+<label className="block mb-3"><AdminLabel>1 USD = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.usdRate} onChange={e=>{const n=Number(e.target.value);if(Number.isFinite(n)&&n>=0&&n<=100000)setPath(["currency","usdRate"],n)}}/></label>
+<label className="block"><AdminLabel>1 EUR = Kaç TL?</AdminLabel><input type="number" step="0.01" className="admin-input" value={data.currency.eurRate} onChange={e=>{const n=Number(e.target.value);if(Number.isFinite(n)&&n>=0&&n<=100000)setPath(["currency","eurRate"],n)}}/></label>
 </div>
 
 </div><div className={adminSection==="katalog"?"":"hidden"}><div id="catalog-tab" className="mt-8 pt-6 border-t border-neutral-800">
-<div className="mb-4 rounded-xl p-3" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"25"}}><div className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Ürün Ara ve Düzenle</div><div className="relative"><Icon type="search" size={15}/><input value={adminSearch} onChange={e=>{const v=e.target.value;setAdminSearch(v);if(v.trim()){const next={...openCategories};categories.forEach(c=>{if(c.items.some(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(v.trim().toLocaleLowerCase("tr-TR"))))next[c.id]=true});setOpenCategories(next)}}} placeholder="Ürün adını yazın..." className="admin-input" style={{padding:"10px 10px 10px 34px",fontSize:"12px"}}/></div>{adminSearch.trim()&&<div className="text-[10px] opacity-50 mt-2">{categories.reduce((n,c)=>n+c.items.filter(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(adminSearch.trim().toLocaleLowerCase("tr-TR"))).length,0)} ürün bulundu</div>}</div>
+<div className="mb-4 rounded-xl p-3" style={{background:theme.accent+"12",border:"1px solid "+theme.accent+"25"}}><div className="text-[10px] uppercase tracking-widest opacity-50 mb-2">Ürün Ara ve Düzenle</div><div className="relative"><Icon type="search" size={15}/><input value={adminSearch} onChange={e=>{const v=safeSearchText(e.target.value);setAdminSearch(v);if(v.trim()){const next={...openCategories};categories.forEach(c=>{if(c.items.some(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(v.trim().toLocaleLowerCase("tr-TR"))))next[c.id]=true});setOpenCategories(next)}}} placeholder="Ürün adını yazın..." className="admin-input" style={{padding:"10px 10px 10px 34px",fontSize:"12px"}}/></div>{adminSearch.trim()&&<div className="text-[10px] opacity-50 mt-2">{categories.reduce((n,c)=>n+c.items.filter(i=>(i.name||"").toLocaleLowerCase("tr-TR").includes(adminSearch.trim().toLocaleLowerCase("tr-TR"))).length,0)} ürün bulundu</div>}</div>
 <button onClick={addCategory} className="w-full py-3 rounded-xl text-sm font-bold text-white mb-4 flex items-center justify-center gap-2" style={{background:theme.accent}}><Icon type="plus" size={17}/>{t("TR","newCategory")}</button>
 
 {categories.map((category,categoryIndex)=><div key={category.id} className="bg-neutral-900 border border-neutral-800 rounded-xl mb-3 overflow-hidden">
