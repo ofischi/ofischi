@@ -8,6 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#141416">
 <title>Ofischi Premium</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap&subset=latin-ext" rel="stylesheet">
 <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -16,7 +19,10 @@
 <style>
 *{box-sizing:border-box}html,body,#root{margin:0;padding:0;width:100%;min-height:100%;touch-action:manipulation}
 body{background:#141416;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-button,input,textarea{font-family:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed}
+body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,textarea{font-family:inherit}
+:focus-visible{outline:2px solid #C9A227;outline-offset:2px;border-radius:10px}
+.product-card:focus-visible{outline-offset:3px}button{cursor:pointer}button:disabled{cursor:not-allowed}
 /* Ana sayfada metin imleci (I-beam) görünmesini engelle; form alanları ve tıklanabilir öğeler normal davranır. */
 .luxury-bg,.luxury-bg *{cursor:default;caret-color:transparent;-webkit-user-select:none;user-select:none}
 .luxury-bg button,.luxury-bg button *,.luxury-bg a,.luxury-bg a *,.luxury-bg .product-card,.luxury-bg .product-card *{cursor:pointer}
@@ -39,8 +45,9 @@ button,input,textarea{font-family:inherit}button{cursor:pointer}button:disabled{
 @keyframes categoryGlow{0%,100%{opacity:.35;transform:scaleX(.65)}50%{opacity:1;transform:scaleX(1)}}
 @keyframes categoryLight{0%{left:-120%}100%{left:140%}}
 @keyframes productEnter{0%{opacity:0;transform:translateY(15px) scale(.975)}100%{opacity:1;transform:translateY(0) scale(1)}}
-.category-bar{background:transparent!important;background-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important}
-.luxury-bg{position:relative;isolation:isolate;overflow-x:hidden;background-image:radial-gradient(circle at 12% 8%,rgba(201,162,39,.12),transparent 28%),radial-gradient(circle at 88% 18%,rgba(255,255,255,.055),transparent 24%),linear-gradient(135deg,rgba(255,255,255,.018) 0%,transparent 38%,rgba(201,162,39,.035) 100%);}
+.category-bar{background:transparent;transition:background-color .2s ease,box-shadow .2s ease}
+.category-bar.is-stuck{background:var(--catbar-bg,#141416);box-shadow:0 12px 18px -10px var(--catbar-bg,#141416)}
+.luxury-bg{position:relative;isolation:isolate;overflow-x:clip;background-image:radial-gradient(circle at 12% 8%,rgba(201,162,39,.12),transparent 28%),radial-gradient(circle at 88% 18%,rgba(255,255,255,.055),transparent 24%),linear-gradient(135deg,rgba(255,255,255,.018) 0%,transparent 38%,rgba(201,162,39,.035) 100%);}
 .luxury-bg::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:radial-gradient(ellipse at center top,rgba(255,255,255,.035),transparent 48%),linear-gradient(115deg,transparent 0%,rgba(201,162,39,.025) 48%,transparent 100%);}
 .luxury-bg::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.18;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:80px 80px;mask-image:linear-gradient(to bottom,black,transparent 70%);}
 .luxury-bg .product-card{border:1px solid rgba(255,255,255,.075);box-shadow:0 12px 35px rgba(0,0,0,.20),0 1px 0 rgba(255,255,255,.035) inset!important;transition:transform .28s ease,box-shadow .28s ease,border-color .28s ease;}
@@ -74,7 +81,9 @@ button,input,textarea{font-family:inherit}button{cursor:pointer}button:disabled{
 
 .product-image::after{content:"";position:absolute;top:0;left:-130%;width:70%;height:100%;background:linear-gradient(105deg,transparent 15%,rgba(255,255,255,.09) 48%,transparent 82%);transform:skewX(-15deg);pointer-events:none}
 .product-card:hover .product-image::after{animation:categoryLight .8s ease forwards}
-.search-input{width:100%;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.12);color:inherit;border-radius:14px;padding:12px 42px;outline:none;backdrop-filter:blur(14px)}
+.search-input-icon{z-index:1;position:absolute;left:15px;top:50%;transform:translateY(-50%);opacity:.6;pointer-events:none}
+.search-input::-webkit-search-cancel-button{display:none}
+.search-input{width:100%;font-size:16px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.12);color:inherit;border-radius:14px;padding:12px 42px;outline:none;backdrop-filter:blur(14px)}
 .admin-input{width:100%;background:#171717;border:1px solid #404040;color:#f5f5f5;border-radius:9px;padding:10px 12px;outline:none;font-size:13px}
 .admin-input:focus{border-color:#737373}
 textarea.admin-input{min-height:78px;resize:vertical}
@@ -114,7 +123,7 @@ button,a{touch-action:manipulation}
 @media(max-width:639px){
   .product-grid{gap:10px;padding-left:12px!important;padding-right:12px!important}
   .category-scroll{gap:7px;padding-left:2px;padding-right:2px}
-  .category-chip{padding:9px 12px;font-size:11px;border-radius:13px}
+  .category-chip{padding:9px 13px;font-size:12px;border-radius:13px}
   .product-card{border-radius:16px}
   .product-card .p-3{padding:10px}
   .product-card .font-semibold{font-size:12px}
@@ -138,7 +147,7 @@ button,a{touch-action:manipulation}
 }
 @media(max-width:360px){
   .product-grid{gap:7px;padding-left:8px!important;padding-right:8px!important}
-  .category-chip{padding:8px 10px;font-size:10px}
+  .category-chip{padding:8px 12px;font-size:12px}
   .product-card .product-image{height:128px!important}
 }
 @media(min-width:640px) and (max-width:1023px){
@@ -187,6 +196,8 @@ header{animation:luxuryEnter 1s cubic-bezier(.2,.75,.2,1) both}
 @media(prefers-reduced-motion:reduce){body::before,body::after,#root::before,#root::after,header,.product-card::before{animation:none!important}.product-card,.category-chip{transition:none!important}}
 @media(max-width:639px){body::after{opacity:.14}.product-card:hover{transform:none}.product-card::before{display:none}}
 
+.category-chip{min-height:44px;display:inline-flex;align-items:center}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 </style>
 
 <style id="admin-clean-final">
@@ -295,6 +306,7 @@ function sanitizeCatalogData(data) {
 }
 const BACKUP_KEY = "ofischi_premium_catalog_backup_v4";
 const LANG_KEY = "ofischi_premium_lang_v1";
+const VIEW_CURRENCY_KEY = "ofischi_view_currency_v1";
 const CATS = [
     "VIP Makam Takımları", "Makam Takımları", "Personel Takımları", "Toplantı Masaları",
     "Workstation", "Loby Koltukları", "Ofis Koltukları", "Fileli Koltuklar", "Aksesuarlar"
@@ -330,7 +342,7 @@ function defaultData() {
         subtitle: "Ofis Mobilyaları", subtitle_en: "Office Furniture",
         eyebrow: "İNEGÖL ÜRETİM", eyebrow_en: "İNEGÖL PRODUCTION",
         phone: "+90 500 000 00 00",
-        logo: { src: "./ofischi_logo_transparent.png", size: 110, width: 110, height: 110, position: "left" },
+        logo: { src: "./ofischi_logo_transparent.png", size: 110, width: 110, height: 110, position: "center" },
         theme: { ...THEMES[0], bgImage: null }, cardImgSize: 180,
         currency: { selected: "TRY", usdRate: 40, eurRate: 47 },
         categories: createDefaultCategories(), language: "TR",
@@ -669,7 +681,12 @@ function translateFallbackSync(text) {
     const phrases = [
         ["yönetici çalışma masası", "executive office desk"], ["yönetici masası", "executive desk"], ["makam masası", "executive desk"], ["personel masası", "staff desk"], ["çalışma masası", "office desk"], ["toplantı masası", "meeting table"], ["toplantı masaları", "meeting tables"], ["ofis koltuğu", "office chair"], ["ofis koltukları", "office chairs"], ["fileli koltuğu", "mesh office chair"], ["fileli koltuk", "mesh office chair"], ["fileli koltuklar", "mesh office chairs"], ["misafir koltuğu", "guest chair"], ["lobi koltuğu", "lobby seating"], ["loby koltukları", "lobby seating"], ["vip makam takımları", "VIP executive office sets"], ["makam takımları", "executive office sets"], ["personel takımları", "staff office sets"], ["ofis mobilyaları", "office furniture"], ["özel tasarım", "special design"], ["çekmeceli", "with drawers"], ["çekmece", "drawer"], ["kapaklı", "with doors"], ["kapak", "door/panel"], ["ölçüler", "dimensions"], ["ahşap", "wood"], ["ceviz", "walnut"], ["antrasit", "anthracite"], ["siyah", "black"], ["beyaz", "white"], ["krem", "cream"], ["kahverengi", "brown"], ["deri", "leather"], ["kumaş", "fabric"], ["metal", "metal"], ["cam", "glass"], ["modern", "modern"], ["klasik", "classic"], ["premium", "premium"], ["özel", "special"], ["tasarım", "design"], ["yeni ürün", "new product"], ["yeni kategori", "new category"], ["yeni parça", "new part"], ["fiyat için iletişime geçin", "contact us for price"], ["iletişime geçin", "contact us"], ["üretim", "production"], ["ofis", "office"], ["masalar", "desks"], ["masa", "desk"], ["dolaplar", "cabinets"], ["dolap", "cabinet"], ["sehpalar", "coffee tables"], ["sehpa", "coffee table"], ["üniteler", "units"], ["ünite", "unit"], ["etajerli masa", "desk with return"], ["etajerlı masa", "desk with return"], ["etajer", "return"], ["adet", "pieces"], ["ve", "and"], ["ile", "with"]
     ];
-    phrases.forEach(([a, b]) => { s = s.replace(new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), b); });
+    phrases.forEach(([a, b]) => { const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); let re; try {
+        re = new RegExp("(^|[^\\p{L}\\p{N}])(" + esc + ")(?=$|[^\\p{L}\\p{N}])", "giu");
+    }
+    catch (_) {
+        re = new RegExp("(^|[\\s.,;:!?()\\-/])(" + esc + ")(?=$|[\\s.,;:!?()\\-/])", "gi");
+    } s = s.replace(re, (m, pre) => pre + b); });
     s = s.replace(/\b(\d+)\s*çekmeceli\b/gi, "$1-drawer");
     s = s.replace(/\b(\d+)\s*adet\b/gi, "$1 pieces");
     return s;
@@ -696,7 +713,9 @@ function getText(lang, tr, en, fallback) {
     // If the Turkish source itself is only the system placeholder, its normal EN label is correct.
     if (source && placeholderPairs[source] && translated === placeholderPairs[source])
         return translated;
-    return translateFallbackSync(source);
+    /* Kayıtlı İngilizce yoksa sözlükle anında çevir; sonuç yarı Türkçe kalıyorsa karışık metin yerine orijinali göster. */
+    const quick = translateFallbackSync(source);
+    return /[çğıöşüİÇĞÖŞÜ]/.test(quick) ? source : quick;
 }
 function preserveTechnicalTokens(source, target) {
     if (!source || !target)
@@ -717,9 +736,12 @@ function preserveTechnicalTokens(source, target) {
   3) Safe fallback to Turkish.
   No secret API key is embedded.
 */
+/* true: son çeviri çevrimiçi servis, tarayıcı AI veya onaylı sözlükten geldi; false: kaba sözlük yedeği */
+let lastTranslationGood = false;
 async function aiTranslateText(text, type = "general") {
     if (!text || !text.trim())
         return "";
+    lastTranslationGood = false;
     const source = text.trim();
     /* Browser AI APIs where available */
     try {
@@ -730,8 +752,10 @@ async function aiTranslateText(text, type = "general") {
                     "Use concise premium catalog English. Return translation only."
             });
             const result = await session.prompt(source);
-            if (result && result.trim())
+            if (result && result.trim()) {
+                lastTranslationGood = true;
                 return preserveTechnicalTokens(source, result.trim());
+            }
         }
     }
     catch (e) {
@@ -743,8 +767,10 @@ async function aiTranslateText(text, type = "general") {
                 systemPrompt: "Translate Turkish to professional English for an office furniture catalog. Preserve brands, codes, dimensions, numbers and units. Translation only."
             });
             const result = await session.prompt(source);
-            if (result && result.trim())
+            if (result && result.trim()) {
+                lastTranslationGood = true;
                 return preserveTechnicalTokens(source, result.trim());
+            }
         }
     }
     catch (e) {
@@ -789,20 +815,24 @@ async function aiTranslateText(text, type = "general") {
         "Yeni Parça": "New Part",
         "Fiyat için iletişime geçin": "Contact us for price"
     };
-    if (exact[source])
+    if (exact[source]) {
+        lastTranslationGood = true;
         return exact[source];
+    }
     /* Network translation fallback. No API key is required. If the service is unavailable,
        the deterministic professional catalog dictionary below is used. */
     try {
         const translationSource = safeText(source, SECURITY_LIMITS.text);
-        await enforceClientRateLimit("translation", 10, 60 * 1000);
+        await enforceClientRateLimit("translation", 60, 60 * 1000);
         const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=tr&tl=en&dt=t&q=" + encodeURIComponent(translationSource);
         const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, cache: "force-cache" });
         if (response.ok) {
             const json = await response.json();
             const translated = Array.isArray(json?.[0]) ? json[0].map(x => Array.isArray(x) ? x[0] : "").join("").trim() : "";
-            if (translated)
+            if (translated) {
+                lastTranslationGood = true;
                 return preserveTechnicalTokens(source, translated);
+            }
         }
     }
     catch (e) {
@@ -876,7 +906,12 @@ async function aiTranslateText(text, type = "general") {
         ["ve", "and"],
         ["ile", "with"]
     ];
-    phrases.forEach(([a, b]) => { s = s.replace(new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), b); });
+    phrases.forEach(([a, b]) => { const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); let re; try {
+        re = new RegExp("(^|[^\\p{L}\\p{N}])(" + esc + ")(?=$|[^\\p{L}\\p{N}])", "giu");
+    }
+    catch (_) {
+        re = new RegExp("(^|[\\s.,;:!?()\\-/])(" + esc + ")(?=$|[\\s.,;:!?()\\-/])", "gi");
+    } s = s.replace(re, (m, pre) => pre + b); });
     s = s.replace(/\b(\d+)\s*çekmeceli\b/gi, "$1-drawer");
     s = s.replace(/\b(\d+)\s*adet\b/gi, "$1 pieces");
     return s === source ? source : preserveTechnicalTokens(source, s);
@@ -895,13 +930,18 @@ async function translateCached(text, type, setStatus) {
     };
     try {
         const cached = localStorage.getItem(key);
-        if (cached && cached.trim() !== source && !isBadPlaceholder(cached))
+        if (cached && cached.trim() !== source && !isBadPlaceholder(cached)) {
+            lastTranslationGood = true;
             return cached.trim();
+        }
     }
     catch (e) { }
     const result = await aiTranslateText(source, type);
+    const good = lastTranslationGood && !!result && !isBadPlaceholder(result);
     const finalResult = (result && result.trim() !== source && !isBadPlaceholder(result)) ? result.trim() : translateFallbackSync(source);
-    if (finalResult && finalResult.trim() !== source && !isBadPlaceholder(finalResult)) {
+    lastTranslationGood = good;
+    /* Yalnızca gerçek çeviriler önbelleğe alınır; kaba sözlük yedeği kalıcı hale gelmez. */
+    if (good && finalResult && finalResult.trim() !== source && !isBadPlaceholder(finalResult)) {
         try {
             localStorage.setItem(key, finalResult);
         }
@@ -922,8 +962,8 @@ async function translateProduct(item, setStatus) {
     return copy;
 }
 /* -------------------- ICON -------------------- */
-function Icon({ type, size = 18 }) {
-    const props = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" };
+function Icon({ type, size = 18, className }) {
+    const props = { width: size, height: size, className, "aria-hidden": true, focusable: "false", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" };
     let c = null;
     if (type === "settings")
         c = React.createElement(React.Fragment, null,
@@ -1869,20 +1909,90 @@ function ProductImageLightbox({ fullScreenImage, setFullScreenImage, onClose }) 
             React.createElement(Icon, { type: "x", size: 22 })));
 }
 function App() {
-    const [data, setData] = useState(null), [loading, setLoading] = useState(true), [saving, setSaving] = useState(false), [saved, setSaved] = useState(false), [toast, setToast] = useState(""), [activeCat, setActiveCat] = useState(null), [openCategories, setOpenCategories] = useState({}), [currencyMenuOpen, setCurrencyMenuOpen] = useState(false), [language, setLanguage] = useState(() => localStorage.getItem(LANG_KEY) === "EN" ? "EN" : "TR"), [adminSection, setAdminSection] = useState("genel"), [search, setSearch] = useState(""), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
+    const [data, setData] = useState(null), [loading, setLoading] = useState(true), [saving, setSaving] = useState(false), [saved, setSaved] = useState(false), [toast, setToast] = useState(""), [activeCat, setActiveCat] = useState(null), [openCategories, setOpenCategories] = useState({}), [currencyMenuOpen, setCurrencyMenuOpen] = useState(false), [language, setLanguage] = useState(() => localStorage.getItem(LANG_KEY) === "EN" ? "EN" : "TR"), [adminSection, setAdminSection] = useState("genel"), [search, setSearch] = useState(""), [searchOpen, setSearchOpen] = useState(false), [viewCurrency, setViewCurrency] = useState(() => { try {
+        const v = localStorage.getItem(VIEW_CURRENCY_KEY);
+        return ["TRY", "USD", "EUR"].includes(v) ? v : null;
+    }
+    catch (_) {
+        return null;
+    } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [translateBusy, setTranslateBusy] = useState(null), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
     useEffect(() => { document.documentElement.lang = language.toLowerCase(); }, [language]);
     useEffect(() => {
-        const timer = setInterval(() => setGalleryIndex(prev => {
-            const next = { ...prev };
-            (data?.categories || []).forEach(c => (c.items || []).forEach(i => {
-                const g = Array.isArray(i.images) && i.images.length ? i.images : (i.image ? [i.image] : []);
-                if (g.length > 1)
-                    next[i.id] = ((prev[i.id] || 0) + 1) % g.length;
-            }));
-            return next;
-        }), 6500);
+        /* Kart galerileri hepsi aynı anda değil, sırayla ve sakin bir tempoda döner.
+           "Hareketi azalt" tercihi olan kullanıcılar ve arka plandaki sekmeler için durur. */
+        const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+        if (reduce)
+            return;
+        const multi = [];
+        (data?.categories || []).forEach(c => (c.items || []).forEach(i => {
+            const g = Array.isArray(i.images) && i.images.length ? i.images : (i.image ? [i.image] : []);
+            if (g.length > 1)
+                multi.push([i.id, g.length]);
+        }));
+        if (!multi.length)
+            return;
+        let cursor = 0;
+        const timer = setInterval(() => {
+            if (document.hidden || selectedProductRef.current)
+                return;
+            const [id, len] = multi[cursor % multi.length];
+            cursor++;
+            setGalleryIndex(prev => ({ ...prev, [id]: ((prev[id] || 0) + 1) % len }));
+        }, Math.max(1800, Math.round(9000 / Math.min(multi.length, 5))));
         return () => clearInterval(timer);
     }, [data?.categories]);
+    const selectedProductRef = useRef(null);
+    useEffect(() => { setLogoFailed(false); }, [data?.logo?.src]);
+    const categoryBarRef = useRef(null);
+    const [pageScrolled, setPageScrolled] = useState(false), [barStuck, setBarStuck] = useState(false);
+    useEffect(() => {
+        /* Üst şerit ve kategori çubuğu arka planı yalnızca kaydırınca görünür; açılışta sayfanın degrade arka planı bozulmaz. */
+        const onScroll = () => {
+            setPageScrolled(window.scrollY > 12);
+            const el = categoryBarRef.current;
+            if (el) {
+                const top = parseFloat(getComputedStyle(el).top) || 0;
+                setBarStuck(el.getBoundingClientRect().top <= top + 1 && window.scrollY > 0);
+            }
+        };
+        onScroll();
+        window.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", onScroll);
+        return () => { window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); };
+    }, [loading]);
+    useEffect(() => { selectedProductRef.current = selectedProduct; }, [selectedProduct]);
+    /* Açık pencere varken arka plan kaymasın; Esc ile en üstteki pencere kapansın. */
+    useEffect(() => {
+        const locked = !!(selectedProduct || fullScreenImage || pinModal || (panelOpen && unlocked));
+        const html = document.documentElement, prevHtml = html.style.overflow, prevBody = document.body.style.overflow;
+        if (locked) {
+            html.style.overflow = "hidden";
+            document.body.style.overflow = "hidden";
+        }
+        return () => { html.style.overflow = prevHtml; document.body.style.overflow = prevBody; };
+    }, [selectedProduct, fullScreenImage, pinModal, panelOpen, unlocked]);
+    useEffect(() => {
+        const onKey = e => {
+            if (e.key !== "Escape")
+                return;
+            if (fullScreenImage)
+                return; /* lightbox kendi Esc davranışını yönetir */
+            if (currencyMenuOpen) {
+                setCurrencyMenuOpen(false);
+                return;
+            }
+            if (selectedProduct) {
+                setSelectedProduct(null);
+                return;
+            }
+            if (pinModal) {
+                setPinModal(false);
+                return;
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [fullScreenImage, currencyMenuOpen, selectedProduct, pinModal]);
     const panelOpenRef = useRef(false), languageRef = useRef(language), dataRef = useRef(data);
     useEffect(() => { panelOpenRef.current = panelOpen; }, [panelOpen]);
     useEffect(() => { languageRef.current = language; }, [language]);
@@ -1913,65 +2023,10 @@ function App() {
     const pricePartTranslationTimers = useRef({});
     const pricePartTranslationSeq = useRef({});
     const panelSnapshot = useRef(null);
-    /* PUBLIC ENGLISH TRANSLATION HYDRATION
-       The admin panel remains Turkish. When EN is active, all customer-facing
-       catalog text is translated automatically and stored in *_en fields.
-       Turkish source fields are never changed. */
-    const publicTranslationRun = useRef(0);
-    useEffect(() => {
-        if (language !== "EN" || !data || panelOpenRef.current)
-            return;
-        const run = ++publicTranslationRun.current;
-        let cancelled = false;
-        const work = async () => {
-            const source = JSON.parse(JSON.stringify(data));
-            let changed = false;
-            const defaults = { "Yeni Ürün": "New Product", "Yeni Parça": "New Part", "Yeni Kategori": "New Category" };
-            const translateField = async (obj, trKey, enKey, type) => {
-                const tr = String(obj?.[trKey] ?? "").trim();
-                if (!tr)
-                    return;
-                const existing = String(obj?.[enKey] ?? "").trim();
-                const genericExisting = /^(new product|new part|new category)$/i.test(existing);
-                const legitimateDefault = defaults[tr] === existing;
-                if (existing && existing !== tr && !genericExisting)
-                    return;
-                if (legitimateDefault && /^yeni (ürün|parça|kategori)$/i.test(tr))
-                    return;
-                const en = await translateCached(tr, type);
-                if (cancelled || run !== publicTranslationRun.current)
-                    return;
-                const final = String(en || translateFallbackSync(tr) || tr).trim();
-                if (final && final !== existing) {
-                    obj[enKey] = final;
-                    changed = true;
-                }
-            };
-            await Promise.all([
-                translateField(source, "siteName", "siteName_en", "site_name"),
-                translateField(source, "subtitle", "subtitle_en", "subtitle"),
-                translateField(source, "eyebrow", "eyebrow_en", "eyebrow")
-            ]);
-            const categoryJobs = [];
-            for (const category of (source.categories || [])) {
-                categoryJobs.push((async () => {
-                    await translateField(category, "name", "name_en", "category");
-                    await Promise.all((category.items || []).map(async (item) => {
-                        await Promise.all([
-                            translateField(item, "name", "name_en", "product_name"),
-                            translateField(item, "desc", "desc_en", "product_description"),
-                            ...(normalizePrice(item.price).parts || []).map(part => translateField(part, "name", "name_en", "price_part"))
-                        ]);
-                    }));
-                })());
-            }
-            await Promise.all(categoryJobs);
-            if (!cancelled && run === publicTranslationRun.current && changed)
-                setData(source);
-        };
-        work().catch(e => console.warn("Public EN translation failed:", e));
-        return () => { cancelled = true; };
-    }, [language, data?.categories, data?.siteName, data?.subtitle, data?.eyebrow, panelOpen]);
+    /* EN METİNLERİ
+       Ziyaretçinin tarayıcısında internet üzerinden çeviri YAPILMAZ (hız + sınır sorunları).
+       Kayıtlı *_en alanları gösterilir; boşsa katalog sözlüğüyle anında çeviri yapılır (getText).
+       Kalıcı ve kaliteli çeviri, yönetim panelindeki "İngilizce Çevirileri Tamamla" ile bir kez yapılır. */
     useEffect(() => {
         let cancelled = false;
         async function init() {
@@ -2026,6 +2081,54 @@ function App() {
         window.addEventListener("beforeunload", warn);
         return () => window.removeEventListener("beforeunload", warn);
     }, [data]);
+    async function translateAllMissing() {
+        if (translateBusy || !data)
+            return;
+        const next = JSON.parse(JSON.stringify(data));
+        const jobs = [];
+        const need = (obj, trKey, enKey) => { const tr = String(obj?.[trKey] ?? "").trim(), en = String(obj?.[enKey] ?? "").trim(); return tr && (!en || en === tr || /^(new product|new part|new category)$/i.test(en)); };
+        for (const k of ["subtitle", "eyebrow"])
+            if (need(next, k, k + "_en"))
+                jobs.push([next, k, k + "_en", "general_" + k]);
+        for (const c of next.categories || []) {
+            if (need(c, "name", "name_en"))
+                jobs.push([c, "name", "name_en", "category"]);
+            for (const it of c.items || []) {
+                if (it.price)
+                    it.price = normalizePrice(it.price); /* parça nesneleri bu kopya üzerinde güncellenir */
+                if (need(it, "name", "name_en"))
+                    jobs.push([it, "name", "name_en", "product_name"]);
+                if (need(it, "desc", "desc_en"))
+                    jobs.push([it, "desc", "desc_en", "product_description"]);
+                for (const part of (it.price?.parts || []))
+                    if (need(part, "name", "name_en"))
+                        jobs.push([part, "name", "name_en", "price_part"]);
+            }
+        }
+        if (!jobs.length) {
+            showToast("Tüm İngilizce metinler zaten hazır.");
+            return;
+        }
+        setTranslateBusy({ done: 0, total: jobs.length });
+        let done = 0, failed = 0;
+        for (const [obj, trKey, enKey, type] of jobs) {
+            try {
+                const en = await translateCached(String(obj[trKey]).trim(), type);
+                if (lastTranslationGood && en && en.trim())
+                    obj[enKey] = en.trim();
+                else
+                    failed++;
+            }
+            catch (e) {
+                failed++;
+            }
+            done++;
+            setTranslateBusy({ done, total: jobs.length });
+        }
+        setData(normalizeData(next));
+        setTranslateBusy(null);
+        showToast(failed === done ? "Çeviri servisine ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin." : failed ? `${done - failed}/${done} metin çevrildi. Kalanlar için birkaç dakika sonra tekrar deneyin. Kaydet'e basın.` : `${done} metin çevrildi. Kaydet'e basın.`);
+    }
     function showToast(message) { setToast(message); if (toastTimerRef.current)
         clearTimeout(toastTimerRef.current); toastTimerRef.current = setTimeout(() => setToast(""), 3500); }
     /* Kalıcı kayıt yalnızca admin açıkça Kaydet ve Kapat'a bastığında yapılır. */
@@ -2078,9 +2181,22 @@ function App() {
     }
     function toggleCategory(id) { setOpenCategories(p => ({ ...p, [id]: !p[id] })); }
     function openCategory(id) { setOpenCategories(p => ({ ...p, [id]: true })); }
-    function getCurrency() { return getCurrencyByData(data); }
-    function convertPrice(amount) { return convertPriceByData(data, amount); }
-    function formatAmount(amount) { return formatAmountByData(data, amount); }
+    function viewCurrencyData() {
+        /* Ziyaretçinin para birimi seçimi kataloğun varsayılanını DEĞİŞTİRMEZ; ayrı saklanır. */
+        if (!data || panelOpen || !viewCurrency)
+            return data;
+        return { ...data, currency: { ...(data.currency || {}), selected: viewCurrency } };
+    }
+    function getCurrency() { return getCurrencyByData(viewCurrencyData()); }
+    function convertPrice(amount) { return convertPriceByData(viewCurrencyData(), amount); }
+    function formatAmount(amount) { return formatAmountByData(viewCurrencyData(), amount); }
+    function chooseViewCurrency(id) {
+        setViewCurrency(id);
+        try {
+            localStorage.setItem(VIEW_CURRENCY_KEY, id);
+        }
+        catch (_) { }
+    }
     function priceText(part) {
         if (!part || part.contactOnly || part.amount === null || part.amount === undefined || part.amount === "")
             return t(language, "contactPrice");
@@ -2610,9 +2726,10 @@ function App() {
                operation. Open a user-initiated tab first, then navigate it to the PDF. */
             if (openPreview || isMobile)
                 win = window.open("about:blank", "_blank");
-            const pdfCurrency = data.currency?.selected || "TRY";
+            const pdfData = viewCurrencyData();
+            const pdfCurrency = pdfData.currency?.selected || "TRY";
             const pdfLang = pdfCurrency === "TRY" ? "TR" : "EN";
-            const blob = await buildPriceListPDF(data, pdfLang);
+            const blob = await buildPriceListPDF(pdfData, pdfLang);
             if (!blob || blob.size <= 0)
                 throw new Error("PDF doğrulaması başarısız: dosya boyutu 0.");
             if (blob.type !== "application/pdf")
@@ -2730,18 +2847,24 @@ function App() {
     const categories = data.categories || [];
     const activeCategory = categories.find(c => c.id === activeCat) || categories[0] || null;
     const allProducts = categories.flatMap(c => (c.items || []).map(i => ({ ...i, categoryName: c.name, categoryName_en: c.name_en })));
-    const q = safeSearchText(search).toLocaleLowerCase("tr-TR");
+    const q = safeSearchText(search).replace(/\s+/g, " ").toLocaleLowerCase("tr-TR");
+    const qWords = q ? q.split(" ").filter(Boolean) : [];
     const visibleProducts = q ? allProducts.filter(i => {
-        const text = [i.name, i.name_en, i.desc, i.desc_en, i.dims, i.dims_en, i.categoryName, i.categoryName_en].filter(Boolean).join(" ");
-        return text.toLocaleLowerCase("tr-TR").includes(q) || text.toLocaleLowerCase("en-US").includes(q);
-    }) : (activeCategory?.items || []);
-    const theme = data.theme, currency = getCurrency(), siteName = getText(language, data.siteName, data.siteName_en, data.siteName);
+        const text = [i.name, i.name_en, i.desc, i.desc_en, i.dims, i.dims_en, i.categoryName, i.categoryName_en, ...(normalizePrice(i.price).parts || []).flatMap(p => [p.name, p.name_en])].filter(Boolean).join(" ");
+        const tr = text.toLocaleLowerCase("tr-TR"), en = text.toLocaleLowerCase("en-US");
+        return qWords.every(w => tr.includes(w) || en.includes(w));
+    }) : (activeCategory?.items || []).map(i => ({ ...i, categoryName: activeCategory.name, categoryName_en: activeCategory.name_en }));
+    /* Marka adı çevrilmez: EN alanı yalnızca yöneticinin elle girdiği farklı bir değer varsa ve otomatik bozulma değilse kullanılır. */
+    const theme = data.theme, currency = getCurrency(), siteName = data.siteName || data.siteName_en || "";
     const subtitle = getText(language, data.subtitle, data.subtitle_en, data.subtitle);
     const eyebrow = getText(language, data.eyebrow, data.eyebrow_en, data.eyebrow);
     const categoryDisplay = c => getText(language, c.name, c.name_en, c.name);
     const productDisplay = i => getText(language, i.name, i.name_en, i.name);
     const productDesc = i => getText(language, i.desc, i.desc_en, i.desc);
-    const productDims = i => ""; // Ölçüler artık yalnızca ürünün fiyat/parça satırlarında gösterilir.
+    /* Parça satırı olan ürünlerde ölçüler parça satırlarında gösterilir; parça yoksa ürün ölçüsü gösterilir. */
+    const productDims = i => normalizePrice(i?.price).parts.length ? "" : String(getText(language, i?.dims, i?.dims_en, i?.dims) || "").trim();
+    const hasContactParts = i => normalizePrice(i?.price).parts.some(p => p.contactOnly || p.amount === null);
+    const productCategoryName = i => { const c = categories.find(c => (c.items || []).some(x => x.id === i?.id)); return c ? categoryDisplay(c) : ""; };
     const partDimensionDisplay = p => getText(language, p?.dims, p?.dims_en, p?.dims) || "";
     const partDisplay = p => {
         if (language !== "EN")
@@ -2765,67 +2888,73 @@ function App() {
         return exactPart[key] || translateFallbackSync(source) || source || "";
     };
     return React.createElement("div", { className: "luxury-bg", style: { minHeight: "100vh", backgroundColor: theme.bg, backgroundImage: theme.bgImage ? `linear-gradient(${theme.bg}cc,${theme.bg}f5),url(${theme.bgImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center", color: theme.text, fontFamily: "Inter,system-ui,sans-serif" } },
+        React.createElement("div", { "aria-hidden": "true", className: "fixed inset-x-0 top-0 z-30 pointer-events-none", style: { height: "calc(max(40px, env(safe-area-inset-top, 0px) + 32px) + 50px)", background: theme.bg, opacity: (pageScrolled || searchOpen) ? 1 : 0, transition: "opacity .2s ease" } }),
         React.createElement("div", { className: "fixed left-4 right-4 z-40", style: { top: "max(40px,calc(env(safe-area-inset-top, 0px) + 32px))" } },
             React.createElement("div", { className: "max-w-5xl mx-auto flex justify-end items-center gap-2" },
-                React.createElement("button", { onClick: () => switchLanguage(language === "TR" ? "EN" : "TR"), className: "h-10 px-3.5 rounded-full flex items-center justify-center gap-1.5 font-bold text-xs border", style: { background: theme.card, color: theme.text, borderColor: theme.text + "20" } },
+                React.createElement("button", { type: "button", "aria-label": language === "TR" ? "Switch to English" : "Türkçeye geç", onClick: () => switchLanguage(language === "TR" ? "EN" : "TR"), className: "h-11 px-3.5 rounded-full flex items-center justify-center gap-1.5 font-bold text-xs border", style: { background: theme.card, color: theme.text, borderColor: theme.text + "20" } },
                     React.createElement(Icon, { type: "globe", size: 14 }),
                     React.createElement("span", { style: { opacity: language === "TR" ? 1 : .45 } }, "TR"),
                     React.createElement("span", { style: { opacity: .35 } }, "|"),
                     React.createElement("span", { style: { opacity: language === "EN" ? 1 : .45 } }, "EN")),
                 React.createElement("div", { className: "relative" },
-                    React.createElement("button", { onClick: () => setCurrencyMenuOpen(p => !p), className: "h-10 min-w-[58px] px-3 rounded-full flex items-center justify-center gap-1.5 font-bold text-sm", style: { background: theme.accent, color: "#fff" } },
+                    React.createElement("button", { type: "button", "aria-haspopup": "menu", "aria-expanded": currencyMenuOpen, "aria-label": (language === "EN" ? "Currency: " : "Para birimi: ") + currency.name, onClick: () => setCurrencyMenuOpen(p => !p), className: "h-11 min-w-[58px] px-3 rounded-full flex items-center justify-center gap-1.5 font-bold text-sm", style: { background: theme.accent, color: "#fff" } },
                         currency.symbol,
                         React.createElement("span", { className: "hidden sm:inline" }, currency.name)),
-                    currencyMenuOpen && React.createElement("div", { className: "absolute right-0 mt-2 w-36 rounded-2xl overflow-hidden shadow-2xl border", style: { background: theme.card, borderColor: theme.text + "18", zIndex: 1000 } },
+                    currencyMenuOpen && React.createElement("div", { role: "menu", className: "absolute right-0 mt-2 w-36 rounded-2xl overflow-hidden shadow-2xl border", style: { background: theme.card, borderColor: theme.text + "18", zIndex: 1000 } },
                         React.createElement("div", { className: "px-3 py-2 text-[9px] uppercase tracking-widest font-bold opacity-40 border-b" }, t(language, "currency")),
-                        CURRENCIES.map(c => React.createElement("button", { key: c.id, onClick: () => { setPath(["currency", "selected"], c.id); setCurrencyMenuOpen(false); }, className: "w-full px-3 py-3 flex items-center justify-between text-sm font-semibold", style: { background: currency.id === c.id ? theme.accent + "18" : "transparent", color: theme.text } },
+                        CURRENCIES.map(c => React.createElement("button", { key: c.id, onClick: () => { chooseViewCurrency(c.id); setCurrencyMenuOpen(false); }, className: "w-full px-3 py-3 flex items-center justify-between text-sm font-semibold", style: { background: currency.id === c.id ? theme.accent + "18" : "transparent", color: theme.text } },
                             React.createElement("span", { className: "flex items-center gap-2" },
                                 React.createElement("span", { className: "w-8 h-8 rounded-full flex items-center justify-center font-bold", style: { background: currency.id === c.id ? theme.accent : theme.accent + "18", color: currency.id === c.id ? "#fff" : theme.accent } }, c.symbol),
                                 React.createElement("span", null, c.name)),
                             currency.id === c.id && React.createElement(Icon, { type: "check", size: 15 }))))),
-                React.createElement("button", { onClick: () => setSearch(search ? "" : " "), className: "w-10 h-10 rounded-full flex items-center justify-center", style: { background: "rgba(0,0,0,.25)", backdropFilter: "blur(15px)", color: theme.text } },
+                React.createElement("button", { type: "button", "aria-label": searchOpen ? (language === "EN" ? "Close search" : "Aramayı kapat") : (language === "EN" ? "Search products" : "Ürün ara"), "aria-expanded": searchOpen, onClick: () => { if (searchOpen) {
+                        setSearchOpen(false);
+                        setSearch("");
+                    }
+                    else
+                        setSearchOpen(true); }, className: "w-11 h-11 rounded-full flex items-center justify-center", style: { background: "rgba(0,0,0,.25)", backdropFilter: "blur(15px)", color: theme.text } },
                     React.createElement(Icon, { type: "search", size: 18 })))),
-        search !== "" && React.createElement("div", { className: "fixed left-4 right-4 z-40", style: { top: "max(108px,calc(env(safe-area-inset-top, 0px) + 84px))" } },
+        searchOpen && React.createElement("div", { className: "fixed inset-x-0 z-40 px-4 pb-3 pt-1", style: { top: "calc(max(40px, env(safe-area-inset-top, 0px) + 32px) + 50px)", background: theme.bg, boxShadow: `0 14px 20px -12px ${theme.bg}` } },
             React.createElement("div", { className: "max-w-5xl mx-auto relative" },
-                React.createElement("input", { autoFocus: true, value: search.trim(), onChange: e => setSearch(safeSearchText(e.target.value)), placeholder: t(language, "search"), className: "search-input", style: { color: theme.text } }))),
+                React.createElement(Icon, { type: "search", size: 16, className: "search-input-icon" }),
+                React.createElement("input", { autoFocus: true, type: "search", "aria-label": t(language, "search"), value: search, onChange: e => setSearch(safeText(e.target.value, SECURITY_LIMITS.search)), onKeyDown: e => { if (e.key === "Escape") {
+                        setSearchOpen(false);
+                        setSearch("");
+                    } }, placeholder: t(language, "search"), className: "search-input", style: { color: theme.text, background: theme.card + "f2" } }))),
         React.createElement("header", { className: "px-6 pt-28 pb-8 max-w-5xl mx-auto" },
             React.createElement("div", { onPointerDown: e => { if (e.pointerType === "mouse" && e.button !== 0)
-                    return; e.preventDefault(); startLogoLongPress(e); }, onPointerUp: cancelLogoLongPress, onPointerCancel: cancelLogoLongPress, onPointerLeave: cancelLogoLongPress, onContextMenu: e => e.preventDefault(), title: "", style: { width: "100%", display: "flex", justifyContent: data.logo.position === "left" ? "flex-start" : data.logo.position === "right" ? "flex-end" : "center", marginBottom: 18, cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "manipulation" } }, data.logo.src ? React.createElement(CachedImage, { loading: "lazy", decoding: "async", src: data.logo.src, alt: "Premium", draggable: "false", style: { width: data.logo.width || data.logo.size || 110, height: data.logo.height || data.logo.size || 110, maxWidth: "70vw", objectFit: "contain", display: "block", pointerEvents: "none" } }) : React.createElement("div", { style: { fontSize: 50, fontWeight: 800, color: theme.accent, pointerEvents: "none" } }, "O")),
+                    return; e.preventDefault(); startLogoLongPress(e); }, onPointerUp: cancelLogoLongPress, onPointerCancel: cancelLogoLongPress, onPointerLeave: cancelLogoLongPress, onContextMenu: e => e.preventDefault(), title: "", style: { width: "100%", display: "flex", justifyContent: data.logo.position === "left" ? "flex-start" : data.logo.position === "right" ? "flex-end" : "center", marginBottom: 18, cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "manipulation" } }, data.logo.src && !logoFailed ? React.createElement(CachedImage, { loading: "eager", decoding: "async", src: data.logo.src, onError: () => setLogoFailed(true), alt: siteName || "Logo", draggable: "false", style: { width: data.logo.width || data.logo.size || 110, height: data.logo.height || data.logo.size || 110, maxWidth: "70vw", objectFit: "contain", display: "block", pointerEvents: "none" } }) : React.createElement("div", { "aria-hidden": "true", style: { width: 64, height: 64, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, color: theme.accent, border: `1px solid ${theme.accent}55`, background: theme.accent + "14", pointerEvents: "none" } }, (siteName || "O").trim().charAt(0).toLocaleUpperCase("tr-TR"))),
             React.createElement("div", { className: "text-center" },
                 React.createElement("div", { className: "text-[10px] font-bold tracking-[.28em] mb-2", style: { color: theme.accent } }, eyebrow),
                 React.createElement("h1", { className: "text-3xl font-bold leading-tight" }, siteName),
                 React.createElement("p", { className: "text-sm opacity-60 mt-2" }, subtitle),
-                data.phone && React.createElement("a", { href: "tel:" + data.phone.replace(/\s/g, ""), className: "mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold", style: { background: theme.accent, color: "#fff" } },
-                    React.createElement(Icon, { type: "phone", size: 15 }),
-                    data.phone))),
+                React.createElement("div", { className: "mt-4 flex flex-wrap items-center justify-center gap-2" },
+                    data.phone && React.createElement("a", { href: "tel:" + data.phone.replace(/\s/g, ""), className: "inline-flex items-center gap-2 px-5 min-h-[44px] rounded-full text-sm font-semibold", style: { background: theme.accent, color: "#fff" } },
+                        React.createElement(Icon, { type: "phone", size: 15 }),
+                        data.phone),
+                    React.createElement("button", { type: "button", onClick: () => createPDF(false), disabled: pdfBusy, className: "inline-flex items-center gap-2 px-5 min-h-[44px] rounded-full text-sm font-semibold border disabled:opacity-60", style: { borderColor: theme.accent + "80", color: theme.text, background: theme.card + "99" } },
+                        React.createElement(Icon, { type: "download", size: 15 }),
+                        pdfBusy ? (language === "EN" ? "Preparing…" : "Hazırlanıyor…") : (language === "EN" ? "PDF Price List" : "PDF Fiyat Listesi"))))),
         React.createElement("div", { className: "max-w-5xl mx-auto px-4 mb-2" },
-            React.createElement("div", { className: "flex items-center justify-between" },
-                React.createElement("div", null,
-                    React.createElement("div", { className: "text-xl font-bold" }, t(language, "premium")),
-                    React.createElement("div", { className: "text-[11px] opacity-45 mt-1" },
-                        categories.reduce((n, c) => n + (c.items?.length || 0), 0),
-                        " ",
-                        t(language, "products"))),
-                search.trim() && React.createElement("button", { onClick: () => setSearch(""), className: "text-xs opacity-60" }, t(language, "clearSearch")))),
-        !search.trim() && React.createElement("div", { className: "sticky top-[64px] z-20 px-4 pt-3 pb-2 category-bar" },
+            React.createElement("div", { className: "flex items-center justify-between gap-3" },
+                React.createElement("div", { className: "min-w-0" },
+                    React.createElement("h2", { className: "text-xl font-bold truncate" }, q ? (language === "EN" ? "Search results" : "Arama sonuçları") : (activeCategory ? categoryDisplay(activeCategory) : t(language, "premium"))),
+                    React.createElement("div", { className: "text-xs opacity-60 mt-1", "aria-live": "polite" }, q ? (language === "EN" ? `${visibleProducts.length} ${visibleProducts.length === 1 ? "product" : "products"} found for “${search.trim()}”` : `“${search.trim()}” için ${visibleProducts.length} ürün bulundu`) : `${visibleProducts.length} ${t(language, "products")}`)),
+                q && React.createElement("button", { type: "button", onClick: () => setSearch(""), className: "text-xs opacity-70 underline underline-offset-4 min-h-[44px] px-2 shrink-0" }, t(language, "clearSearch")))),
+        !q && React.createElement("div", { ref: categoryBarRef, className: "sticky z-20 px-4 pt-2 pb-2 category-bar" + (barStuck ? " is-stuck" : ""), style: { top: "calc(max(40px, env(safe-area-inset-top, 0px) + 32px) + 50px)", "--catbar-bg": theme.bg } },
             React.createElement("div", { className: "max-w-5xl mx-auto category-scroll", onWheel: e => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
                     e.preventDefault();
                     el.scrollLeft += e.deltaY;
                 } }, onMouseDown: e => { const el = e.currentTarget; el.dataset.dragging = "1"; el.dataset.dragStartX = String(e.clientX); el.dataset.dragStartScroll = String(el.scrollLeft); }, onMouseMove: e => { const el = e.currentTarget; if (el.dataset.dragging === "1") {
                     el.scrollLeft = Number(el.dataset.dragStartScroll) - (e.clientX - Number(el.dataset.dragStartX));
-                } }, onMouseUp: e => { e.currentTarget.dataset.dragging = "0"; }, onMouseLeave: e => { e.currentTarget.dataset.dragging = "0"; } }, categories.map((category, index) => { const active = category.id === activeCat; return React.createElement("button", { key: category.id, onClick: () => { setActiveCat(category.id); setOpenCategories({}); }, className: "category-chip " + (active ? "active" : ""), style: { background: active ? `linear-gradient(135deg,${theme.accent},${theme.accent}dd)` : `${theme.accent}14`, color: active ? "#fff" : theme.text, borderColor: active ? theme.accent + "70" : theme.text + "12", opacity: active ? 1 : .78, boxShadow: active ? `0 6px 18px ${theme.accent}30` : "none", animation: `categoryEnter .4s cubic-bezier(.22,1,.36,1) ${index * 45}ms both` } }, categoryDisplay(category)); }))),
-        React.createElement("main", { key: search.trim() ? `search-${search}` : activeCat, className: "product-grid px-4 pt-4 pb-28 max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-3" },
-            search.trim() && React.createElement("div", { className: "col-span-full mb-1" },
-                React.createElement("div", { className: "text-xs opacity-50" },
-                    "\"",
-                    search.trim(),
-                    "\" ",
-                    t(language, "found").replace("products", ""),
-                    visibleProducts.length,
-                    " ",
-                    t(language, "products"))),
-            visibleProducts.length === 0 && React.createElement("div", { className: "col-span-full text-center py-16 opacity-50" }, search.trim() ? t(language, "notFound") : t(language, "empty")),
-            visibleProducts.map((item, index) => React.createElement("article", { key: item.id, onClick: () => { setSelectedProduct(item); setDetailGalleryIndex(0); }, className: "product-card rounded-2xl overflow-hidden cursor-pointer", style: { background: theme.card, boxShadow: "0 5px 18px rgba(0,0,0,.14)", animationDelay: `${Math.min(index, 8) * 45}ms` } },
+                } }, onMouseUp: e => { e.currentTarget.dataset.dragging = "0"; }, onMouseLeave: e => { e.currentTarget.dataset.dragging = "0"; } }, categories.map((category, index) => { const active = category.id === activeCat; return React.createElement("button", { type: "button", key: category.id, "aria-pressed": active, onClick: () => { setActiveCat(category.id); setOpenCategories({}); }, className: "category-chip " + (active ? "active" : ""), style: { background: active ? `linear-gradient(135deg,${theme.accent},${theme.accent}dd)` : `${theme.accent}14`, color: active ? "#fff" : theme.text, borderColor: active ? theme.accent + "70" : theme.text + "12", opacity: active ? 1 : .78, boxShadow: active ? `0 6px 18px ${theme.accent}30` : "none", animation: `categoryEnter .4s cubic-bezier(.22,1,.36,1) ${index * 45}ms both` } }, categoryDisplay(category)); }))),
+        React.createElement("main", { key: q ? `search-${q}` : activeCat, className: "product-grid px-4 pt-4 pb-28 max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-3" },
+            visibleProducts.length === 0 && React.createElement("div", { className: "col-span-full text-center py-16 opacity-60" }, q ? t(language, "notFound") : t(language, "empty")),
+            visibleProducts.map((item, index) => React.createElement("article", { key: item.id, role: "button", tabIndex: 0, "aria-label": productDisplay(item), onClick: () => { setSelectedProduct(item); setDetailGalleryIndex(0); }, onKeyDown: e => { if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedProduct(item);
+                    setDetailGalleryIndex(0);
+                } }, className: "product-card rounded-2xl overflow-hidden cursor-pointer", style: { background: theme.card, boxShadow: "0 5px 18px rgba(0,0,0,.14)", animationDelay: `${Math.min(index, 8) * 45}ms` } },
                 React.createElement("div", { className: "product-image", style: { height: data.cardImgSize, backgroundColor: theme.accent + "12", display: "block", position: "relative" } }, (() => { const g = Array.isArray(item.images) && item.images.length ? item.images : (item.image ? [item.image] : []); const idx = (galleryIndex[item.id] || 0) % Math.max(g.length, 1); if (!g.length)
                     return React.createElement("div", { style: { height: "100%", display: "flex", alignItems: "center", justifyContent: "center" } },
                         React.createElement(Icon, { type: "image", size: 28 })); return React.createElement("div", { className: "product-gallery-frame", onPointerDown: e => { if (g.length < 2)
@@ -2840,17 +2969,21 @@ function App() {
                     React.createElement(CachedImage, { key: `${item.id}-${idx}`, className: "product-gallery-img", src: g[idx], alt: productDisplay(item), loading: "lazy", decoding: "async", fetchpriority: "low", draggable: "false" }),
                     g.length > 1 && React.createElement("div", { className: "gallery-dots" }, g.slice(0, 7).map((_, i) => React.createElement("span", { key: i, className: 'gallery-dot ' + (i === idx ? 'active' : '') })))); })()),
                 React.createElement("div", { className: "p-3 flex flex-col" },
-                    React.createElement("div", { className: "font-semibold text-sm leading-tight" }, productDisplay(item)),
-                    productDesc(item) && React.createElement("div", { className: "text-[11px] opacity-55 mt-1 leading-snug line-clamp-2" }, productDesc(item)),
-                    priceTotal(item.price) !== null && React.createElement("div", { className: "mt-3 pt-3 border-t", style: { borderColor: theme.text + "12" } },
+                    React.createElement("div", { className: "font-semibold text-sm leading-tight line-clamp-3" }, productDisplay(item)),
+                    productDims(item) && React.createElement("div", { className: "text-[11px] opacity-70 mt-1 tabular-nums" }, productDims(item)),
+                    productDesc(item) && React.createElement("div", { className: "text-xs opacity-65 mt-1 leading-snug line-clamp-2" }, productDesc(item)),
+                    priceTotal(item.price) !== null ? React.createElement("div", { className: "mt-3 pt-3 border-t", style: { borderColor: theme.text + "14" } },
                         React.createElement("div", { className: "flex items-center justify-between gap-2" },
-                            React.createElement("span", { className: "text-[9px] uppercase tracking-widest font-bold opacity-45" }, t(language, "total")),
+                            React.createElement("span", { className: "text-[10px] uppercase tracking-wider font-bold opacity-60" }, t(language, "total")),
                             React.createElement("span", { className: "text-[13px] font-bold", style: { color: theme.accent } }, productMainPrice(item))),
-                        React.createElement("div", { className: "mt-1 text-[9px] opacity-40 flex items-center gap-1" },
-                            t(language, "detailedPrices"),
-                            React.createElement(Icon, { type: "arrow", size: 10 }))))))),
+                        React.createElement("div", { className: "mt-1 text-[11px] opacity-60 flex items-center gap-1" },
+                            hasContactParts(item) ? (language === "EN" ? "Some items: ask for price" : "Bazı kalemler: fiyat sorunuz") : t(language, "detailedPrices"),
+                            React.createElement(Icon, { type: "arrow", size: 11 }))) : React.createElement("div", { className: "mt-3 pt-3 border-t text-[11px] font-semibold", style: { borderColor: theme.text + "14", color: theme.accent } }, t(language, "contactPrice")))))),
         selectedProduct && React.createElement("div", { className: "fixed inset-0 z-[100] modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-5", onClick: () => setSelectedProduct(null) },
-            React.createElement("div", { className: "w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl", style: { background: theme.card, color: theme.text, animation: "pop .22s ease" }, onClick: e => e.stopPropagation() },
+            React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": productDisplay(selectedProduct), className: "relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl", style: { background: theme.card, color: theme.text, animation: "pop .22s ease" }, onClick: e => e.stopPropagation() },
+                React.createElement("div", { className: "sticky top-0 z-10 h-0 flex justify-end" },
+                    React.createElement("button", { type: "button", autoFocus: true, "aria-label": language === "EN" ? "Close" : "Kapat", onClick: () => setSelectedProduct(null), className: "mt-4 mr-4 w-11 h-11 rounded-full flex items-center justify-center shadow-lg", style: { background: "rgba(0,0,0,.6)", color: "#fff", backdropFilter: "blur(8px)" } },
+                        React.createElement(Icon, { type: "x", size: 20 }))),
                 React.createElement("div", { className: "relative" },
                     React.createElement("div", { className: "detail-gallery", onPointerDown: e => { e.currentTarget.setPointerCapture?.(e.pointerId); e.currentTarget.dataset.sx = String(e.clientX); e.currentTarget.dataset.sy = String(e.clientY); e.currentTarget.dataset.moved = "0"; }, onPointerMove: e => { const sx = Number(e.currentTarget.dataset.sx || e.clientX), sy = Number(e.currentTarget.dataset.sy || e.clientY); if (Math.hypot(e.clientX - sx, e.clientY - sy) > 10)
                             e.currentTarget.dataset.moved = "1"; }, onPointerUp: e => { const sx = Number(e.currentTarget.dataset.sx || e.clientX), sy = Number(e.currentTarget.dataset.sy || e.clientY), dx = e.clientX - sx, dy = e.clientY - sy, g = Array.isArray(selectedProduct.images) && selectedProduct.images.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : []); if (g.length > 1 && Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
@@ -2861,19 +2994,23 @@ function App() {
                             setLightboxZoom(1);
                         } }, style: { backgroundColor: theme.accent + "12", touchAction: "pan-y" } }, (() => { const g = Array.isArray(selectedProduct.images) && selectedProduct.images.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : []); const idx = (detailGalleryIndex || 0) % Math.max(g.length, 1); return g.length ? React.createElement(CachedImage, { key: `detail-${selectedProduct.id}-${idx}`, loading: "lazy", src: g[idx], alt: productDisplay(selectedProduct), className: "detail-gallery-img", decoding: "async", draggable: "false" }) : React.createElement("div", { style: { height: "100%", display: "flex", alignItems: "center", justifyContent: "center" } },
                         React.createElement(Icon, { type: "image", size: 40 })); })()),
-                    (() => { const g = Array.isArray(selectedProduct.images) && selectedProduct.images.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : []); return g.length > 1 && React.createElement("div", { className: "detail-gallery-dots" }, g.map((_, i) => React.createElement("span", { key: i, className: 'detail-gallery-dot ' + (i === detailGalleryIndex ? 'active' : '') }))); })(),
-                    React.createElement("button", { type: "button", onClick: () => setSelectedProduct(null), className: "absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center", style: { background: "rgba(0,0,0,.55)", color: "#fff" } },
-                        React.createElement(Icon, { type: "x", size: 20 }))),
+                    (() => { const g = Array.isArray(selectedProduct.images) && selectedProduct.images.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : []); return g.length > 1 && React.createElement("div", { className: "detail-gallery-dots" }, g.map((_, i) => React.createElement("span", { key: i, className: 'detail-gallery-dot ' + (i === detailGalleryIndex ? 'active' : '') }))); })()),
                 React.createElement("div", { className: "p-5" },
-                    React.createElement("div", { className: "text-[10px] uppercase tracking-widest font-bold mb-2", style: { color: theme.accent } }, t(language, "premium")),
+                    React.createElement("div", { className: "text-[11px] uppercase tracking-widest font-bold mb-2", style: { color: theme.accent } }, productCategoryName(selectedProduct) || t(language, "premium")),
                     React.createElement("h2", { className: "text-2xl font-bold" }, productDisplay(selectedProduct)),
-                    productDesc(selectedProduct) && React.createElement("p", { className: "text-sm opacity-65 mt-2 leading-relaxed" }, productDesc(selectedProduct)),
+                    productDims(selectedProduct) && React.createElement("div", { className: "text-sm mt-2" },
+                        React.createElement("span", { className: "text-[11px] uppercase tracking-wide opacity-60" },
+                            t(language, "dimensions"),
+                            ":"),
+                        " ",
+                        React.createElement("span", { className: "font-medium tabular-nums" }, productDims(selectedProduct))),
+                    productDesc(selectedProduct) && React.createElement("p", { className: "text-sm opacity-75 mt-2 leading-relaxed" }, productDesc(selectedProduct)),
                     React.createElement("div", { className: "mt-5" },
-                        React.createElement("div", { className: "text-[10px] uppercase tracking-widest font-bold opacity-50 mb-3" }, t(language, "prices")),
+                        React.createElement("div", { className: "text-[11px] uppercase tracking-widest font-bold opacity-60 mb-3" }, t(language, "prices")),
                         normalizePrice(selectedProduct.price).parts.length > 0 ? React.createElement("div", { className: "space-y-2" }, normalizePrice(selectedProduct.price).parts.map(part => React.createElement("div", { key: part.id, className: "price-row rounded-xl p-3 flex items-center justify-between gap-3" },
                             React.createElement("div", { className: "text-sm font-medium" },
                                 React.createElement("div", null, partDisplay(part)),
-                                partDimensionDisplay(part) && React.createElement("div", { className: "text-[10px] opacity-50 mt-1" },
+                                partDimensionDisplay(part) && React.createElement("div", { className: "text-[11px] opacity-65 mt-1" },
                                     React.createElement("span", { className: "uppercase tracking-wide opacity-60" },
                                         t(language, "dimensions"),
                                         ":"),
@@ -2881,15 +3018,13 @@ function App() {
                                     partDimensionDisplay(part))),
                             React.createElement("div", { className: "text-sm font-bold whitespace-nowrap", style: { color: theme.accent } }, priceText(part))))) : React.createElement("div", { className: "rounded-xl p-4 text-center", style: { background: theme.accent + "12", color: theme.accent } }, t(language, "contactPrice")),
                         priceTotal(selectedProduct.price) !== null && React.createElement("div", { className: "mt-3 rounded-xl p-4 flex items-center justify-between", style: { background: theme.accent + "12", border: "1px solid " + theme.accent + "28" } },
-                            React.createElement("span", { className: "text-[10px] uppercase tracking-widest font-bold opacity-55" }, t(language, "total")),
-                            React.createElement("span", { className: "text-base font-bold", style: { color: theme.accent } }, productMainPrice(selectedProduct)))),
+                            React.createElement("span", { className: "text-[11px] uppercase tracking-widest font-bold opacity-65" }, t(language, "total")),
+                            React.createElement("span", { className: "text-base font-bold", style: { color: theme.accent } }, productMainPrice(selectedProduct))),
+                        priceTotal(selectedProduct.price) !== null && hasContactParts(selectedProduct) && React.createElement("div", { className: "text-[11px] opacity-65 mt-2" }, language === "EN" ? "* Total excludes items marked “contact for price”." : "* Toplama, fiyatı sorulacak kalemler dahil değildir.")),
                     data.phone && React.createElement("a", { href: "tel:" + data.phone.replace(/\s/g, ""), className: "mt-5 w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-sm", style: { background: theme.accent, color: "#fff" } },
                         React.createElement(Icon, { type: "phone", size: 16 }),
                         t(language, "call"))))),
-        React.createElement("button", { onClick: () => createPDF(false), disabled: pdfBusy, className: "fixed bottom-5 left-[18px] z-30 rounded-full px-4 h-12 shadow-xl flex items-center justify-center gap-2 font-bold text-xs disabled:opacity-60", style: { background: theme.accent, color: "#fff" } },
-            React.createElement(Icon, { type: "download", size: 16 }),
-            React.createElement("span", { className: "hidden sm:inline" }, language === "EN" ? "PDF PRICE LIST" : "PDF FİYAT LİSTESİ")),
-        toast && React.createElement("div", { className: "fixed bottom-24 right-[18px] z-[150] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2" },
+        toast && React.createElement("div", { role: "status", "aria-live": "polite", className: "fixed bottom-6 left-1/2 -translate-x-1/2 max-w-[calc(100vw-32px)] z-[250] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2" },
             React.createElement(Icon, { type: "check", size: 15 }),
             toast),
         React.createElement(ProductImageLightbox, { fullScreenImage: fullScreenImage, setFullScreenImage: setFullScreenImage, onClose: () => { setFullScreenImage(null); setLightboxZoom(1); } }),
@@ -2906,18 +3041,21 @@ function App() {
                     React.createElement("button", { onClick: tryUnlock, className: "flex-1 py-2.5 rounded-lg text-sm font-bold text-white", style: { background: theme.accent } }, hasAdminPin() ? t("TR", "login") : "PIN Oluştur")))),
         panelOpen && unlocked && React.createElement("div", { className: "fixed inset-0 z-[180] flex justify-end" },
             React.createElement("div", { className: "flex-1 bg-black/40", onClick: () => closeAdminPanel(true) }),
-            React.createElement("aside", { className: "w-full sm:w-[500px] h-full bg-neutral-950 text-white overflow-y-auto shadow-2xl admin-panel-scroll" },
+            React.createElement("aside", { role: "dialog", "aria-modal": "true", "aria-label": "Y\u00F6netim Paneli", className: "w-full sm:w-[500px] h-full bg-neutral-950 text-white overflow-y-auto overscroll-contain shadow-2xl admin-panel-scroll", style: { accentColor: theme.accent } },
                 React.createElement("div", { className: "sticky top-0 z-20 bg-neutral-950 border-b border-neutral-800 px-5 pt-5 pb-3" },
                     React.createElement("div", { className: "flex items-center justify-between mb-4" },
                         React.createElement("h2", { className: "font-bold text-[17px]" }, t("TR", "adminPanel")),
-                        React.createElement("button", { onClick: () => closeAdminPanel(true), className: "text-neutral-500" },
+                        React.createElement("button", { type: "button", "aria-label": "Paneli kapat", onClick: () => closeAdminPanel(true), className: "w-11 h-11 -mr-2 flex items-center justify-center rounded-full text-neutral-400 hover:text-white" },
                             React.createElement(Icon, { type: "x", size: 21 }))),
-                    React.createElement("div", { className: "grid grid-cols-4 gap-1 bg-neutral-900 rounded-xl p-1" }, [["genel", "Genel"], ["katalog", "Katalog"], ["fiyat", "Fiyat"], ["pdf", "PDF"]].map(([id, label]) => React.createElement("button", { key: id, onClick: () => setAdminSection(id), className: "py-2 rounded-lg text-[11px] font-semibold", style: { background: adminSection === id ? theme.accent : "transparent", color: adminSection === id ? "#fff" : "#888" } }, label)))),
+                    React.createElement("div", { className: "grid grid-cols-4 gap-1 bg-neutral-900 rounded-xl p-1" }, [["genel", "Genel"], ["katalog", "Katalog"], ["fiyat", "Fiyat"], ["pdf", "PDF"]].map(([id, label]) => React.createElement("button", { type: "button", key: id, "aria-pressed": adminSection === id, onClick: () => setAdminSection(id), className: "min-h-[40px] py-2 rounded-lg text-xs font-semibold", style: { background: adminSection === id ? theme.accent : "transparent", color: adminSection === id ? "#fff" : "#a3a3a3" } }, label)))),
                 React.createElement("div", { className: "p-5" },
                     React.createElement("div", { className: adminSection === "genel" ? "" : "hidden" },
                         React.createElement("label", { className: "block mb-4" },
                             React.createElement(AdminLabel, null, "Site Ad\u0131"),
                             React.createElement("input", { className: "admin-input", value: data.siteName ?? "", onChange: e => editGeneralTurkishField("siteName", e.target.value) })),
+                        React.createElement("label", { className: "block mb-4" },
+                            React.createElement(AdminLabel, null, "Alt Ba\u015Fl\u0131k"),
+                            React.createElement("input", { className: "admin-input", value: data.subtitle ?? "", onChange: e => editGeneralTurkishField("subtitle", e.target.value), placeholder: "Ofis Mobilyalar\u0131" })),
                         React.createElement("label", { className: "block mb-4" },
                             React.createElement(AdminLabel, null, "\u00DCst Etiket"),
                             React.createElement("input", { className: "admin-input", value: data.eyebrow ?? "", onChange: e => editGeneralTurkishField("eyebrow", e.target.value) })),
@@ -2927,7 +3065,7 @@ function App() {
                         React.createElement("div", { className: "h-px bg-neutral-800 my-5" }),
                         React.createElement("div", { className: "text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3" }, "Premium Logo"),
                         React.createElement("div", { className: "bg-neutral-900 rounded-xl p-4 mb-5" },
-                            React.createElement("div", { className: "rounded-xl bg-neutral-800 min-h-[120px] flex items-center justify-center mb-3 overflow-hidden" }, data.logo.src ? React.createElement(CachedImage, { loading: "lazy", decoding: "async", src: data.logo.src, alt: "Logo", style: { width: Math.min(data.logo.width || 110, 260), height: Math.min(data.logo.height || 110, 140), maxWidth: "90%", objectFit: "contain" } }) : React.createElement("div", { className: "text-xs text-neutral-500" }, "Logo eklenmedi")),
+                            React.createElement("div", { className: "rounded-xl bg-neutral-800 min-h-[120px] flex items-center justify-center mb-3 overflow-hidden" }, data.logo.src && !logoFailed ? React.createElement(CachedImage, { loading: "lazy", decoding: "async", src: data.logo.src, onError: () => setLogoFailed(true), alt: "Logo \u00F6nizleme", style: { width: Math.min(data.logo.width || 110, 260), height: Math.min(data.logo.height || 110, 140), maxWidth: "90%", objectFit: "contain" } }) : React.createElement("div", { className: "text-xs text-neutral-400 text-center px-4" }, data.logo.src ? "Logo dosyası bulunamadı. Yeni bir logo yükleyin." : "Logo eklenmedi")),
                             React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-3" },
                                 React.createElement("button", { onClick: () => document.getElementById("local-logo-input")?.click(), className: "py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-xs font-bold flex items-center justify-center gap-2" },
                                     React.createElement(Icon, { type: "upload", size: 14 }),
@@ -2951,14 +3089,20 @@ function App() {
                                 React.createElement(AdminLabel, null, "Logo Konumu"),
                                 React.createElement("div", { className: "grid grid-cols-3 gap-2" }, [["left", "Sol"], ["center", "Orta"], ["right", "Sağ"]].map(([v, l]) => React.createElement("button", { key: v, onClick: () => setPath(["logo", "position"], v), className: "py-2 rounded-lg text-xs font-semibold", style: { background: data.logo.position === v ? theme.accent : "#1c1c1c", color: "#fff" } }, l))))),
                         React.createElement("div", { className: "bg-neutral-900 rounded-xl p-4 mb-5" },
+                            React.createElement("div", { className: "text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-3" }, "\u0130ngilizce Site"),
+                            React.createElement("div", { className: "mb-6" },
+                                React.createElement("button", { type: "button", onClick: translateAllMissing, disabled: !!translateBusy, className: "w-full min-h-[44px] rounded-lg text-xs font-bold bg-neutral-800 flex items-center justify-center gap-2 disabled:opacity-60" },
+                                    React.createElement(Icon, { type: "globe", size: 14 }),
+                                    translateBusy ? `Çevriliyor… ${translateBusy.done}/${translateBusy.total}` : "İngilizce Çevirileri Tamamla"),
+                                React.createElement("div", { className: "text-[11px] text-neutral-400 mt-2" }, "\u00C7evrilmemi\u015F kategori, \u00FCr\u00FCn ve fiyat kalemlerini bir kez \u00E7evirir ve kaydeder. Ziyaret\u00E7iler beklemeden \u0130ngilizce g\u00F6r\u00FCr.")),
                             React.createElement("div", { className: "text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-3" }, "Katalog Yedekleme"),
                             React.createElement("div", { className: "grid grid-cols-2 gap-2" },
-                                React.createElement("button", { onClick: () => downloadJSON(data), className: "py-2.5 rounded-lg text-xs font-bold bg-neutral-800 flex items-center justify-center gap-2" },
+                                React.createElement("button", { type: "button", onClick: () => downloadJSON(data), className: "min-h-[44px] py-2.5 rounded-lg text-xs font-bold bg-neutral-800 flex items-center justify-center gap-2" },
                                     React.createElement(Icon, { type: "download", size: 14 }),
-                                    t("TR", "exportJSON")),
-                                React.createElement("button", { onClick: () => importRef?.click(), className: "py-2.5 rounded-lg text-xs font-bold bg-neutral-800 flex items-center justify-center gap-2" },
+                                    "Yede\u011Fi \u0130ndir (JSON)"),
+                                React.createElement("button", { type: "button", onClick: () => importRef?.click(), className: "min-h-[44px] py-2.5 rounded-lg text-xs font-bold bg-neutral-800 flex items-center justify-center gap-2" },
                                     React.createElement(Icon, { type: "upload", size: 14 }),
-                                    t("TR", "importJSON"))),
+                                    "Yedekten Y\u00FCkle")),
                             React.createElement("input", { ref: setImportRef, type: "file", accept: "application/json,.json", className: "hidden", onChange: handleImport })),
                         React.createElement("div", { className: "h-px bg-neutral-800 my-5" }),
                         React.createElement("div", { className: "text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3" }, "Haz\u0131r Temalar"),
@@ -2981,7 +3125,6 @@ function App() {
                             React.createElement("button", { type: "button", onClick: changePin, className: "px-4 rounded-lg text-sm font-bold text-white shrink-0", style: { background: theme.accent } }, "G\u00FCncelle")),
                         React.createElement("button", { onClick: resetDefault, className: "w-full py-2.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs text-red-400" }, "Varsay\u0131lan Ayarlara D\u00F6n")),
                     React.createElement("div", { className: adminSection === "fiyat" ? "" : "hidden" },
-                        React.createElement("div", { className: "h-px bg-neutral-800 my-5" }),
                         React.createElement("div", { className: "text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3" }, t("TR", "currency")),
                         React.createElement("div", { className: "bg-neutral-900 rounded-xl p-4 mb-5" },
                             React.createElement("div", { className: "text-xs text-neutral-400 mb-3" }, "Fiyatlar TL olarak girilir. Kur de\u011Ferleri manuel belirlenir."),
@@ -2998,12 +3141,13 @@ function App() {
                                 React.createElement("input", { type: "number", step: "0.01", className: "admin-input", value: data.currency.eurRate, onChange: e => { const n = Number(e.target.value); if (Number.isFinite(n) && n >= 0 && n <= 100000)
                                         setPath(["currency", "eurRate"], n); } })))),
                     React.createElement("div", { className: adminSection === "katalog" ? "" : "hidden" },
-                        React.createElement("div", { id: "catalog-tab", className: "mt-8 pt-6 border-t border-neutral-800" },
+                        React.createElement("div", { id: "catalog-tab" },
                             React.createElement("div", { className: "mb-4 rounded-xl p-3", style: { background: theme.accent + "12", border: "1px solid " + theme.accent + "25" } },
                                 React.createElement("div", { className: "text-[10px] uppercase tracking-widest opacity-50 mb-2" }, "\u00DCr\u00FCn Ara ve D\u00FCzenle"),
                                 React.createElement("div", { className: "relative" },
-                                    React.createElement(Icon, { type: "search", size: 15 }),
-                                    React.createElement("input", { value: adminSearch, onChange: e => { const v = safeSearchText(e.target.value); setAdminSearch(v); if (v.trim()) {
+                                    React.createElement("span", { className: "absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none flex" },
+                                        React.createElement(Icon, { type: "search", size: 15 })),
+                                    React.createElement("input", { type: "search", "aria-label": "\u00DCr\u00FCn ara", value: adminSearch, onChange: e => { const v = safeText(e.target.value, SECURITY_LIMITS.search); setAdminSearch(v); if (v.trim()) {
                                             const next = { ...openCategories };
                                             categories.forEach(c => { if (c.items.some(i => (i.name || "").toLocaleLowerCase("tr-TR").includes(v.trim().toLocaleLowerCase("tr-TR"))))
                                                 next[c.id] = true; });
@@ -3016,33 +3160,33 @@ function App() {
                                 React.createElement(Icon, { type: "plus", size: 17 }),
                                 t("TR", "newCategory")),
                             categories.map((category, categoryIndex) => React.createElement("div", { key: category.id, className: "bg-neutral-900 border border-neutral-800 rounded-xl mb-3 overflow-hidden" },
-                                React.createElement("div", { className: "p-2 flex items-center gap-1.5" },
-                                    React.createElement("input", { value: category.name, onChange: e => renameCategory(category.id, e.target.value), className: "admin-input", style: { padding: "9px 10px", fontSize: "13px" } }),
-                                    React.createElement("button", { onClick: () => moveCategory(category.id, -1), disabled: categoryIndex === 0, className: "p-2 bg-neutral-800 rounded-lg disabled:opacity-20" },
+                                React.createElement("div", { className: "p-2 flex flex-wrap sm:flex-nowrap items-center gap-1.5" },
+                                    React.createElement("input", { "aria-label": "Kategori ad\u0131", value: category.name, onChange: e => renameCategory(category.id, e.target.value), className: "admin-input flex-1 min-w-0 basis-full sm:basis-auto", style: { padding: "9px 10px", fontSize: "13px" } }),
+                                    React.createElement("button", { type: "button", "aria-label": "Kategoriyi yukar\u0131 ta\u015F\u0131", onClick: () => moveCategory(category.id, -1), disabled: categoryIndex === 0, className: "w-10 h-10 shrink-0 flex items-center justify-center bg-neutral-800 rounded-lg disabled:opacity-20" },
                                         React.createElement(Icon, { type: "up", size: 14 })),
-                                    React.createElement("button", { onClick: () => moveCategory(category.id, 1), disabled: categoryIndex === categories.length - 1, className: "p-2 bg-neutral-800 rounded-lg disabled:opacity-20" },
+                                    React.createElement("button", { type: "button", "aria-label": "Kategoriyi a\u015Fa\u011F\u0131 ta\u015F\u0131", onClick: () => moveCategory(category.id, 1), disabled: categoryIndex === categories.length - 1, className: "w-10 h-10 shrink-0 flex items-center justify-center bg-neutral-800 rounded-lg disabled:opacity-20" },
                                         React.createElement(Icon, { type: "down", size: 14 })),
-                                    React.createElement("button", { onClick: () => deleteCategory(category.id), className: "p-2 bg-red-950 text-red-400 rounded-lg" },
+                                    React.createElement("button", { type: "button", "aria-label": "Kategoriyi sil", onClick: () => deleteCategory(category.id), className: "w-10 h-10 shrink-0 flex items-center justify-center bg-red-950 text-red-400 rounded-lg" },
                                         React.createElement(Icon, { type: "trash", size: 14 })),
-                                    React.createElement("button", { onClick: () => toggleCategory(category.id), className: "px-3 py-2 rounded-lg text-[11px] whitespace-nowrap flex items-center gap-1.5 font-semibold", style: { background: openCategories[category.id] ? theme.accent : "#262626", color: openCategories[category.id] ? "#fff" : "#aaa" } },
+                                    React.createElement("button", { type: "button", "aria-expanded": !!openCategories[category.id], onClick: () => toggleCategory(category.id), className: "h-10 shrink-0 px-3 rounded-lg text-[11px] whitespace-nowrap flex items-center gap-1.5 font-semibold", style: { background: openCategories[category.id] ? theme.accent : "#262626", color: openCategories[category.id] ? "#fff" : "#aaa" } },
                                         t("TR", "productsBtn"),
                                         React.createElement(Icon, { type: openCategories[category.id] ? "up" : "down", size: 13 }))),
                                 openCategories[category.id] && React.createElement("div", { className: "p-2 pt-0" },
                                     category.items.length === 0 && React.createElement("div", { className: "bg-neutral-800 rounded-xl p-4 mb-2 text-center text-xs text-neutral-500" }, "Bu kategoride hen\u00FCz \u00FCr\u00FCn yok."),
                                     category.items.filter(item => !adminSearch.trim() || (item.name || "").toLocaleLowerCase("tr-TR").includes(adminSearch.trim().toLocaleLowerCase("tr-TR"))).map((item, itemIndex) => React.createElement("div", { key: item.id, className: "bg-neutral-800 rounded-xl p-3 mb-2" },
-                                        React.createElement("div", { className: "flex gap-2 mb-2" },
+                                        React.createElement("div", { className: "flex flex-wrap sm:flex-nowrap gap-2 mb-2" },
                                             React.createElement("div", { className: "w-16 h-16 rounded-lg bg-neutral-700 flex-shrink-0 overflow-hidden flex items-center justify-center", style: { backgroundImage: item.image ? `url(${item.image})` : undefined, backgroundSize: "cover", backgroundPosition: "center" } }, !item.image && React.createElement(Icon, { type: "image", size: 18 })),
                                             React.createElement("div", { className: "flex flex-col gap-1 flex-shrink-0" },
-                                                React.createElement("button", { type: "button", onClick: () => document.getElementById("product-image-" + category.id + "-" + item.id)?.click(), className: "px-2.5 py-1.5 rounded-lg bg-neutral-700 border border-neutral-600 text-[10px] font-bold flex items-center gap-1" },
+                                                React.createElement("button", { type: "button", onClick: () => document.getElementById("product-image-" + category.id + "-" + item.id)?.click(), className: "min-h-[36px] px-2.5 py-1.5 rounded-lg bg-neutral-700 border border-neutral-600 text-[11px] font-bold flex items-center gap-1" },
                                                     React.createElement(Icon, { type: "upload", size: 12 }),
                                                     "Foto\u011Fraf"),
-                                                item.image && React.createElement("button", { type: "button", onClick: () => removeProductImage(category.id, item.id), className: "px-2.5 py-1.5 rounded-lg bg-red-950 text-red-400 text-[10px] font-bold" }, "Sil"),
+                                                item.image && React.createElement("button", { type: "button", "aria-label": "\u00DCr\u00FCn foto\u011Fraflar\u0131n\u0131 sil", onClick: () => removeProductImage(category.id, item.id), className: "min-h-[36px] px-2.5 py-1.5 rounded-lg bg-red-950 text-red-400 text-[11px] font-bold" }, "Sil"),
                                                 React.createElement("input", { id: "product-image-" + category.id + "-" + item.id, type: "file", accept: "image/*", multiple: true, className: "hidden", onChange: e => uploadProductImage(category.id, item.id, e) })),
-                                            React.createElement("div", { className: "flex-1 grid gap-2" },
+                                            React.createElement("div", { className: "flex-1 min-w-0 basis-full sm:basis-auto grid gap-2" },
                                                 React.createElement("div", null,
-                                                    React.createElement("input", { value: item.name, onChange: e => editTurkishField(category.id, item, "name", e.target.value), placeholder: "\u00DCr\u00FCn ad\u0131", className: "admin-input", style: { padding: "8px 9px", fontSize: "12px" } })),
+                                                    React.createElement("input", { "aria-label": "\u00DCr\u00FCn ad\u0131", value: item.name, onChange: e => editTurkishField(category.id, item, "name", e.target.value), placeholder: "\u00DCr\u00FCn ad\u0131", className: "admin-input", style: { padding: "8px 9px", fontSize: "12px" } })),
                                                 React.createElement("div", null,
-                                                    React.createElement("input", { value: item.dims, onChange: e => { const v = e.target.value; updateItem(category.id, item.id, "dims", v); updateItem(category.id, item.id, "dims_en", v); }, placeholder: t("TR", "dimsPlaceholder"), className: "admin-input", style: { padding: "8px 9px", fontSize: "12px" } })))),
+                                                    React.createElement("input", { "aria-label": "\u00DCr\u00FCn \u00F6l\u00E7\u00FCleri", value: item.dims, onChange: e => { const v = e.target.value; updateItem(category.id, item.id, "dims", v); updateItem(category.id, item.id, "dims_en", v); }, placeholder: t("TR", "dimsPlaceholder"), className: "admin-input", style: { padding: "8px 9px", fontSize: "12px" } })))),
                                         React.createElement("div", { className: "mb-2" },
                                             React.createElement("textarea", { value: item.desc, onChange: e => editTurkishField(category.id, item, "desc", e.target.value), placeholder: t("TR", "description"), className: "admin-input" })),
                                         React.createElement("div", { className: "rounded-xl border border-neutral-700 bg-neutral-900 p-3 mb-2" },
