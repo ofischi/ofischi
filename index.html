@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-T4mNLvPaGci0F6YfAbb7rhmQmLPRAMRK+sNDLa1Vfm8=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-nHD8IGIc7wQZkK5g40h1oZfcEA4W64fYF3UtZCKL6Lg=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -421,6 +421,7 @@ const FIXED_CATEGORIES = Object.freeze([
     { id: "dosya-dolaplari", name: "DOSYA DOLAPLARI", name_en: "FILING CABINETS", aliases: [] },
     { id: "soyunma-dolaplari", name: "SOYUNMA DOLAPLARI", name_en: "LOCKERS", aliases: [] },
     { id: "asos-dolaplar", name: "ASOS DOLAPLAR", name_en: "ASOS CABINETS", aliases: [] },
+    { id: "kasalar", name: "KASALAR", name_en: "SAFES", aliases: ["Kasa"] },
     { id: "oturma-gruplari", name: "OTURMA GRUPLARI", name_en: "SOFA SETS", aliases: [] },
     { id: "lobi-koltuklari", name: "LOBİ KOLTUKLARI", name_en: "LOBBY SEATING", aliases: ["Loby Koltukları", "Lobi Koltukları"] },
     { id: "ofis-koltuklari", name: "OFİS KOLTUKLARI", name_en: "OFFICE CHAIRS", aliases: ["Ofis Koltukları"] },
@@ -450,8 +451,23 @@ const PDF_CATEGORY_LAYOUTS = Object.freeze([
     { id: "models", name: "Model Sırası", desc: "Müdür, şef, misafir… her modelin resmi ve fiyatı." }
 ]);
 const DEFAULT_CATEGORY_LAYOUTS = Object.freeze({
+    "workstations": "sizes",
     "toplanti-masalari": "sizes",
-    "ofis-koltuklari": "models", "fileli-ofis-koltuklari": "models", "proje-koltuklari": "models", "konferans-koltuklari": "models"
+    "bankolar": "sizes",
+    "kesonlar": "sizes",
+    "etajer-kabinler": "sizes",
+    "dolaplar": "sizes",
+    "dosya-dolaplari": "sizes",
+    "soyunma-dolaplari": "sizes",
+    "asos-dolaplar": "sizes",
+    "kasalar": "sizes",
+    "lobi-koltuklari": "sizes",
+    "tabureler": "sizes",
+    "bar-koltuklari": "sizes",
+    "konferans-koltuklari": "sizes",
+    "puflar": "sizes",
+    "proje-ve-aksesuar": "sizes",
+    "ofis-koltuklari": "models", "fileli-ofis-koltuklari": "models", "proje-koltuklari": "models"
 });
 function categoryLayoutOf(data, categoryId) {
     const v = data?.pdf?.categoryLayouts?.[categoryId];
