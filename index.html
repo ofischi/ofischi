@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-aHxFpabwcrf4t7M/EHoXN8skfTB7iri5w6psd8mAHK4=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-e/F2XbIWRV+uxs0kGl7qLQknI4MVdu4KrnGt5ypWSJ4=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3478,8 +3478,8 @@ function App() {
     }
     function removePdfCoverLogo() { if (!confirm("PDF kapak logosu kaldırılsın mı?"))
         return; setPath(["pdf", "coverLogo"], null); }
-    /* Fotoğraf sıkıştırma: WebP, uzun kenar en fazla maxSize px; kalite, dosya hedef boyutun (KB) altına inene kadar düşürülür.
-       Hedefe kalite tabanında ulaşılamazsa görsel %15 küçültülüp tekrar denenir. WebP desteklenmiyorsa JPEG'e düşer. */
+    /* Fotoğraf sıkıştırma: WebP, uzun kenar en fazla maxSize px; kalite 0,92’den 0,76’ya kadar düşürülerek hedef boyuta (KB) inilir.
+       Hedefe ulaşılamazsa görsel %10 küçültülür ama uzun kenar 1280 px altına inmez. WebP desteklenmiyorsa JPEG'e düşer. */
     async function fileToOptimizedDataURL(file, maxSize = 1200, targetKB = 80) {
         validateUploadFile(file);
         const readAsDataURL = () => new Promise((resolve, reject) => { const r = new FileReader(); r.onerror = () => reject(r.error || new Error("Dosya okunamadı")); r.onload = () => resolve(r.result); r.readAsDataURL(file); });
@@ -3494,17 +3494,21 @@ function App() {
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext("2d");
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
             ctx.drawImage(img, 0, 0, w, h);
             let mime = "image/webp";
             if (!canvas.toDataURL("image/webp", .8).startsWith("data:image/webp"))
                 mime = "image/jpeg";
-            for (const q of [.84, .78, .72, .66, .6, .54, .48]) {
+            for (const q of [.92, .88, .84, .8, .76]) {
                 const out = canvas.toDataURL(mime, q);
                 best = out;
                 if (out.length <= target)
                     return out;
             }
-            scale *= .85;
+            if (Math.max(w, h) * .9 < Math.min(1280, maxSize))
+                break; /* netlik için uzun kenar 1280 px altına inmez */
+            scale *= .9;
         }
         return best;
     }
@@ -3524,7 +3528,7 @@ function App() {
             } });
             if (!valid.length)
                 throw new Error("Lütfen görsel dosyaları seçin.");
-            const srcs = await Promise.all(valid.map(f => fileToOptimizedDataURL(f, 1200, 80)));
+            const srcs = await Promise.all(valid.map(f => fileToOptimizedDataURL(f, 1600, 250)));
             const item = (data.categories.find(c => c.id === categoryId)?.items || []).find(i => i.id === itemId);
             const current = Array.isArray(item?.images) ? item.images.filter(Boolean) : (item?.image ? [item.image] : []);
             const images = [...current, ...srcs];
@@ -3559,7 +3563,7 @@ function App() {
         try {
             validateUploadFile(file);
             await enforceClientRateLimit("admin:part-image-upload", 20, 60 * 1000);
-            const src = await fileToOptimizedDataURL(file, 1000, 60);
+            const src = await fileToOptimizedDataURL(file, 1280, 150);
             updatePricePart(categoryId, itemId, partId, "image", src);
             updateItem(categoryId, itemId, "isDemo", false);
             showToast("Model fotoğrafı eklendi. Kaydet'e basın.");
@@ -3760,7 +3764,7 @@ function App() {
         try {
             validateUploadFile(file);
             await enforceClientRateLimit("admin:category-cover-upload", 10, 60 * 1000);
-            const src = await fileToOptimizedDataURL(file, 1600, 120);
+            const src = await fileToOptimizedDataURL(file, 1800, 300);
             updateData(x => { x.categories = x.categories.map(c => c.id === categoryId ? { ...c, coverImage: src } : c); });
             showToast("Kategori kapak görseli yüklendi. Kaydet'e basın.");
         }
