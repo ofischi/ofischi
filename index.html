@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-QF4gxMj6al9ctx9pWB3N7peS2OIyFaFPAbD7QU4D1hs=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G2pYCWGSQJv5pHSVyjM5lcl7BVWyds1PPuKjwmfaQ2g=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -957,6 +957,21 @@ async function aiTranslateResult(text, type = "general") {
     if (!text || !text.trim())
         return { text: "", good: false };
     const source = text.trim();
+    /* 0) Chrome'un cihaz içi Translator API'si: ağ trafiği yok, anında. Model yüklüyse kullanılır. */
+    try {
+        if (window.Translator && typeof window.Translator.create === "function" && typeof window.Translator.availability === "function") {
+            const av = await window.Translator.availability({ sourceLanguage: "tr", targetLanguage: "en" });
+            if (av === "available") {
+                window.__ofTranslator = window.__ofTranslator || await window.Translator.create({ sourceLanguage: "tr", targetLanguage: "en" });
+                const out = await window.__ofTranslator.translate(source);
+                if (out && out.trim())
+                    return { text: out.trim(), good: true };
+            }
+        }
+    }
+    catch (e) {
+        console.warn("On-device Translator unavailable:", e);
+    }
     /* Browser AI APIs where available */
     try {
         if (window.LanguageModel && typeof window.LanguageModel.create === "function") {
@@ -1123,8 +1138,45 @@ async function aiTranslateResult(text, type = "general") {
     s = s.replace(/\b(\d+)\s*adet\b/gi, "$1 pieces");
     return { text: s === source ? source : preserveTechnicalTokens(source, s), good: false };
 }
+/* Bekleyen çeviriler: yalnızca düzenlenen / eklenen alanların anahtarı tutulur. Çeviri başarısız olursa (çevrimdışı vb.)
+   anahtar kuyrukta kalır ve bağlantı gelince SADECE bunlar yeniden denenir; tüm site asla taranmaz. */
+const TR_PENDING_KEY = "ofischi_tr_pending_v1";
+function trPendingLoad() { try {
+    const a = JSON.parse(lsGet(TR_PENDING_KEY) || "[]");
+    return new Set(Array.isArray(a) ? a.filter(x => typeof x === "string").slice(0, 500) : []);
+}
+catch (_) {
+    return new Set();
+} }
+function trPendingSave(set) { try {
+    if (set.size)
+        lsSet(TR_PENDING_KEY, JSON.stringify([...set].slice(0, 500)));
+    else
+        lsRemove(TR_PENDING_KEY);
+}
+catch (_) { } }
+function trPendingAdd(k) { const p = trPendingLoad(); if (!p.has(k)) {
+    p.add(k);
+    trPendingSave(p);
+} }
+function trPendingRemove(keys) { const p = trPendingLoad(); let ch = false; for (const k of keys)
+    if (p.delete(k))
+        ch = true; if (ch)
+    trPendingSave(p); }
 async function aiTranslateText(text, type = "general") { return (await aiTranslateResult(text, type)).text; }
-function cacheKey(text, type = "general") { return "ofischi_tr_en_v3_" + btoa(unescape(encodeURIComponent(type + "::" + text))).slice(0, 180); }
+/* Çakışmasız önbellek anahtarı: metnin tamamının 2 x 32-bit karması + uzunluk (önceki btoa kısaltması uzun metinlerde çakışabiliyordu). */
+function cacheKey(text, type = "general") {
+    const str = type + "::" + text;
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+        const ch = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return "ofischi_tr_en_v4_" + type + "_" + str.length.toString(36) + "_" + (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+}
 async function translateCachedResult(text, type) {
     if (!text || !text.trim())
         return { text: "", good: false };
@@ -1268,9 +1320,10 @@ function formatAmountByData(source, amount) {
     const v = convertPriceByData(source, amount);
     if (v === null)
         return null;
-    const c = getCurrencyByData(source), d = c.id === "TRY" ? 0 : 2;
+    const c = getCurrencyByData(source);
+    /* Kuruş / cent yazılmaz: ondalık kısım yuvarlanmadan doğrudan atılır (21.560,63 → 21.560). */
     const locale = c.id === "TRY" ? "tr-TR" : "en-US";
-    const s = v.toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
+    const s = Math.floor(Math.abs(v) + 1e-9).toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     return c.id === "USD" ? "$" + s : c.id === "EUR" ? "€" + s : s + " ₺";
 }
 /* -------------------- PDF PRICE LIST -------------------- */
@@ -1291,12 +1344,12 @@ function pdfMoney(data, amount) {
         return "—";
     return formatAmountByData(data, amount) || "—";
 }
-function pdfTotal(data, item) {
+function pdfTotal(data, item, lang) {
     const total = priceTotal(item?.price);
     if (total !== null)
         return pdfMoney(data, total);
     const p = normalizePrice(item?.price);
-    return p.parts.some(x => x.contactOnly) ? (data?.currency?.selected === "TRY" ? "İletişime geçin" : "Contact us") : "—";
+    return p.parts.some(x => x.contactOnly) ? (lang === "EN" ? "Contact us" : "İletişime geçin") : "—";
 }
 function pdfCleanDims(value) { return String(value || "—").replace(/\b(kg|m³|m3)\b/gi, "").replace(/\s{2,}/g, " ").trim() || "—"; }
 function pdfDimsParts(value) {
@@ -1810,9 +1863,18 @@ function pdfPageChrome(data, pageNo) {
         c += pdfTextOp(String(pageNo), L.rail / 2, 13, 8.5, { align: "center", bold: true, color: [1, 1, 1] });
     return c;
 }
+/* ORTAK KATEGORİ BAŞLIĞI: fiyat listesi ve tüm katalog şablonları aynı koyu bant + vurgu çizgisini kullanır. */
+let pdfAccentCurrent = [0.79, 0.64, 0.15];
+function pdfCategoryBar(name, x, y, w, h, fs = 11.8) {
+    let c = pdfRect(x, y, w, h, [0.05, 0.05, 0.05]);
+    c += pdfRect(x, y, w, 1.6, pdfAccentCurrent);
+    c += pdfTextOp(name, x + w / 2, y + (h - fs) / 2 + 1.1, fs, { align: "center", bold: true, maxWidth: w - 10, maxLines: 1, color: [1, 1, 1] });
+    return c;
+}
 function pdfCategoryBlock(category, lang, x, y, w) {
     const h = PDF_LAYOUT.categoryH;
     let c = pdfRect(x, y, w, h, [0.05, 0.05, 0.05]);
+    c += pdfRect(x, y, w, 1.6, pdfAccentCurrent);
     c += pdfTextOp(pdfText(lang, category.name, category.name_en, category.name), x + w / 2, y + 5.1, 11.8, { align: "center", bold: true, maxWidth: w - 10, maxLines: 1, color: [1, 1, 1] });
     return c;
 }
@@ -1879,7 +1941,7 @@ function pdfProductBlock(data, category, item, lang, x, y, w, h, asset, id) {
     c += pdfTextOp("Y/H", L.c1 + third * 2.5, headerY + 5.0, 7.2, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1, color: [1, 1, 1] });
     /* Set price is a single dedicated vertical cell. */
     c += pdfRect(L.c3, bodyY, L.setW, bodyTableH, null, [0.35, 0.35, 0.35], .45);
-    c += pdfTextOp(pdfTotal(data, item), L.c3 + L.setW / 2, bodyY + bodyTableH / 2 - 3.0, 10.8, { align: "center", bold: true, maxWidth: L.setW - 6, maxLines: 2 });
+    c += pdfTextOp(pdfTotal(data, item, lang), L.c3 + L.setW / 2, bodyY + bodyTableH / 2 - 3.0, 10.8, { align: "center", bold: true, maxWidth: L.setW - 6, maxLines: 2 });
     return c;
 }
 async function renderPdfCoverPage(data, lang, titleOverride) {
@@ -1894,7 +1956,11 @@ async function renderPdfCoverPage(data, lang, titleOverride) {
         images.set("__coverLogo__", logo);
         content += pdfDrawImage("Im1", logo, 55, 365, 485, 205, true);
     }
-    const title = titleOverride || data.pdf?.title || (data.currency?.selected === "TRY" ? "2026-2 TL FİYAT LİSTESİ" : "2026-2 PRICE LIST");
+    const cur = data.currency?.selected === "USD" ? "USD" : data.currency?.selected === "EUR" ? "EUR" : "TL";
+    const autoTitle = lang === "EN" ? `2026-2 ${cur} PRICE LIST` : `2026-2 ${cur} FİYAT LİSTESİ`;
+    /* Yönetimde yazılan başlık Türkçedir; İngilizce PDF'te otomatik İngilizce başlık kullanılır (ayrı "title_en" varsa o). */
+    const defTitle = /^2026-2\s*(TL|USD|EUR)?\s*F[İI]YAT L[İI]STES[İI]$/i.test(String(data.pdf?.title || "").trim());
+    const title = titleOverride || (lang === "EN" ? (data.pdf?.title_en || autoTitle) : ((data.pdf?.title && !defTitle) ? data.pdf.title : autoTitle));
     content += pdfTextOp(title, W - 42, 55, 17.5, { align: "right", bold: true, maxWidth: 455, maxLines: 2, color: [1, 1, 1] });
     return { content, images, pageNo: null };
 }
@@ -2186,7 +2252,9 @@ async function pdfFlowPages(data, lang, preparedImages, pages, opts = {}) {
 }
 async function buildPriceListPDF(rawData, lang) {
     const source = normalizeData(rawData), currency = source.currency?.selected || "TRY";
-    const pdfLang = currency === "TRY" ? "TR" : "EN";
+    /* PDF dili artık para biriminden değil, sitenin seçili dilinden gelir. */
+    const pdfLang = lang === "EN" ? "EN" : lang === "TR" ? "TR" : (currency === "TRY" ? "TR" : "EN");
+    pdfAccentCurrent = pdfCatalogAccent(source);
     const prepared = await pdfPrepareImages(source), data = prepared.data;
     const pages = [await renderPdfCoverPage(data, pdfLang)];
     await pdfFlowPages(data, pdfLang, prepared.images, pages);
@@ -2244,17 +2312,12 @@ function pdfImageBox(asset, x, y, w, h, lang, bg = [0.955, 0.953, 0.945]) {
 /* Modern şablonların ortak sayfa çerçevesi: üstte marka + kategori, altta web sitesi + sayfa no. */
 function pdfCatalogChrome(data, pageNo, lang, label) {
     const L = PDF_LAYOUT, W = L.W, H = L.H, acc = pdfCatalogAccent(data);
-    let c = pdfRect(0, 0, W, H, [1, 1, 1]);
+    /* Fiyat listesiyle aynı yan şerit (koyu zemin, dikey site adı, sayfa numarası) + üstte marka ve vurgu çizgisi. */
+    let c = pdfRect(0, 0, W, H, [1, 1, 1]) + pdfPageChrome(data, pageNo);
     c += pdfRect(36, H - 33, 26, 2.4, acc);
     c += pdfTextOp(String(data.siteName || "").toUpperCase(), 68, H - 35, 7.5, { bold: true, maxWidth: 230, maxLines: 1, color: [0.3, 0.3, 0.3] });
     if (label)
         c += pdfTextOp(label, W - 36, H - 35, 7.5, { align: "right", maxWidth: 250, maxLines: 1, color: [0.45, 0.45, 0.45] });
-    c += pdfLine(36, 34, W - 36, 34, [0.84, 0.84, 0.84], .5);
-    const site = data.pdf?.footer || data.pdf?.website || "";
-    if (site)
-        c += pdfTextOp(site, 36, 21, 7.5, { maxWidth: 300, maxLines: 1, color: [0.42, 0.42, 0.42] });
-    if (data.pdf?.showPageNumbers !== false)
-        c += pdfTextOp(String(pageNo), W - 36, 21, 8, { align: "right", bold: true, color: [0.2, 0.2, 0.2] });
     return c;
 }
 /* Modül / ölçü tablosu (fiyatsız). Sığmayan kalemler "+n kalem daha" satırıyla özetlenir. */
@@ -2377,9 +2440,7 @@ function pdfRenderVitrinPage(data, lang, category, item, pageNo, assets) {
 function pdfCatalogSectionHeader(data, lang, category, cont, X, CW) {
     const L = PDF_LAYOUT, H = L.H, acc = pdfCatalogAccent(data);
     const name = pdfText(lang, category.name, category.name_en, category.name) || "";
-    let c = pdfTextOp(name + (cont ? (lang === "EN" ? "  (continued)" : "  (devam)") : ""), X, H - 70, 15, { bold: true, maxWidth: CW, maxLines: 1, color: [0.07, 0.07, 0.07] });
-    c += pdfRect(X, H - 80, CW, 1.2, acc);
-    return c;
+    return pdfCategoryBar((name + (cont ? (lang === "EN" ? "  (continued)" : "  (devam)") : "")).toUpperCase(), X, H - 84, CW, 22, 12.5);
 }
 /* --- Şablon 3: IZGARA (sayfa başına 6 kart) --- */
 function pdfRenderIzgaraPage(data, lang, category, items, pageNo, assets, cont) {
@@ -2427,8 +2488,7 @@ function pdfRenderDergiPage(data, lang, category, items, startIndex, pageNo, ass
         const ix = imageLeft ? X : X + textW + 20, tx = imageLeft ? X + imgW + 20 : X, src = pdfItemImages(item)[0];
         c += pdfImageBox(reg.use(src, assets.get(src)), ix, y, imgW, slotH, lang);
         let ty = top - 24;
-        c += pdfTextOp(String(idx + 1).padStart(2, "0"), tx, ty, 22, { bold: true, color: acc });
-        ty -= 30;
+        ty -= 4;
         const name = pdfText(lang, item.name, item.name_en, item.name) || "—", nl = pdfWrapText(name, textW, 14.5, 3).length;
         c += pdfTextOp(name, tx, ty, 14.5, { bold: true, maxWidth: textW, maxLines: 3, leading: 17.5, color: [0.07, 0.07, 0.07] });
         ty -= (nl - 1) * 17.5 + 12;
@@ -2475,6 +2535,7 @@ async function pdfPrepareCatalogAssets(data, tpl) {
     return map;
 }
 async function buildCatalogPDF(rawData, lang, templateId) {
+    pdfAccentCurrent = pdfCatalogAccent(normalizeData(rawData));
     const source = normalizeData(rawData), L = lang === "EN" ? "EN" : "TR";
     const tpl = pdfCatalogTemplateId(templateId || source.pdf?.catalogTemplate);
     const data = { ...source, categories: pdfRealCategories(source) };
@@ -2530,9 +2591,11 @@ function pdfValidateBlobBytes(bytes) {
         throw new Error("PDF doğrulaması başarısız: object sayısı geçersiz.");
     return { size, pages: pages.length, bytes: bytes.length, mime: "application/pdf" };
 }
+let pdfLastPages = null; /* Ön izleme penceresi için son üretilen sayfa içerikleri */
 async function pdfCreateVectorDocument(pages) {
     if (!Array.isArray(pages) || pages.length === 0)
         throw new Error("PDF oluşturulamadı: sayfa bulunamadı.");
+    pdfLastPages = pages;
     const objs = [];
     const add = b => { objs.push(b); return objs.length; };
     const usedTexts = [];
@@ -2592,6 +2655,208 @@ async function pdfCreateVectorDocument(pages) {
     pdfValidateBlobBytes(bytes);
     return new Blob([bytes], { type: "application/pdf" });
 }
+/* -------------------- PDF ÖN İZLEME -------------------- */
+/* PDF dosyası verilmeden önce sayfalar, PDF'i oluşturan aynı çizim komutlarından canvas'a çizilir.
+   Dış kütüphane / iframe gerekmez (CSP kapalı kalır); sayfalar kaydırıldıkça çizilir. */
+const PDF_GID_TO_CP = (() => { const m = {}; for (const k in PDF_FONT_CMAP) {
+    const g = PDF_FONT_CMAP[k];
+    if (!(g in m))
+        m[g] = Number(k);
+} return m; })();
+const pdfPreviewImageCache = new Map();
+function pdfPreviewLoadImage(dataUri) {
+    if (pdfPreviewImageCache.has(dataUri))
+        return pdfPreviewImageCache.get(dataUri);
+    const p = new Promise(resolve => { const im = new Image(); im.onload = () => resolve(im); im.onerror = () => resolve(null); im.src = dataUri; });
+    pdfPreviewImageCache.set(dataUri, p);
+    return p;
+}
+async function pdfRenderPageToCanvas(page, canvas, scale) {
+    const { width: PW, height: PH } = pdfPageMetrics();
+    canvas.width = Math.round(PW * scale);
+    canvas.height = Math.round(PH * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx)
+        return;
+    const imgs = new Map();
+    for (const asset of page.images.values()) {
+        if (asset && asset.data)
+            imgs.set("Im" + asset.id, await pdfPreviewLoadImage(asset.data));
+    }
+    ctx.setTransform(scale, 0, 0, -scale, 0, PH * scale);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, PW, PH);
+    const toks = String(page.content).match(/\/[A-Za-z0-9]+|<[0-9A-Fa-f]*>|-?\d*\.?\d+|[A-Za-z*]+/g) || [];
+    let st = [], fill = "rgb(0,0,0)", stroke = "rgb(0,0,0)", size = 10, tm = [1, 0, 0, 1, 0, 0], bold = false;
+    const col = (r, g, b) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+    ctx.lineJoin = "round";
+    for (const t of toks) {
+        if (/^(-?\d*\.?\d+|\/.+|<.*>)$/.test(t)) {
+            st.push(t);
+            continue;
+        }
+        const n = (i) => Number(st[st.length - i]);
+        switch (t) {
+            case "rg":
+                fill = col(n(3), n(2), n(1));
+                break;
+            case "RG":
+                stroke = col(n(3), n(2), n(1));
+                break;
+            case "w":
+                ctx.lineWidth = n(1);
+                break;
+            case "q":
+                ctx.save();
+                break;
+            case "Q":
+                ctx.restore();
+                break;
+            case "cm":
+                ctx.transform(n(6), n(5), n(4), n(3), n(2), n(1));
+                break;
+            case "m":
+                ctx.beginPath();
+                ctx.moveTo(n(2), n(1));
+                break;
+            case "l":
+                ctx.lineTo(n(2), n(1));
+                break;
+            case "c":
+                ctx.bezierCurveTo(n(6), n(5), n(4), n(3), n(2), n(1));
+                break;
+            case "h":
+                ctx.closePath();
+                break;
+            case "re":
+                ctx.beginPath();
+                ctx.rect(n(4), n(3), n(2), n(1));
+                break;
+            case "f":
+                ctx.fillStyle = fill;
+                ctx.fill();
+                break;
+            case "S":
+                ctx.strokeStyle = stroke;
+                ctx.stroke();
+                break;
+            case "W":
+                ctx.clip();
+                break;
+            case "n":
+                ctx.beginPath();
+                break;
+            case "Do": {
+                const im = imgs.get(String(st[st.length - 1]).slice(1));
+                if (im) {
+                    ctx.save();
+                    ctx.transform(1, 0, 0, -1, 0, 1);
+                    ctx.drawImage(im, 0, 0, 1, 1);
+                    ctx.restore();
+                }
+                break;
+            }
+            case "BT":
+                tm = [1, 0, 0, 1, 0, 0];
+                break;
+            case "Tr":
+                bold = n(1) === 2;
+                break;
+            case "Tf":
+                size = n(1);
+                break;
+            case "Tm":
+                tm = [n(6), n(5), n(4), n(3), n(2), n(1)];
+                break;
+            case "Tj": {
+                const hex = String(st[st.length - 1]).slice(1, -1);
+                let text = "", wUnits = 0;
+                for (let i = 0; i + 3 < hex.length + 1; i += 4) {
+                    const gid = parseInt(hex.substr(i, 4), 16);
+                    if (Number.isNaN(gid))
+                        continue;
+                    text += String.fromCodePoint(PDF_GID_TO_CP[gid] || 63);
+                    wUnits += PDF_FONT_WIDTHS[gid] || 0;
+                }
+                const target = wUnits / PDF_FONT_METRICS.unitsPerEm * size;
+                ctx.save();
+                ctx.transform(tm[0], tm[1], tm[2], tm[3], tm[4], tm[5]);
+                ctx.scale(1, -1);
+                ctx.font = `${bold ? "700 " : "400 "}${size}px Inter, "Segoe UI", Roboto, Arial, sans-serif`;
+                ctx.fillStyle = fill;
+                const m = ctx.measureText(text).width;
+                if (m > 0 && target > 0)
+                    ctx.scale(target / m, 1);
+                ctx.fillText(text, 0, 0);
+                ctx.restore();
+                break;
+            }
+            case "Tf_":
+                break;
+            default: break;
+        }
+        st = [];
+    }
+}
+function PdfPreviewModal({ preview, language, onClose, onDownload }) {
+    const EN = language === "EN";
+    const hostRef = useRef(null);
+    useEffect(() => {
+        const onKey = e => { if (e.key === "Escape")
+            onClose(); };
+        document.addEventListener("keydown", onKey);
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
+    }, []);
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host)
+            return;
+        const scale = Math.min(2, Math.max(1.4, (window.devicePixelRatio || 1) * 1.1));
+        const done = new WeakSet();
+        const draw = async (cv) => {
+            if (done.has(cv))
+                return;
+            done.add(cv);
+            const idx = Number(cv.dataset.page);
+            try {
+                await pdfRenderPageToCanvas(preview.pages[idx], cv, scale);
+                cv.dataset.ready = "1";
+            }
+            catch (e) {
+                console.warn("Ön izleme sayfası çizilemedi:", e);
+            }
+        };
+        const canvases = Array.from(host.querySelectorAll("canvas"));
+        if (typeof IntersectionObserver === "undefined") {
+            canvases.slice(0, 6).forEach(draw);
+            return;
+        }
+        const io = new IntersectionObserver(entries => { entries.forEach(en => { if (en.isIntersecting) {
+            draw(en.target);
+            io.unobserve(en.target);
+        } }); }, { root: host, rootMargin: "800px 0px" });
+        canvases.forEach(cv => io.observe(cv));
+        return () => io.disconnect();
+    }, [preview]);
+    const count = preview.pages.length;
+    return React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": EN ? "PDF preview" : "PDF ön izleme", className: "fixed inset-0 flex flex-col", style: { zIndex: 400, background: "rgba(8,8,10,.94)" } },
+        React.createElement("div", { className: "flex items-center gap-2 px-3 sm:px-5 py-3 border-b border-white/10 text-white", style: { paddingTop: "max(12px, env(safe-area-inset-top))" } },
+            React.createElement("div", { className: "min-w-0 flex-1" },
+                React.createElement("div", { className: "text-sm font-bold truncate" }, preview.title),
+                React.createElement("div", { className: "text-[11px] opacity-70" }, EN ? `${count} pages · preview` : `${count} sayfa · ön izleme`)),
+            React.createElement("button", { type: "button", onClick: onDownload, className: "min-h-[44px] px-4 rounded-xl text-sm font-bold flex items-center gap-2", style: { background: preview.accent || "#C9A227", color: "#111" } },
+                React.createElement(Icon, { type: "download", size: 16 }),
+                EN ? "Download PDF" : "PDF'i İndir"),
+            React.createElement("button", { type: "button", "aria-label": EN ? "Close preview" : "Ön izlemeyi kapat", onClick: onClose, className: "w-11 h-11 flex items-center justify-center rounded-full text-white/80 hover:text-white" },
+                React.createElement(Icon, { type: "x", size: 21 }))),
+        React.createElement("div", { ref: hostRef, className: "flex-1 overflow-y-auto overscroll-contain px-3 py-4", "data-pdf-preview": "1" },
+            React.createElement("div", { className: "mx-auto flex flex-col gap-4", style: { maxWidth: 760 } }, preview.pages.map((p, i) => React.createElement("div", { key: i, className: "relative" },
+                React.createElement("canvas", { "data-page": i, "aria-label": (EN ? "Page " : "Sayfa ") + (i + 1), style: { width: "100%", aspectRatio: "595.28 / 841.89", background: "#fff", borderRadius: 6, display: "block", boxShadow: "0 6px 30px rgba(0,0,0,.45)" } }),
+                React.createElement("div", { className: "absolute bottom-2 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full", style: { background: "rgba(0,0,0,.55)", color: "#fff" } }, i + 1 + " / " + count))))));
+}
+
 /* -------------------- APP -------------------- */
 /* Yönetim panelindeki şablon seçicisi için küçük şematik önizleme. */
 function CatalogTemplateThumb({ id, accent }) {
@@ -2837,7 +3102,7 @@ function App() {
     }
     catch (_) {
         return null;
-    } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
+    } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreview, setPdfPreview] = useState(null), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
     useEffect(() => { document.documentElement.lang = language.toLowerCase(); }, [language]);
     useEffect(() => {
         /* Kart galerileri hepsi aynı anda değil, sırayla ve sakin bir tempoda döner.
@@ -3022,6 +3287,16 @@ function App() {
        Sıra: tarayıcının yerleşik AI modeli (varsa) → çevrimiçi çeviri servisi.
        Kaba sözlük sonucu kalıcı yazılmaz; bir sonraki kayıtta yeniden denenir. */
     const autoTranslateRunning = useRef(false);
+    /* Açılışta ve internet geri geldiğinde yalnızca kuyrukta kalan (başarısız) çeviriler tekrar denenir. */
+    useEffect(() => {
+        if (!data)
+            return;
+        const run = () => { if (trPendingLoad().size && navigator.onLine !== false && dataRef.current)
+            autoTranslateMissing(dataRef.current).catch(() => { }); };
+        const tm = setTimeout(run, 2500);
+        window.addEventListener("online", run);
+        return () => { clearTimeout(tm); window.removeEventListener("online", run); };
+    }, [!!data]);
     async function autoTranslateMissing(snapshot) {
         if (autoTranslateRunning.current || !snapshot)
             return;
@@ -3047,22 +3322,44 @@ function App() {
                     return "mark"; /* eski kayıt: İngilizcesi var, sadece kaynağı işaretle */
                 return "translate";
             };
+            /* Tam site taraması YOK: yalnızca kuyruktaki (düzenlenen / eklenen, çevirisi henüz tamamlanmamış) alanlar işlenir. */
             const jobs = [];
-            for (const k of ["subtitle", "eyebrow"]) {
-                const tr = String(snapshot[k] ?? "").trim(), en = String(snapshot[k + "_en"] ?? "").trim();
-                if (tr && (!en || en === tr || en === translateFallbackSync(tr)))
-                    jobs.push({ kind: "general", key: k, tr, type: "general_" + k, mode: "translate" });
-            }
-            for (const c of snapshot.categories || []) {
-                /* kategori adlarının İngilizcesi sabit listeden gelir, çevrilmez */
-                for (const it of c.items || []) {
-                    const push = (job) => { if (job.mode !== "none")
-                        jobs.push(job); };
-                    push({ kind: "item", cid: c.id, iid: it.id, key: "name", tr: String(it.name ?? "").trim(), type: "name", mode: decide(it.name, it.name_en, it.name_src, true) });
-                    push({ kind: "item", cid: c.id, iid: it.id, key: "desc", tr: String(it.desc ?? "").trim(), type: "desc", mode: decide(it.desc, it.desc_en, it.desc_src, false) });
-                    for (const part of normalizePrice(it.price).parts)
-                        push({ kind: "part", cid: c.id, iid: it.id, pid: part.id, tr: String(part.name ?? "").trim(), type: "price_part", mode: decide(part.name, part.name_en, part.name_src, false) });
+            for (const pk of trPendingLoad()) {
+                const [kind, a1, b1, c1] = pk.split("|");
+                if (kind === "general") {
+                    const tr = String(snapshot[a1] ?? "").trim();
+                    if (tr)
+                        jobs.push({ kind: "general", key: a1, tr, type: "general_" + a1, mode: "translate", pk });
+                    else
+                        trPendingRemove([pk]);
+                    continue;
                 }
+                const cat = (snapshot.categories || []).find(x => x.id === a1), it = cat && (cat.items || []).find(x => x.id === b1);
+                if (!it) {
+                    trPendingRemove([pk]);
+                    continue;
+                }
+                if (kind === "item" && (c1 === "name" || c1 === "desc")) {
+                    const mode = decide(it[c1], it[c1 + "_en"], it[c1 + "_src"], c1 === "name");
+                    if (mode === "none")
+                        trPendingRemove([pk]);
+                    else
+                        jobs.push({ kind: "item", cid: a1, iid: b1, key: c1, tr: String(it[c1] ?? "").trim(), type: c1, mode, pk });
+                }
+                else if (kind === "part") {
+                    const part = normalizePrice(it.price).parts.find(x => x.id === c1);
+                    if (!part) {
+                        trPendingRemove([pk]);
+                        continue;
+                    }
+                    const mode = decide(part.name, part.name_en, part.name_src, false);
+                    if (mode === "none")
+                        trPendingRemove([pk]);
+                    else
+                        jobs.push({ kind: "part", cid: a1, iid: b1, pid: c1, tr: String(part.name ?? "").trim(), type: "price_part", mode, pk });
+                }
+                else
+                    trPendingRemove([pk]);
             }
             if (!jobs.length)
                 return;
@@ -3105,6 +3402,7 @@ function App() {
                 if (dataRef.current !== prev)
                     return; /* arada veri değiştiyse bu partiyi atla, sonraki kayıtta tekrar denenir */
                 setData(next);
+                trPendingRemove(done.map(j => j.pk).filter(Boolean));
                 if (!panelOpenRef.current)
                     await saveLocal(next).catch(() => { });
             };
@@ -3183,12 +3481,15 @@ function App() {
             copy[enField] = ""; });
         if (!value.trim())
             return;
+        trPendingAdd("general|" + field);
         generalTranslationTimers.current[field] = setTimeout(async () => {
             try {
                 const tr_1 = await translateCachedResult(value, "general_" + field);
                 const en = tr_1.good ? tr_1.text : "";
                 if (generalTranslationSeq.current[field] !== seq)
                     return;
+                if (en)
+                    trPendingRemove(["general|" + field]);
                 updateData(copy => {
                     if (copy[field] === value)
                         copy[enField] = en || "";
@@ -3197,7 +3498,7 @@ function App() {
             catch (e) {
                 console.warn("Otomatik genel alan çevirisi başarısız:", e);
             }
-        }, 650);
+        }, 350);
     }
     function toggleCategory(id) { setOpenCategories(p => ({ ...p, [id]: !p[id] })); }
     function openCategory(id) { setOpenCategories(p => ({ ...p, [id]: true })); }
@@ -3278,7 +3579,7 @@ function App() {
             catch (e) {
                 console.warn("Kategori otomatik çevirisi başarısız:", e);
             }
-        }, 650);
+        }, 350);
     }
     async function moveCategory(id, direction) {
         return; /* kategoriler sabit */
@@ -3321,18 +3622,21 @@ function App() {
         const instantEn = translateFallbackSync(value);
         if (instantEn && instantEn !== value)
             updateItem(categoryId, item.id, field + "_en", instantEn);
+        trPendingAdd("item|" + categoryId + "|" + item.id + "|" + field);
         productTranslationTimers.current[key] = setTimeout(async () => {
             try {
                 const tr_3 = await translateCachedResult(value, field);
                 const en = tr_3.good ? tr_3.text : "";
                 if (productTranslationSeq.current[key] !== seq)
                     return;
+                if (en)
+                    trPendingRemove(["item|" + categoryId + "|" + item.id + "|" + field]);
                 updateData(x => { x.categories = x.categories.map(c => c.id !== categoryId ? c : { ...c, items: c.items.map(i => i.id === item.id && i[field] === value ? { ...i, [field + "_en"]: en || "", ...(en ? { [field + "_src"]: value } : {}) } : i) }); });
             }
             catch (e) {
                 console.warn("Ürün otomatik çevirisi başarısız:", e);
             }
-        }, 650);
+        }, 350);
     }
     function finishTurkishField(categoryId, item, field, value) { return; }
     async function deleteItem(categoryId, itemId) {
@@ -3383,19 +3687,22 @@ function App() {
                 return i; const p = normalizePrice(i.price); return { ...i, price: { ...p, parts: p.parts.map(part => part.id === partId ? { ...part, name: value, ...(!value.trim() ? { name_en: "" } : { name_en: translateFallbackSync(value) }) } : part) } }; }) }); });
         if (!value.trim())
             return;
+        trPendingAdd("part|" + categoryId + "|" + itemId + "|" + partId);
         pricePartTranslationTimers.current[key] = setTimeout(async () => {
             try {
                 const tr_4 = await translateCachedResult(value, "price_part");
                 const en = tr_4.good ? tr_4.text : "";
                 if (pricePartTranslationSeq.current[key] !== seq)
                     return;
+                if (en)
+                    trPendingRemove(["part|" + categoryId + "|" + itemId + "|" + partId]);
                 updateData(x => { x.categories = x.categories.map(c => c.id !== categoryId ? c : { ...c, items: c.items.map(i => { if (i.id !== itemId)
                         return i; const p = normalizePrice(i.price); return { ...i, price: { ...p, parts: p.parts.map(part => part.id === partId && part.name === value ? { ...part, name_en: en || "", ...(en ? { name_src: value } : {}) } : part) } }; }) }); });
             }
             catch (e) {
                 console.warn("Fiyat parçası otomatik çevirisi başarısız:", e);
             }
-        }, 650);
+        }, 350);
     }
     async function deletePricePart(categoryId, itemId, partId) {
         const next = normalizeData(data);
@@ -3724,6 +4031,32 @@ function App() {
         setPanelOpen(true);
         setPinInput("");
     }
+    function closePdfPreview() {
+        setPdfPreview(prev => { if (prev?.url)
+            try {
+                URL.revokeObjectURL(prev.url);
+            }
+            catch (_) { } return null; });
+    }
+    function downloadPreviewPdf() {
+        const p = pdfPreview;
+        if (!p)
+            return;
+        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        if (isIOS) {
+            window.open(p.url, "_blank");
+        }
+        else {
+            const a = document.createElement("a");
+            a.href = p.url;
+            a.download = p.fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+        showToast(language === "EN" ? "PDF downloaded." : "PDF indirildi.");
+    }
+    /* PDF her zaman sitenin ŞU ANKİ dilinde üretilir; indirmeden önce ön izleme penceresi açılır. */
     async function createPDF(openPreview = false, kind = "price") {
         if (pdfBusy || !data)
             return;
@@ -3733,69 +4066,46 @@ function App() {
             return;
         }
         setPdfBusy(kind);
-        let win = null;
-        const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+        const siteLang = language === "EN" ? "EN" : "TR";
         try {
-            /* Mobile browsers often ignore blob downloads triggered after an async
-               operation. Open a user-initiated tab first, then navigate it to the PDF. */
-            if (openPreview || isMobile)
-                win = window.open("about:blank", "_blank");
-            let blob, fileName;
+            let blob, fileName, title;
             if (kind === "catalog") {
-                /* Katalog: fiyatsız, sitenin seçili dilinde, yönetim panelinde seçilen şablonla. */
-                const catLang = language === "EN" ? "EN" : "TR";
-                blob = await buildCatalogPDF(data, catLang, data.pdf?.catalogTemplate);
-                fileName = catLang === "EN" ? "OFISCHI-PRODUCT-CATALOG.pdf" : "OFISCHI-URUN-KATALOGU.pdf";
+                blob = await buildCatalogPDF(data, siteLang, data.pdf?.catalogTemplate);
+                fileName = siteLang === "EN" ? "OFISCHI-PRODUCT-CATALOG.pdf" : "OFISCHI-URUN-KATALOGU.pdf";
+                title = siteLang === "EN" ? "Product Catalog" : "Ürün Kataloğu";
             }
             else {
                 const pdfData = viewCurrencyData();
-                const pdfCurrency = pdfData.currency?.selected || "TRY";
-                const pdfLang = pdfCurrency === "TRY" ? "TR" : "EN";
-                blob = await buildPriceListPDF(pdfData, pdfLang);
-                fileName = pdfCurrency === "TRY" ? "OFISCHI-2026-2-TL-FIYAT-LISTESI.pdf" : pdfCurrency === "USD" ? "OFISCHI-2026-2-USD-PRICE-LIST.pdf" : "OFISCHI-2026-2-EUR-PRICE-LIST.pdf";
+                const cur = pdfData.currency?.selected || "TRY";
+                blob = await buildPriceListPDF(pdfData, siteLang);
+                const curTag = cur === "TRY" ? "TL" : cur;
+                fileName = siteLang === "EN" ? `OFISCHI-2026-2-${curTag}-PRICE-LIST.pdf` : `OFISCHI-2026-2-${curTag}-FIYAT-LISTESI.pdf`;
+                title = siteLang === "EN" ? `Price List (${curTag})` : `Fiyat Listesi (${curTag})`;
             }
+            const pages = pdfLastPages;
             if (!blob || blob.size <= 0)
                 throw new Error("PDF doğrulaması başarısız: dosya boyutu 0.");
             if (blob.type !== "application/pdf")
                 throw new Error("PDF doğrulaması başarısız: MIME type application/pdf değil.");
-            const pdfBytes = new Uint8Array(await blob.arrayBuffer());
-            pdfValidateBlobBytes(pdfBytes);
+            pdfValidateBlobBytes(new Uint8Array(await blob.arrayBuffer()));
             const url = URL.createObjectURL(blob);
-            if (openPreview || isMobile) {
-                if (win) {
-                    win.location.href = url;
-                    try {
-                        win.document.title = fileName;
-                    }
-                    catch (_) { }
-                }
-                else {
+            if (openPreview) {
+                /* Yönetim panelindeki "yeni sekmede aç" düğmesi */
+                const win = window.open(url, "_blank");
+                if (!win)
                     window.location.href = url;
-                }
-                /* Keep the object URL alive long enough for iOS/Android PDF viewers. */
                 setTimeout(() => URL.revokeObjectURL(url), 180000);
-                showToast(language === "EN" ? "PDF opened. Use Share/Save to save the file." : "PDF açıldı. Kaydetmek için Paylaş / Dosyalara Kaydet seçeneğini kullanın.");
+                return;
             }
-            else {
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = fileName;
-                a.target = "_blank";
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
-                showToast(language === "EN" ? "PDF created." : "PDF oluşturuldu.");
-            }
+            setPdfPreview(prev => { if (prev?.url)
+                try {
+                    URL.revokeObjectURL(prev.url);
+                }
+                catch (_) { } return { url, fileName, title, pages: pages || [], accent: data?.theme?.accent }; });
         }
         catch (e) {
             console.error(e);
-            if (win && !win.closed)
-                try {
-                    win.close();
-                }
-                catch (_) { }
-            showToast("PDF oluşturulamadı: " + (e?.message || "PDF oluşturma hatası"));
+            showToast((siteLang === "EN" ? "PDF could not be created: " : "PDF oluşturulamadı: ") + (e?.message || "PDF oluşturma hatası"));
         }
         finally {
             setPdfBusy(false);
@@ -4062,6 +4372,7 @@ function App() {
                     data.phone && React.createElement("a", { href: "tel:" + data.phone.replace(/\s/g, ""), className: "mt-5 w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-sm", style: { background: theme.accent, color: ink } },
                         React.createElement(Icon, { type: "phone", size: 16 }),
                         t(language, "call"))))),
+        pdfPreview && React.createElement(PdfPreviewModal, { preview: pdfPreview, language: language, onClose: closePdfPreview, onDownload: downloadPreviewPdf }),
         toast && React.createElement("div", { role: "status", "aria-live": "polite", style: { bottom: panelOpen ? 108 : 24 }, className: "fixed left-1/2 -translate-x-1/2 max-w-[calc(100vw-32px)] z-[250] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2" },
             React.createElement(Icon, { type: "check", size: 15 }),
             toast),
@@ -4298,10 +4609,10 @@ function App() {
                             React.createElement("div", { className: "grid grid-cols-2 gap-2" },
                                 React.createElement("button", { type: "button", onClick: () => createPDF(false, "catalog"), disabled: !!pdfBusy, className: "min-h-[44px] py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50", style: { background: theme.accent, color: ink } },
                                     React.createElement(Icon, { type: "download", size: 14 }),
-                                    pdfBusy === "catalog" ? "Oluşturuluyor…" : "Katalog Oluştur"),
+                                    pdfBusy === "catalog" ? "Oluşturuluyor…" : "Katalog Önizle ve İndir"),
                                 React.createElement("button", { type: "button", onClick: () => createPDF(true, "catalog"), disabled: !!pdfBusy, className: "min-h-[44px] py-3 rounded-xl text-xs font-bold bg-neutral-800 border border-neutral-700 flex items-center justify-center gap-2 disabled:opacity-50" },
                                     React.createElement(Icon, { type: "image", size: 14 }),
-                                    "Katalog \u00D6nizle"))),
+                                    "Yeni sekmede a\u00E7"))),
                         React.createElement("div", { className: "rounded-2xl border border-neutral-800 bg-neutral-900 p-4" },
                             React.createElement("div", { className: "text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-2" }, "PDF Fiyat Listesi"),
                             React.createElement("div", { className: "rounded-xl bg-neutral-950 border border-neutral-800 p-3 mb-4" },
@@ -4325,10 +4636,10 @@ function App() {
                             React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-4" },
                                 React.createElement("button", { type: "button", onClick: () => createPDF(false, "price"), disabled: !!pdfBusy, className: "min-h-[44px] py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50", style: { background: theme.accent, color: ink } },
                                     React.createElement(Icon, { type: "download", size: 14 }),
-                                    pdfBusy === "price" ? "Oluşturuluyor…" : "Fiyat Listesi Oluştur"),
+                                    pdfBusy === "price" ? "Oluşturuluyor…" : "Fiyat Listesi Önizle ve İndir"),
                                 React.createElement("button", { type: "button", onClick: () => createPDF(true, "price"), disabled: !!pdfBusy, className: "min-h-[44px] py-3 rounded-xl text-xs font-bold bg-neutral-800 border border-neutral-700 flex items-center justify-center gap-2 disabled:opacity-50" },
                                     React.createElement(Icon, { type: "image", size: 14 }),
-                                    "Fiyat Listesi \u00D6nizle")),
+                                    "Yeni sekmede a\u00E7")),
                             React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" },
                                 React.createElement("label", null,
                                     React.createElement(AdminLabel, null, "PDF Ba\u015Fl\u0131\u011F\u0131"),
