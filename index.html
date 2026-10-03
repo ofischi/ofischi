@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G2pYCWGSQJv5pHSVyjM5lcl7BVWyds1PPuKjwmfaQ2g=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-vQgYjZAza4KBVMZV86dWwqu3r7uUtc50rvhY4leQWAU=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2800,7 +2800,7 @@ async function pdfRenderPageToCanvas(page, canvas, scale) {
 }
 function PdfPreviewModal({ preview, language, onClose, onDownload }) {
     const EN = language === "EN";
-    const hostRef = useRef(null);
+    const hostRef = useRef(null), [zoom, setZoom] = useState(false);
     useEffect(() => {
         const onKey = e => { if (e.key === "Escape")
             onClose(); };
@@ -2814,7 +2814,7 @@ function PdfPreviewModal({ preview, language, onClose, onDownload }) {
         if (!host)
             return;
         const scale = Math.min(2, Math.max(1.4, (window.devicePixelRatio || 1) * 1.1));
-        const done = new WeakSet();
+        const done = new Set();
         const draw = async (cv) => {
             if (done.has(cv))
                 return;
@@ -2833,28 +2833,36 @@ function PdfPreviewModal({ preview, language, onClose, onDownload }) {
             canvases.slice(0, 6).forEach(draw);
             return;
         }
-        const io = new IntersectionObserver(entries => { entries.forEach(en => { if (en.isIntersecting) {
-            draw(en.target);
-            io.unobserve(en.target);
-        } }); }, { root: host, rootMargin: "800px 0px" });
+        /* Görünür alana yaklaşan sayfa çizilir; çok uzaklaşan sayfanın belleği boşaltılır (600+ sayfalık katalogda telefon donmasın). */
+        const io = new IntersectionObserver(entries => { entries.forEach(en => { const cv = en.target; if (en.isIntersecting)
+            draw(cv);
+        else if (done.has(cv) && cv.dataset.ready === "1") {
+            done.delete(cv);
+            cv.dataset.ready = "";
+            cv.width = 0;
+            cv.height = 0;
+        } }); }, { root: host, rootMargin: "1600px 0px" });
         canvases.forEach(cv => io.observe(cv));
         return () => io.disconnect();
     }, [preview]);
     const count = preview.pages.length;
-    return React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": EN ? "PDF preview" : "PDF ön izleme", className: "fixed inset-0 flex flex-col", style: { zIndex: 400, background: "rgba(8,8,10,.94)" } },
-        React.createElement("div", { className: "flex items-center gap-2 px-3 sm:px-5 py-3 border-b border-white/10 text-white", style: { paddingTop: "max(12px, env(safe-area-inset-top))" } },
+    return React.createElement("div", { role: "dialog", "aria-modal": "true", "aria-label": EN ? "PDF preview" : "PDF ön izleme", className: "fixed inset-0 flex flex-col", style: { zIndex: 400, background: "#0b0b0d" } },
+        React.createElement("div", { className: "flex items-center gap-2 px-3 py-3 text-white", style: { paddingTop: "max(12px, env(safe-area-inset-top))", borderBottom: "1px solid rgba(255,255,255,.1)" } },
             React.createElement("div", { className: "min-w-0 flex-1" },
                 React.createElement("div", { className: "text-sm font-bold truncate" }, preview.title),
-                React.createElement("div", { className: "text-[11px] opacity-70" }, EN ? `${count} pages · preview` : `${count} sayfa · ön izleme`)),
+                React.createElement("div", { className: "text-[11px] opacity-70" }, EN ? `${count} pages · tap a page to zoom` : `${count} sayfa · yakınlaştırmak için sayfaya dokunun`)),
             React.createElement("button", { type: "button", onClick: onDownload, className: "min-h-[44px] px-4 rounded-xl text-sm font-bold flex items-center gap-2", style: { background: preview.accent || "#C9A227", color: "#111" } },
                 React.createElement(Icon, { type: "download", size: 16 }),
                 EN ? "Download PDF" : "PDF'i İndir"),
-            React.createElement("button", { type: "button", "aria-label": EN ? "Close preview" : "Ön izlemeyi kapat", onClick: onClose, className: "w-11 h-11 flex items-center justify-center rounded-full text-white/80 hover:text-white" },
+            React.createElement("button", { type: "button", "aria-label": EN ? "Close preview" : "Ön izlemeyi kapat", onClick: onClose, className: "w-11 h-11 flex items-center justify-center rounded-full hover:text-white", style: { color: "rgba(255,255,255,.8)" } },
                 React.createElement(Icon, { type: "x", size: 21 }))),
-        React.createElement("div", { ref: hostRef, className: "flex-1 overflow-y-auto overscroll-contain px-3 py-4", "data-pdf-preview": "1" },
-            React.createElement("div", { className: "mx-auto flex flex-col gap-4", style: { maxWidth: 760 } }, preview.pages.map((p, i) => React.createElement("div", { key: i, className: "relative" },
+        React.createElement("div", { ref: hostRef, className: "flex-1 overscroll-contain px-3", style: { overflow: "auto", minHeight: 0, paddingTop: 16, paddingBottom: 24, WebkitOverflowScrolling: "touch" }, "data-pdf-preview": "1" },
+            React.createElement("div", { className: "mx-auto flex flex-col", style: zoom ? { width: "max(200%, 1100px)", maxWidth: "none", gap: 16 } : { maxWidth: 760, gap: 16 } }, preview.pages.map((p, i) => React.createElement("div", { key: i, className: "relative", onClick: e => { const el = e.currentTarget; setZoom(z => !z); requestAnimationFrame(() => requestAnimationFrame(() => { try {
+                    el.scrollIntoView({ block: "start", inline: "start" });
+                }
+                catch (_) { } })); }, style: { cursor: zoom ? "zoom-out" : "zoom-in" } },
                 React.createElement("canvas", { "data-page": i, "aria-label": (EN ? "Page " : "Sayfa ") + (i + 1), style: { width: "100%", aspectRatio: "595.28 / 841.89", background: "#fff", borderRadius: 6, display: "block", boxShadow: "0 6px 30px rgba(0,0,0,.45)" } }),
-                React.createElement("div", { className: "absolute bottom-2 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full", style: { background: "rgba(0,0,0,.55)", color: "#fff" } }, i + 1 + " / " + count))))));
+                React.createElement("div", { className: "absolute text-[10px] font-bold px-2 rounded-full", style: { right: 12, bottom: 8, paddingTop: 2, paddingBottom: 2, background: "rgba(0,0,0,.55)", color: "#fff" } }, i + 1 + " / " + count))))));
 }
 
 /* -------------------- APP -------------------- */
@@ -3144,7 +3152,27 @@ function App() {
         return () => { window.removeEventListener("pointerdown", mark, true); window.removeEventListener("keydown", mark, true); mark(); };
     }, [panelOpen]);
     useEffect(() => { setLogoFailed(false); }, [data?.logo?.src]);
-    const categoryBarRef = useRef(null);
+    const categoryBarRef = useRef(null), productsTopRef = useRef(null);
+    /* Kategori değişince: seçilen çip yatayda ortalanır, sayfa yeni listenin BAŞINA kaydırılır
+       (önceden kullanıcı eski kategorideki kaydırma konumunda kalıyor, yeni listenin ortasını görüyordu). */
+    function goToCategory(id, btn) {
+        setActiveCat(id);
+        setOpenCategories({});
+        requestAnimationFrame(() => { try {
+            const sc = btn?.parentElement;
+            if (sc && btn) {
+                const r = btn.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+                sc.scrollTo({ left: Math.max(0, sc.scrollLeft + (r.left - sr.left) - (sc.clientWidth - r.width) / 2), behavior: "smooth" });
+            }
+            const anchor = productsTopRef.current, bar = categoryBarRef.current;
+            if (!anchor || !bar)
+                return;
+            const target = window.scrollY + anchor.getBoundingClientRect().top - bar.getBoundingClientRect().bottom - 4;
+            if (window.scrollY > target + 2)
+                window.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+        }
+        catch (_) { } });
+    }
     const [pageScrolled, setPageScrolled] = useState(false), [barStuck, setBarStuck] = useState(false);
     useEffect(() => {
         /* Üst şerit ve kategori çubuğu arka planı yalnızca kaydırınca görünür; açılışta sayfanın degrade arka planı bozulmaz. */
@@ -3195,6 +3223,62 @@ function App() {
         return () => window.removeEventListener("keydown", onKey);
     }, [fullScreenImage, currencyMenuOpen, selectedProduct, pinModal]);
     const panelOpenRef = useRef(false), languageRef = useRef(language), dataRef = useRef(data);
+    /* TELEFONUN GERİ TUŞU: açık pencere (ürün detayı, büyük görsel, PDF ön izleme, PIN, yönetim paneli) varsa
+       geri tuşu siteden çıkmak yerine en üstteki pencereyi kapatır. */
+    const overlayDepth = (panelOpen ? 1 : 0) + (pinModal ? 1 : 0) + (selectedProduct ? 1 : 0) + (fullScreenImage ? 1 : 0) + (pdfPreview ? 1 : 0);
+    const histDepthRef = useRef(0), popClosingRef = useRef(false), ignorePopRef = useRef(0);
+    useEffect(() => {
+        const h = histDepthRef.current;
+        try {
+            if (overlayDepth > h) {
+                for (let i = h; i < overlayDepth; i++)
+                    history.pushState({ ofOverlay: i + 1 }, "");
+                histDepthRef.current = overlayDepth;
+            }
+            else if (overlayDepth < h) {
+                histDepthRef.current = overlayDepth;
+                if (popClosingRef.current)
+                    popClosingRef.current = false;
+                else {
+                    ignorePopRef.current += 1;
+                    history.go(-(h - overlayDepth));
+                }
+            }
+        }
+        catch (_) { }
+    }, [overlayDepth]);
+    useEffect(() => {
+        const onPop = () => {
+            if (ignorePopRef.current > 0) {
+                ignorePopRef.current -= 1;
+                return;
+            }
+            if (histDepthRef.current <= 0)
+                return;
+            popClosingRef.current = true;
+            if (pdfPreview)
+                closePdfPreview();
+            else if (fullScreenImage)
+                setFullScreenImage(null);
+            else if (selectedProduct)
+                setSelectedProduct(null);
+            else if (pinModal)
+                setPinModal(false);
+            else if (panelOpen) {
+                if (!requestCloseAdminPanel()) {
+                    popClosingRef.current = false;
+                    try {
+                        history.pushState({ ofOverlay: histDepthRef.current }, "");
+                    }
+                    catch (_) { }
+                }
+            }
+            else
+                popClosingRef.current = false;
+        };
+        window.addEventListener("popstate", onPop);
+        return () => window.removeEventListener("popstate", onPop);
+    });
     useEffect(() => { panelOpenRef.current = panelOpen; }, [panelOpen]);
     useEffect(() => { languageRef.current = language; }, [language]);
     useEffect(() => { dataRef.current = data; }, [data]);
@@ -3590,6 +3674,21 @@ function App() {
         const item = { id: uid(), isDemo: true, name: "Yeni Ürün", name_en: "New Product", desc: "", desc_en: "", dims: "", dims_en: "", image: null, price: { contactOnly: true, amount: null, manualTotal: null, autoCollect: true, parts: [] } };
         updateData(x => { x.categories = x.categories.map(c => c.id === categoryId ? { ...c, items: [...c.items, item] } : c); });
         openCategory(categoryId);
+        if (adminSearch)
+            setAdminSearch("");
+        /* Yeni ürün listenin sonuna eklenir: oraya kaydır ve ad alanını seçili halde odakla. */
+        setTimeout(() => { try {
+            const box = document.getElementById("product-image-" + categoryId + "-" + item.id)?.closest(".bg-neutral-800.rounded-xl");
+            if (!box)
+                return;
+            box.scrollIntoView({ behavior: "smooth", block: "center" });
+            const inp = box.querySelector('input[aria-label="Ürün adı"]');
+            if (inp) {
+                inp.focus({ preventScroll: true });
+                inp.select();
+            }
+        }
+        catch (_) { } }, 120);
     }
     function updateItem(categoryId, itemId, field, value) {
         updateData(x => {
@@ -3768,6 +3867,21 @@ function App() {
         setPanelOpen(true);
         return;
     } setPinInput(""); setPinError(false); setPinModal(true); }
+    function hasUnsavedPanelChanges() {
+        try {
+            return !!panelSnapshot.current && JSON.stringify(panelSnapshot.current) !== JSON.stringify(data);
+        }
+        catch (_) {
+            return true;
+        }
+    }
+    /* Kaydedilmemiş değişiklik varken panel dışına / X'e dokunulursa önce sorulur (önceden sessizce siliniyordu). */
+    function requestCloseAdminPanel() {
+        if (hasUnsavedPanelChanges() && !window.confirm("Kaydedilmemiş değişiklikler var. Kaydetmeden kapatılsın mı?\n\n(Kaydetmek için İptal'e, sonra \"Kaydet ve Kapat\"a basın.)"))
+            return false;
+        closeAdminPanel(true);
+        return true;
+    }
     function closeAdminPanel(discard = true) {
         if (discard && panelSnapshot.current) {
             setData(panelSnapshot.current);
@@ -4293,7 +4407,8 @@ function App() {
                     el.scrollLeft += e.deltaY;
                 } }, onMouseDown: e => { const el = e.currentTarget; el.dataset.dragging = "1"; el.dataset.dragStartX = String(e.clientX); el.dataset.dragStartScroll = String(el.scrollLeft); }, onMouseMove: e => { const el = e.currentTarget; if (el.dataset.dragging === "1") {
                     el.scrollLeft = Number(el.dataset.dragStartScroll) - (e.clientX - Number(el.dataset.dragStartX));
-                } }, onMouseUp: e => { e.currentTarget.dataset.dragging = "0"; }, onMouseLeave: e => { e.currentTarget.dataset.dragging = "0"; } }, publicCategories.map((category, index) => { const active = category.id === activeCat; return React.createElement("button", { type: "button", key: category.id, "aria-pressed": active, onClick: () => { setActiveCat(category.id); setOpenCategories({}); }, className: "category-chip " + (active ? "active" : ""), style: { background: active ? `linear-gradient(135deg,${theme.accent},${theme.accent}dd)` : `${theme.accent}14`, color: active ? ink : theme.text, borderColor: active ? theme.accent + "70" : theme.text + "12", opacity: active ? 1 : .78, boxShadow: active ? `0 6px 18px ${theme.accent}30` : "none", animation: `categoryEnter .4s cubic-bezier(.22,1,.36,1) ${index * 45}ms both` } }, categoryDisplay(category)); }))),
+                } }, onMouseUp: e => { e.currentTarget.dataset.dragging = "0"; }, onMouseLeave: e => { e.currentTarget.dataset.dragging = "0"; } }, publicCategories.map((category, index) => { const active = category.id === activeCat; return React.createElement("button", { type: "button", key: category.id, "aria-pressed": active, onClick: e => goToCategory(category.id, e.currentTarget), className: "category-chip " + (active ? "active" : ""), style: { background: active ? `linear-gradient(135deg,${theme.accent},${theme.accent}dd)` : `${theme.accent}14`, color: active ? ink : theme.text, borderColor: active ? theme.accent + "70" : theme.text + "12", opacity: active ? 1 : .78, boxShadow: active ? `0 6px 18px ${theme.accent}30` : "none", animation: `categoryEnter .4s cubic-bezier(.22,1,.36,1) ${index * 45}ms both` } }, categoryDisplay(category)); }))),
+        React.createElement("div", { ref: productsTopRef, "aria-hidden": "true", style: { height: 0 } }),
         React.createElement("main", { key: q ? `search-${q}` : activeCat, className: "product-grid px-4 pt-4 pb-28 max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-3" },
             visibleProducts.length === 0 && React.createElement("div", { className: "col-span-full text-center py-16 opacity-60" }, q ? t(language, "notFound") : t(language, "empty")),
             visibleProducts.map((item, index) => React.createElement("article", { key: item.id, role: "button", tabIndex: 0, "aria-label": productDisplay(item), onClick: () => { setSelectedProduct(item); setDetailGalleryIndex(0); }, onKeyDown: e => { if (e.key === "Enter" || e.key === " ") {
@@ -4315,13 +4430,14 @@ function App() {
                     React.createElement(CachedImage, { key: `${item.id}-${idx}`, className: "product-gallery-img", src: g[idx], alt: productDisplay(item), loading: "lazy", decoding: "async", fetchpriority: "low", draggable: "false" }),
                     g.length > 1 && React.createElement("div", { className: "gallery-dots" }, g.slice(0, 7).map((_, i) => React.createElement("span", { key: i, className: 'gallery-dot ' + (i === idx ? 'active' : '') })))); })()),
                 React.createElement("div", { className: "p-3 flex flex-col" },
+                    q && React.createElement("div", { className: "text-[9px] uppercase tracking-wider font-bold mb-1 truncate", style: { color: theme.accent } }, getText(language, item.categoryName, item.categoryName_en, item.categoryName)),
                     React.createElement("div", { className: "font-semibold text-sm leading-tight line-clamp-3" }, productDisplay(item)),
                     productDims(item) && React.createElement("div", { className: "text-[11px] opacity-70 mt-1 tabular-nums" }, productDims(item)),
                     productDesc(item) && React.createElement("div", { className: "text-xs opacity-65 mt-1 leading-snug line-clamp-2" }, productDesc(item)),
                     cardPrice(item) !== null ? React.createElement("div", { className: "mt-3 pt-3 border-t", style: { borderColor: theme.text + "14" } },
-                        React.createElement("div", { className: "flex items-center justify-between gap-2" },
-                            React.createElement("span", { className: "text-[10px] uppercase tracking-wider font-bold opacity-75" }, cardPriceLabel(item)),
-                            React.createElement("span", { className: "text-[13px] font-bold", style: { color: theme.accent } }, formatAmount(cardPrice(item)))),
+                        React.createElement("div", { className: "flex items-center justify-between flex-wrap", style: { columnGap: 8, rowGap: 2 } },
+                            React.createElement("span", { className: "text-[10px] uppercase tracking-wider font-bold opacity-75 whitespace-nowrap" }, cardPriceLabel(item)),
+                            React.createElement("span", { className: "text-[13px] font-bold whitespace-nowrap tabular-nums", style: { color: theme.accent } }, formatAmount(cardPrice(item)))),
                         React.createElement("div", { className: "mt-1 text-[11px] opacity-75 flex items-center gap-1" },
                             cardPriceSub(item),
                             React.createElement(Icon, { type: "arrow", size: 11 }))) : React.createElement("div", { className: "mt-3 pt-3 border-t text-[11px] font-semibold", style: { borderColor: theme.text + "14", color: theme.accent } }, t(language, "contactPrice")))))),
@@ -4389,12 +4505,12 @@ function App() {
                     React.createElement("button", { onClick: () => setPinModal(false), className: "flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300" }, t("TR", "cancel")),
                     React.createElement("button", { onClick: tryUnlock, className: "flex-1 py-2.5 rounded-lg text-sm font-bold", style: { background: theme.accent, color: ink } }, hasAdminPin() ? t("TR", "login") : "PIN Oluştur")))),
         panelOpen && unlocked && React.createElement("div", { className: "fixed inset-0 z-[180] flex justify-end" },
-            React.createElement("div", { className: "flex-1 bg-black/40", onClick: () => closeAdminPanel(true) }),
+            React.createElement("div", { className: "flex-1 bg-black/40", onClick: () => requestCloseAdminPanel() }),
             React.createElement("aside", { role: "dialog", "aria-modal": "true", "aria-label": "Y\u00F6netim Paneli", className: "w-full sm:w-[500px] h-full bg-neutral-950 text-white overflow-y-auto overscroll-contain shadow-2xl admin-panel-scroll", style: { accentColor: theme.accent } },
                 React.createElement("div", { className: "sticky top-0 z-20 bg-neutral-950 border-b border-neutral-800 px-5 pt-5 pb-3" },
                     React.createElement("div", { className: "flex items-center justify-between mb-4" },
                         React.createElement("h2", { className: "font-bold text-[17px]" }, t("TR", "adminPanel")),
-                        React.createElement("button", { type: "button", "aria-label": "Paneli kapat", onClick: () => closeAdminPanel(true), className: "w-11 h-11 -mr-2 flex items-center justify-center rounded-full text-neutral-400 hover:text-white" },
+                        React.createElement("button", { type: "button", "aria-label": "Paneli kapat", onClick: () => requestCloseAdminPanel(), className: "w-11 h-11 -mr-2 flex items-center justify-center rounded-full text-neutral-400 hover:text-white" },
                             React.createElement(Icon, { type: "x", size: 21 }))),
                     React.createElement("div", { className: "grid grid-cols-4 gap-1 bg-neutral-900 rounded-xl p-1" }, [["genel", "Genel"], ["katalog", "Katalog"], ["fiyat", "Fiyat"], ["pdf", "PDF"]].map(([id, label]) => React.createElement("button", { type: "button", key: id, "aria-pressed": adminSection === id, onClick: () => setAdminSection(id), className: "min-h-[40px] py-2 rounded-lg text-xs font-semibold", style: { background: adminSection === id ? theme.accent : "transparent", color: adminSection === id ? ink : "#a3a3a3" } }, label)))),
                 React.createElement("div", { className: "p-5" },
@@ -4511,6 +4627,9 @@ function App() {
                                         t("TR", "productsBtn"),
                                         React.createElement(Icon, { type: openCategories[category.id] ? "up" : "down", size: 13 }))),
                                 openCategories[category.id] && React.createElement("div", { className: "p-2 pt-0" },
+                                    category.items.length > 3 && React.createElement("button", { type: "button", onClick: () => addItem(category.id), className: "w-full mb-2 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5", style: { background: theme.accent, color: ink } },
+                                        React.createElement(Icon, { type: "plus", size: 14 }),
+                                        "Ürün Ekle (listenin sonuna)"),
                                     category.items.length === 0 && React.createElement("div", { className: "bg-neutral-800 rounded-xl p-4 mb-2 text-center text-xs text-neutral-500" }, "Bu kategoride hen\u00FCz \u00FCr\u00FCn yok."),
                                     category.items.filter(item => !adminSearch.trim() || (item.name || "").toLocaleLowerCase("tr-TR").includes(adminSearch.trim().toLocaleLowerCase("tr-TR"))).map((item, itemIndex) => React.createElement("div", { key: item.id, className: "bg-neutral-800 rounded-xl p-3 mb-2" },
                                         React.createElement("div", { className: "flex flex-wrap sm:flex-nowrap gap-2 mb-2" },
