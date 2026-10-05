@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-+xrjLQ5zGAFPLlwDAERSj2Ben1JLlsCZNbHGTHHAOZk=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-C8Stog5ygCzKjv7QPLBV1oXRUiDEKjTW459fDyK0WEM=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -202,6 +202,223 @@ header{animation:luxuryEnter 1s cubic-bezier(.2,.75,.2,1) both}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 </style>
 
+<style id="adm-new">
+/* ===== YENİ YÖNETİM PANELİ ===== */
+.adm-shell{position:fixed;inset:0;z-index:180;display:flex;background:#0E0E10;color:#F3F0E8;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;--adm-line:#26262B;--adm-card:#18181C;--adm-muted:#A7A297;--adm-gold:#E2BD45}
+.adm-shell *{box-sizing:border-box}
+.adm-shell button{font:inherit;color:inherit;cursor:pointer}
+.adm-shell button:disabled{opacity:.45;cursor:not-allowed}
+.adm-shell input,.adm-shell select,.adm-shell textarea{font:inherit}
+.adm-side{width:248px;flex-shrink:0;background:#121215;border-right:1px solid var(--adm-line);display:flex;flex-direction:column;gap:4px;padding:22px 14px;overflow-y:auto}
+.adm-brand{display:flex;align-items:center;gap:10px;padding:0 8px 20px}
+.adm-brand b{display:block;font-weight:800;font-size:15px;letter-spacing:.02em}
+.adm-brand small{display:block;font-size:11px;color:var(--adm-muted)}
+.adm-logo{width:34px;height:34px;border-radius:10px;background:var(--adm-accent,#C9A227);color:#141414;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-weight:700;font-size:19px;flex-shrink:0}
+.adm-nav{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:10px;border:0;background:transparent;color:#CFCAC0;font-weight:600;text-align:left;width:100%}
+.adm-nav span{flex:1}
+.adm-nav small{font-size:12px;color:var(--adm-muted)}
+.adm-nav:hover{background:#1B1B20;color:#fff}
+.adm-nav.is-on{background:rgba(201,162,39,.14);color:#F3F0E8;font-weight:800}
+.adm-nav.is-on svg{color:var(--adm-accent,#C9A227)}
+.adm-side-spacer{flex:1;min-height:16px}
+.adm-status{background:var(--adm-card);border:1px solid var(--adm-line);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;display:flex;flex-direction:column;gap:6px}
+.adm-status div{display:flex;align-items:center;gap:8px}
+.adm-status small{font-size:11.5px;font-weight:500;color:var(--adm-muted);line-height:1.4}
+.adm-dot{width:8px;height:8px;border-radius:99px;background:#4ADE80;flex-shrink:0}
+.adm-dot.is-warn{background:#E2BD45}
+.adm-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.adm-top{height:68px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 28px;border-bottom:1px solid var(--adm-line)}
+.adm-top-spacer{flex:1}
+.adm-content{flex:1;overflow-y:auto;overscroll-behavior:contain}
+.adm-page{padding:26px 32px 120px;max-width:1240px;display:flex;flex-direction:column;gap:20px}
+.adm-page-wide{max-width:none}
+.adm-legacy{padding:24px 32px 80px;max-width:760px}
+.adm-legacy > div{padding:0!important}
+.adm-legacy .sticky.bottom-0{display:none}
+.adm-eyebrow{font-size:12px;letter-spacing:.16em;color:var(--adm-accent,#C9A227);font-weight:800;text-transform:uppercase}
+.adm-h1{margin:2px 0 0;font-family:Georgia,"Times New Roman",serif;font-weight:500;font-size:32px;letter-spacing:-.01em;line-height:1.15}
+.adm-h2{margin:4px 0 0;font-family:Georgia,"Times New Roman",serif;font-weight:600;font-size:26px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-sub{margin:6px 0 0;color:var(--adm-muted);font-size:13px}
+.adm-grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.adm-grid-2-1{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
+.adm-card{background:var(--adm-card);border:1px solid var(--adm-line);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.adm-card-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.adm-card-h h2{margin:0;font-size:15px;font-weight:800}
+.adm-stat-l{font-size:13px;color:var(--adm-muted)}
+.adm-stat-v{font-size:30px;font-weight:800;line-height:1.1;display:flex;align-items:center;min-height:34px}
+.adm-stat-s{font-size:12px;color:var(--adm-muted)}
+.adm-ok{color:#4ADE80!important}.adm-warn{color:#E2BD45!important}
+.adm-gold{color:var(--adm-gold);font-weight:800;white-space:nowrap}
+.adm-big{font-size:18px}
+.adm-action{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;background:var(--adm-card);border:1px solid var(--adm-line);border-radius:16px;padding:18px 20px;min-height:118px}
+.adm-action svg{color:var(--adm-accent,#C9A227)}
+.adm-action:hover{border-color:#3A3A40;background:#1D1D22}
+.adm-action-gold{background:var(--adm-accent,#C9A227);border-color:transparent;color:#141414}
+.adm-action-gold svg{color:#141414}
+.adm-action-gold:hover{background:#D9B33A}
+.adm-action-t{font-size:16px;font-weight:800}
+.adm-action-s{font-size:12px;opacity:.75}
+.adm-linkbtn{background:none;border:0;padding:0;color:var(--adm-accent,#C9A227);font-weight:700;font-size:13px;text-align:left;min-height:32px}
+.adm-linkbtn:hover{text-decoration:underline}
+.adm-recent{display:flex;align-items:center;gap:14px;padding:8px 6px;border:0;border-bottom:1px solid var(--adm-line);background:transparent;text-align:left;border-radius:8px}
+.adm-recent:last-child{border-bottom:0}
+.adm-recent:hover{background:#1D1D22}
+.adm-recent-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.adm-recent-t b{font-size:14px}
+.adm-recent-t span{font-size:12px;color:var(--adm-muted)}
+.adm-note{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:#1D1D22;border:0;text-align:left;font-size:13px;line-height:1.45;width:100%}
+.adm-note svg{flex-shrink:0;margin-top:1px}
+.adm-note-warn{background:#2A2312;color:#F3E6BE}
+.adm-note-warn:hover{background:#33290F}
+.adm-note-ok{background:#16261C;color:#BFF0CF}
+.adm-empty{color:var(--adm-muted);font-size:13px;padding:6px 0}
+.adm-pad{padding:28px;text-align:center}
+.adm-thumb{border-radius:8px;object-fit:cover;display:block;flex-shrink:0;background:#222}
+.adm-thumb-empty{display:flex;align-items:center;justify-content:center;color:#6E6A62;background:#202024}
+.adm-headrow{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.adm-row-gap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.adm-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid #3A3A40;background:transparent;font-weight:700;white-space:nowrap}
+.adm-btn:hover{background:#1D1D22}
+.adm-btn-gold{background:var(--adm-accent,#C9A227);border-color:transparent;color:#141414!important;font-weight:800}
+.adm-btn-gold:hover{background:#D9B33A}
+.adm-btn-ghost{border-color:#3A3A40}
+.adm-btn-dashed{border-style:dashed;color:#CFCAC0}
+.adm-iconbtn{width:44px;height:44px;flex-shrink:0;border-radius:12px;border:1px solid #3A3A40;background:transparent;display:inline-flex;align-items:center;justify-content:center}
+.adm-iconbtn:hover{background:#1D1D22}
+.adm-danger{color:#F2A3A3;border-color:#5A2A2A}
+.adm-danger-btn{color:#F2A3A3;border-color:#5A2A2A}
+.adm-danger-btn:hover{background:#2A1616}
+.adm-seg{display:inline-flex;border:1px solid #3A3A40;border-radius:12px;overflow:hidden}
+.adm-seg button{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:0 14px;border:0;background:transparent;font-weight:700;color:#CFCAC0}
+.adm-seg button[aria-pressed=true]{background:var(--adm-accent,#C9A227);color:#141414}
+.adm-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.adm-search{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-radius:12px;background:var(--adm-card);border:1px solid var(--adm-line);color:var(--adm-muted);min-width:260px;flex:0 1 380px}
+.adm-search input{flex:1;min-width:0;border:0;background:transparent;color:#F3F0E8;outline:none;height:40px}
+.adm-search:focus-within{border-color:var(--adm-accent,#C9A227)}
+.adm-search-top{flex:0 1 460px}
+.adm-select{height:44px;border-radius:12px;background:var(--adm-card);border:1px solid var(--adm-line);color:#F3F0E8;padding:0 12px;max-width:280px}
+.adm-chip{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:99px;border:1px dashed #4A4A52;background:transparent;font-weight:700;color:#CFCAC0}
+.adm-chip.is-on{border-style:solid;border-color:#E2BD45;color:#E2BD45;background:#2A2312}
+.adm-count{color:var(--adm-muted);font-size:13px;margin-left:auto}
+.adm-tablewrap{background:var(--adm-card);border:1px solid var(--adm-line);border-radius:14px;overflow-x:auto}
+.adm-table{width:100%;border-collapse:collapse;min-width:980px}
+.adm-table th{position:sticky;top:0;background:#1B1B20;text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--adm-muted);font-weight:800;padding:12px 10px;border-bottom:1px solid var(--adm-line);z-index:1}
+.adm-table td{padding:8px 10px;border-bottom:1px solid #222227;vertical-align:middle}
+.adm-table tr:hover td{background:#1C1C21}
+.adm-table tr.is-sel td{background:#221F14}
+.adm-table tr.is-open td{background:#262214}
+.adm-muted{color:var(--adm-muted);font-size:13px}
+.adm-ellipsis{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-cellbtn{border:0;background:none;padding:0;display:block}
+.adm-namebtn{border:0;background:none;padding:6px 0;font-weight:800;text-align:left;color:#F3F0E8;min-height:36px}
+.adm-namebtn:hover{color:var(--adm-gold);text-decoration:underline}
+.adm-priceedit{display:inline-flex;align-items:center;gap:6px;border:1px solid #33333A;background:#121215;border-radius:10px;padding:0 10px;height:38px}
+.adm-priceedit:focus-within{border-color:var(--adm-accent,#C9A227);box-shadow:0 0 0 3px rgba(201,162,39,.25)}
+.adm-priceedit input{width:96px;border:0;background:transparent;color:#F3F0E8;font-weight:800;text-align:right;outline:none}
+.adm-priceedit input::placeholder{color:#6E6A62;font-weight:600}
+.adm-priceedit span{color:var(--adm-muted);font-size:12px}
+.adm-priceedit.is-total{border-color:#5C4A12}
+.adm-priceedit.is-total input{color:var(--adm-gold)}
+.adm-badge{display:inline-block;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:99px;white-space:nowrap}
+.adm-badge-ok{background:#16261C;color:#7EE2A2}
+.adm-badge-warn{background:#2A2312;color:#E9C766}
+.adm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.adm-pcard{position:relative;background:var(--adm-card);border:1px solid var(--adm-line);border-radius:16px;overflow:hidden}
+.adm-pcard.is-open{border-color:var(--adm-accent,#C9A227);box-shadow:0 0 0 1px var(--adm-accent,#C9A227)}
+.adm-pcard.is-sel{border-color:#7A6420}
+.adm-pcard-check{position:absolute;top:8px;left:8px;z-index:2;width:34px;height:34px;border-radius:10px;background:rgba(14,14,16,.7);display:flex;align-items:center;justify-content:center}
+.adm-pcard-btn{display:block;width:100%;border:0;background:none;padding:0;text-align:left}
+.adm-pcard-img{display:flex;align-items:center;justify-content:center;height:160px;background:#F3F0E8;color:#8A867C}
+.adm-pcard-img img{width:100%;height:100%;object-fit:cover}
+.adm-pcard-body{display:flex;flex-direction:column;gap:4px;padding:12px 14px 14px}
+.adm-pcard-body b{font-size:14px}
+.adm-pcard-price{color:var(--adm-gold);font-weight:800;margin-top:2px}
+.adm-pcard-body .adm-badge{align-self:flex-start;margin-top:4px}
+.adm-more{display:flex;justify-content:center}
+.adm-bulk{position:fixed;left:50%;bottom:22px;transform:translateX(calc(-50% + 124px));z-index:5;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 20px;background:#1B1B20;border:1px solid #3A3A40;border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.55);flex-wrap:wrap;max-width:calc(100vw - 300px)}
+.adm-sep{width:1px;height:24px;background:#3A3A40}
+.adm-muted-l{color:#CFCAC0}
+.adm-seg-dark button{min-height:40px;padding:0 14px}
+.adm-bulk-in{width:130px;height:42px;border-radius:12px;border:1px solid #3A3A40;background:#121215;color:#F3F0E8;padding:0 12px;font-weight:800;text-align:right;outline:none}
+.adm-bulk-in:focus{border-color:var(--adm-accent,#C9A227)}
+.adm-drawer-wrap{position:fixed;inset:0;z-index:190;display:flex;justify-content:flex-end}
+.adm-drawer-bg{flex:1;background:rgba(0,0,0,.45)}
+.adm-drawer{width:600px;max-width:100%;height:100%;background:#151518;border-left:1px solid #2A2A30;box-shadow:-30px 0 60px rgba(0,0,0,.45);display:flex;flex-direction:column;animation:admIn .22s cubic-bezier(.22,1,.36,1)}
+@keyframes admIn{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}
+.adm-drawer-h{display:flex;align-items:flex-start;gap:12px;padding:22px 24px 0}
+.adm-tabs{display:flex;gap:4px;padding:16px 24px 0;border-bottom:1px solid #2A2A30;overflow-x:auto}
+.adm-tabs button{border:0;background:none;padding:10px 12px 12px;font-weight:700;color:var(--adm-muted);border-bottom:2px solid transparent;white-space:nowrap;min-height:44px}
+.adm-tabs button.is-on{color:#F3F0E8;border-bottom-color:var(--adm-accent,#C9A227)}
+.adm-drawer-body{flex:1;overflow-y:auto;padding:20px 24px 28px}
+.adm-drawer-f{display:flex;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid #2A2A30;flex-wrap:wrap}
+.adm-form{display:flex;flex-direction:column;gap:16px}
+.adm-field{display:flex;flex-direction:column;gap:6px}
+.adm-field > span{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--adm-muted)}
+.adm-input{width:100%;min-height:44px;border-radius:12px;border:1px solid #33333A;background:#121215;color:#F3F0E8;padding:10px 12px;outline:none;resize:vertical}
+.adm-input:focus{border-color:var(--adm-accent,#C9A227);box-shadow:0 0 0 3px rgba(201,162,39,.2)}
+.adm-input:disabled{opacity:.5}
+.adm-input-lg{font-size:18px;font-weight:800}
+.adm-num{text-align:right;font-weight:800}
+.adm-info{font-size:12.5px;color:#CFCAC0;background:#1C1C21;border:1px solid #2A2A30;border-radius:12px;padding:10px 12px;line-height:1.5}
+.adm-drop{display:flex;flex-direction:column;align-items:center;gap:8px;padding:26px;border-radius:16px;border:2px dashed #4A4636;background:#1A1915;color:#F3F0E8;text-align:center}
+.adm-drop svg{color:var(--adm-accent,#C9A227)}
+.adm-drop b{font-size:16px}
+.adm-drop span{font-size:12px;color:var(--adm-muted)}
+.adm-drop:hover{border-color:var(--adm-accent,#C9A227)}
+.adm-photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.adm-photo{position:relative;aspect-ratio:4/3;border-radius:12px;overflow:hidden;border:2px solid #2A2A30;background:#fff}
+.adm-photo.is-cover{border-color:var(--adm-accent,#C9A227)}
+.adm-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.adm-photo-tag{position:absolute;left:8px;top:8px;background:var(--adm-accent,#C9A227);color:#141414;font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:99px}
+.adm-photo-cover{position:absolute;left:8px;bottom:8px;border:0;background:rgba(14,14,16,.78);color:#fff;font-size:12px;font-weight:700;padding:0 10px;min-height:32px;border-radius:9px}
+.adm-photo-del{position:absolute;right:6px;top:6px;width:32px;height:32px;border-radius:9px;border:0;background:rgba(14,14,16,.78);color:#fff;display:flex;align-items:center;justify-content:center}
+.adm-part{display:flex;align-items:flex-end;gap:10px;padding:12px;background:#1C1C21;border:1px solid #2A2A30;border-radius:14px;flex-wrap:wrap}
+.adm-part-img{width:58px;height:58px;border-radius:10px;border:1px dashed #4A4A52;background:#fff;color:#8A867C;display:flex;align-items:center;justify-content:center;padding:0;overflow:hidden;flex-shrink:0}
+.adm-part-img img{width:100%;height:100%;object-fit:contain}
+.adm-grow{flex:1;min-width:150px}
+.adm-w130{width:130px}.adm-w140{width:140px}.adm-w160{width:160px}
+.adm-part-tools{display:flex;align-items:center;gap:8px}
+.adm-mini{display:flex;align-items:center;gap:6px;font-size:12px;color:#CFCAC0;min-height:32px}
+.adm-total{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;background:#1C1C21;border:1px solid #5C4A12}
+.adm-total b{display:block;font-size:15px}
+.adm-modal-wrap{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+.adm-modal{width:720px;max-width:100%;max-height:86vh;overflow-y:auto;background:#151518;border:1px solid #2A2A30;border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.adm-catgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.adm-catbtn{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:14px;border-radius:14px;border:1px solid #2A2A30;background:#1C1C21;min-height:64px}
+.adm-catbtn:hover{border-color:var(--adm-accent,#C9A227)}
+.adm-catbtn b{font-size:13px}
+.adm-catbtn span{font-size:12px;color:var(--adm-muted)}
+.adm-show-sm{display:none!important}
+@media (max-width:900px){
+ .adm-shell{flex-direction:column}
+ .adm-side{width:auto;flex-direction:row;align-items:center;gap:4px;padding:8px 10px;border-right:0;border-bottom:1px solid var(--adm-line);overflow-x:auto;overflow-y:hidden;flex-shrink:0;padding-top:max(8px,env(safe-area-inset-top))}
+ .adm-brand,.adm-side-spacer,.adm-status{display:none}
+ .adm-nav{width:auto;flex-shrink:0;min-height:40px;padding:0 12px;white-space:nowrap}
+ .adm-nav small{display:none}
+ .adm-top{padding:0 12px;height:60px}
+ .adm-hide-sm{display:none!important}
+ .adm-show-sm{display:inline-flex!important}
+ .adm-search-top{min-width:0;flex:1}
+ .adm-page{padding:18px 14px 140px}
+ .adm-legacy{padding:16px 14px 80px}
+ .adm-grid4{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .adm-grid-2-1{grid-template-columns:1fr}
+ .adm-h1{font-size:26px}
+ .adm-stat-v{font-size:24px}
+ .adm-search{min-width:0;flex:1 1 100%}
+ .adm-select{max-width:none;flex:1}
+ .adm-count{margin-left:0}
+ .adm-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .adm-pcard-img{height:130px}
+ .adm-bulk{left:10px;right:10px;bottom:10px;transform:none;max-width:none;padding:10px 12px}
+ .adm-drawer{width:100%}
+ .adm-drawer-h,.adm-tabs,.adm-drawer-body,.adm-drawer-f{padding-left:16px;padding-right:16px}
+ .adm-photos{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .adm-catgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .adm-w130,.adm-w140{width:calc(50% - 5px)}
+}
+
+</style>
 <style id="admin-clean-final">
 .admin-panel-scroll{scrollbar-width:thin}
 .admin-panel-scroll::-webkit-scrollbar{width:7px}
@@ -3176,14 +3393,102 @@ function clearPinLock() {
     }
     catch (_) { }
 }
+"use strict";
+/* YENİ YÖNETİM PANELİ — çizgi ikonlar */
+function AdmIcon({ name, size = 18 }) {
+    const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true", focusable: "false" };
+    switch (name) {
+        case "grid": return React.createElement("svg", { ...p },
+            React.createElement("rect", { x: "3", y: "3", width: "7", height: "9", rx: "1.5" }),
+            React.createElement("rect", { x: "14", y: "3", width: "7", height: "5", rx: "1.5" }),
+            React.createElement("rect", { x: "14", y: "12", width: "7", height: "9", rx: "1.5" }),
+            React.createElement("rect", { x: "3", y: "16", width: "7", height: "5", rx: "1.5" }));
+        case "box": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M20 7 12 3 4 7v10l8 4 8-4z" }),
+            React.createElement("path", { d: "M4 7l8 4 8-4M12 11v10" }));
+        case "tag": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M3 12V4h8l10 10-8 8z" }),
+            React.createElement("circle", { cx: "7.5", cy: "7.5", r: "1.5" }));
+        case "list": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M4 6h16M4 12h16M4 18h10" }));
+        case "file": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" }),
+            React.createElement("path", { d: "M14 3v6h6M8 13h8M8 17h5" }));
+        case "book": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" }),
+            React.createElement("path", { d: "M9 7h6" }));
+        case "palette": return React.createElement("svg", { ...p },
+            React.createElement("circle", { cx: "12", cy: "12", r: "9" }),
+            React.createElement("circle", { cx: "8", cy: "10", r: "1" }),
+            React.createElement("circle", { cx: "12", cy: "7.5", r: "1" }),
+            React.createElement("circle", { cx: "16", cy: "10", r: "1" }),
+            React.createElement("path", { d: "M12 21c-1.5 0-2-1-2-2s1-1.5 1-2.5-1-1.5-2-1.5" }));
+        case "table": return React.createElement("svg", { ...p },
+            React.createElement("rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }),
+            React.createElement("path", { d: "M3 10h18M9 4v16" }));
+        case "cards": return React.createElement("svg", { ...p },
+            React.createElement("rect", { x: "3", y: "3", width: "8", height: "8", rx: "1.5" }),
+            React.createElement("rect", { x: "13", y: "3", width: "8", height: "8", rx: "1.5" }),
+            React.createElement("rect", { x: "3", y: "13", width: "8", height: "8", rx: "1.5" }),
+            React.createElement("rect", { x: "13", y: "13", width: "8", height: "8", rx: "1.5" }));
+        case "plus": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M12 5v14M5 12h14" }));
+        case "percent": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M19 5 5 19" }),
+            React.createElement("circle", { cx: "7", cy: "7", r: "2.5" }),
+            React.createElement("circle", { cx: "17", cy: "17", r: "2.5" }));
+        case "search": return React.createElement("svg", { ...p },
+            React.createElement("circle", { cx: "11", cy: "11", r: "7" }),
+            React.createElement("path", { d: "m20 20-3.5-3.5" }));
+        case "x": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M6 6l12 12M18 6 6 18" }));
+        case "alert": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M12 9v4M12 17h.01" }),
+            React.createElement("path", { d: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" }));
+        case "check": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "m5 12 5 5 9-10" }));
+        case "image": return React.createElement("svg", { ...p },
+            React.createElement("rect", { x: "3", y: "5", width: "18", height: "14", rx: "2" }),
+            React.createElement("circle", { cx: "9", cy: "10", r: "2" }),
+            React.createElement("path", { d: "m21 16-5-5-8 8" }));
+        case "upload": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" }),
+            React.createElement("path", { d: "M12 4v12M7 9l5-5 5 5" }));
+        case "trash": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" }));
+        case "eye": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" }),
+            React.createElement("circle", { cx: "12", cy: "12", r: "3" }));
+        case "up": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "m6 15 6-6 6 6" }));
+        case "down": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "m6 9 6 6 6-6" }));
+        case "star": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" }));
+        case "clock": return React.createElement("svg", { ...p },
+            React.createElement("circle", { cx: "12", cy: "12", r: "9" }),
+            React.createElement("path", { d: "M12 7v5l3 2" }));
+        case "save": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" }),
+            React.createElement("path", { d: "M17 21v-8H7v8M7 3v5h8" }));
+        case "logout": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" }));
+        default: return React.createElement("svg", { ...p },
+            React.createElement("circle", { cx: "12", cy: "12", r: "9" }));
+    }
+}
+
 function App() {
-    const [data, setData] = useState(null), [loading, setLoading] = useState(true), [saving, setSaving] = useState(false), [saved, setSaved] = useState(false), [toast, setToast] = useState(""), [activeCat, setActiveCat] = useState(null), [openCategories, setOpenCategories] = useState({}), [currencyMenuOpen, setCurrencyMenuOpen] = useState(false), [language, setLanguage] = useState(() => lsGet(LANG_KEY) === "EN" ? "EN" : "TR"), [adminSection, setAdminSection] = useState("genel"), [search, setSearch] = useState(""), [searchOpen, setSearchOpen] = useState(false), [viewCurrency, setViewCurrency] = useState(() => { try {
+    const [data, setData] = useState(null), [loading, setLoading] = useState(true), [saving, setSaving] = useState(false), [saved, setSaved] = useState(false), [toast, setToast] = useState(""), [activeCat, setActiveCat] = useState(null), [openCategories, setOpenCategories] = useState({}), [currencyMenuOpen, setCurrencyMenuOpen] = useState(false), [language, setLanguage] = useState(() => lsGet(LANG_KEY) === "EN" ? "EN" : "TR"), [adminSection, setAdminSection] = useState("panel"), [search, setSearch] = useState(""), [searchOpen, setSearchOpen] = useState(false), [viewCurrency, setViewCurrency] = useState(() => { try {
         const v = localStorage.getItem(VIEW_CURRENCY_KEY);
         return ["TRY", "USD", "EUR"].includes(v) ? v : null;
     }
     catch (_) {
         return null;
     } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreview, setPdfPreview] = useState(null), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
+    /* Yeni yönetim paneli durumu */
+    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false);
+    const admBaseRef = useRef(null);
     useEffect(() => { document.documentElement.lang = language.toLowerCase(); }, [language]);
     useEffect(() => {
         /* Kart galerileri hepsi aynı anda değil, sırayla ve sakin bir tempoda döner.
@@ -3762,6 +4067,7 @@ function App() {
             }
         }
         catch (_) { } }, 120);
+        return item.id;
     }
     function updateItem(categoryId, itemId, field, value) {
         updateData(x => {
@@ -3886,7 +4192,7 @@ function App() {
             }) });
         setData(next);
     }
-    async function save() {
+    async function save(keepOpen = false) {
         if (!data || saving)
             return;
         const clean = sanitizeCatalogData(data);
@@ -3897,8 +4203,15 @@ function App() {
             setData(result.data);
             /* Kaydın ardından eksik İngilizce metinler arka planda otomatik çevrilir. */
             setTimeout(() => { autoTranslateMissing(result.data).catch(() => { }); }, 0);
-            panelSnapshot.current = null;
-            setPanelOpen(false);
+            if (keepOpen === true) {
+                /* Yeni panel: kaydettikten sonra panel açık kalır; geri dönüş noktası güncellenir. */
+                panelSnapshot.current = JSON.parse(JSON.stringify(result.data));
+                admBaseRef.current = result.data;
+            }
+            else {
+                panelSnapshot.current = null;
+                setPanelOpen(false);
+            }
             setSaved(true);
             showToast(t(language, 'saved'));
             setTimeout(() => setSaved(false), 1200);
@@ -3937,6 +4250,7 @@ function App() {
     } if (unlocked) {
         adminActivityRef.current = Date.now();
         panelSnapshot.current = JSON.parse(JSON.stringify(data));
+        admBaseRef.current = data;
         setPanelOpen(true);
         return;
     } setPinInput(""); setPinError(false); setPinModal(true); }
@@ -4215,6 +4529,7 @@ function App() {
         setUnlocked(true);
         setPinModal(false);
         panelSnapshot.current = JSON.parse(JSON.stringify(data));
+        admBaseRef.current = data;
         setPanelOpen(true);
         setPinInput("");
     }
@@ -4419,6 +4734,507 @@ function App() {
         const key = source.toLocaleUpperCase("tr-TR");
         return exactPart[key] || translateFallbackSync(source) || source || "";
     };
+
+    /* ==================== YENİ YÖNETİM PANELİ (Komuta Merkezi + Akıllı Tablo + Yan Düzenleyici) ==================== */
+    const admFmt = n => (n === null || n === undefined || !Number.isFinite(Number(n))) ? "—" : Math.floor(Number(n)).toLocaleString("tr-TR") + " ₺";
+    const admKey = (cid, id) => cid + "/" + id;
+    const admImgs = it => (Array.isArray(it.images) && it.images.filter(Boolean).length ? it.images.filter(Boolean) : (it.image ? [it.image] : []));
+    const admAll = categories.flatMap(c => (c.items || []).map(it => ({ c, it })));
+    const admLayout = c => categoryLayoutOf(data, c.id);
+    const admPriceInfo = (c, it) => {
+        const p = normalizePrice(it.price), lay = admLayout(c);
+        if (isVariantLayout(lay))
+            return { label: "Başlayan", value: variantMinPrice(it.price), total: null, variant: true, p };
+        return { label: "Takım", value: priceTotal(it.price), total: priceTotal(it.price), variant: false, p };
+    };
+    const admIssuesOf = (c, it) => {
+        const out = [], p = normalizePrice(it.price);
+        if (!admImgs(it).length)
+            out.push("Fotoğraf yok");
+        if (!String(it.name || "").trim() || it.name === "Yeni Ürün")
+            out.push("Ürün adı yok");
+        const priced = p.parts.some(x => x.amount !== null && !x.contactOnly);
+        if (!p.parts.length || (!priced && !p.parts.some(x => x.contactOnly)))
+            out.push("Fiyat yok");
+        else if (!isVariantLayout(admLayout(c)) && p.parts.length > 1 && priceTotal(it.price) === null)
+            out.push("Takım fiyatı yok");
+        return out;
+    };
+    const RECENT_KEY = "ofischi_admin_recent_v1";
+    const admRecentList = () => {
+        try {
+            const a = JSON.parse(lsGet(RECENT_KEY) || "[]");
+            return Array.isArray(a) ? a.filter(x => typeof x === "string").slice(0, 8) : [];
+        }
+        catch (_) {
+            return [];
+        }
+    };
+    function admNoteRecent(cid, id) { const k = admKey(cid, id); const a = [k, ...admRecentList().filter(x => x !== k)].slice(0, 8); lsSet(RECENT_KEY, JSON.stringify(a)); }
+    function admOpenEditor(cid, id, tab) { admNoteRecent(cid, id); setAdmEdit({ cid, id }); setAdmTab(tab || "bilgi"); }
+    function admGo(section) {
+        var _a;
+        setAdminSection(section);
+        setAdmEdit(null);
+        try {
+            (_a = document.querySelector(".adm-content")) === null || _a === void 0 ? void 0 : _a.scrollTo({ top: 0 });
+        }
+        catch (_) { }
+    }
+    function admAddProduct(cid) {
+        if (!cid)
+            return;
+        const id = addItem(cid);
+        setAdmAddPick(false);
+        setAdmCat(cid);
+        setAdminSection("urunler");
+        if (id)
+            setTimeout(() => admOpenEditor(cid, id, "bilgi"), 30);
+    }
+    function admToggleSel(k) {
+        setAdmSel(prev => {
+            const n = new Set(prev);
+            if (n.has(k))
+                n.delete(k);
+            else
+                n.add(k);
+            return n;
+        });
+    }
+    function admApplyBulk(keys) {
+        const v = Number(String(admBulk.value).replace(",", "."));
+        if (!keys.length || !Number.isFinite(v) || v === 0) {
+            showToast("Önce bir değer yazın (ör. 8 veya -5).");
+            return;
+        }
+        if (Math.abs(v) > (admBulk.mode === "pct" ? 90 : 10000000)) {
+            showToast("Değer çok büyük.");
+            return;
+        }
+        const desc = admBulk.mode === "pct" ? `%${v > 0 ? "+" : ""}${v}` : `${v > 0 ? "+" : ""}${Math.floor(v).toLocaleString("tr-TR")} ₺`;
+        if (!window.confirm(`${keys.length} ürünün tüm fiyatlarına ${desc} uygulansın mı?\n\nKaydet ve yayınla'ya basana kadar geri alabilirsiniz (paneli kaydetmeden kapatın).`))
+            return;
+        const ks = new Set(keys);
+        const f = a => {
+            if (a === null || a === undefined)
+                return a;
+            const n = admBulk.mode === "pct" ? Math.round(Number(a) * (1 + v / 100)) : Math.round(Number(a) + v);
+            return Math.max(0, n);
+        };
+        updateData(x => {
+            x.categories = x.categories.map(c => ({ ...c, items: c.items.map(it => {
+                    if (!ks.has(admKey(c.id, it.id)))
+                        return it;
+                    const p = normalizePrice(it.price);
+                    return { ...it, price: { ...p, manualTotal: f(p.manualTotal), parts: p.parts.map(pt => ({ ...pt, amount: f(pt.amount) })) } };
+                }) }));
+        });
+        setAdmSel(new Set());
+        setAdmBulk(b => ({ ...b, value: "" }));
+        showToast(`${keys.length} ürünün fiyatı güncellendi. Yayınlamak için "Kaydet ve yayınla".`);
+    }
+    async function admSaveNow() {
+        await save(true);
+    }
+    /* --- Filtrelenmiş ürün listesi --- */
+    const admQ = safeSearchText(admQuery).toLocaleLowerCase("tr-TR");
+    const admRows = admAll.filter(({ c, it }) => {
+        if (admCat && c.id !== admCat)
+            return false;
+        if (admIssues && !admIssuesOf(c, it).length)
+            return false;
+        if (!admQ)
+            return true;
+        const hay = [it.name, it.desc, c.name, ...normalizePrice(it.price).parts.map(p => p.name)].join(" ").toLocaleLowerCase("tr-TR");
+        return admQ.split(/\s+/).every(w => hay.includes(w));
+    });
+    const admEditing = admEdit ? (() => { const c = categories.find(x => x.id === admEdit.cid); const it = c && c.items.find(x => x.id === admEdit.id); return c && it ? { c, it } : null; })() : null;
+    const admDirty = !!admBaseRef.current && data !== admBaseRef.current;
+    /* --- Ortak parçalar --- */
+    const admThumb = (it, size = 48) => {
+        const src = admImgs(it)[0];
+        return src
+            ? React.createElement(CachedImage, { src: src, alt: "", className: "adm-thumb", style: { width: size, height: Math.round(size * .75) } })
+            : React.createElement("span", { className: "adm-thumb adm-thumb-empty", style: { width: size, height: Math.round(size * .75) } },
+                React.createElement(AdmIcon, { name: "image", size: 16 }));
+    };
+    function admRenderDashboard() {
+        const photos = admAll.reduce((n, { it }) => n + admImgs(it).length, 0);
+        const issues = admAll.map(r => ({ ...r, list: admIssuesOf(r.c, r.it) })).filter(r => r.list.length);
+        const byType = {};
+        issues.forEach(r => r.list.forEach(t => { (byType[t] = byType[t] || []).push(r); }));
+        const pending = trPendingLoad().size;
+        const usedCats = categories.filter(c => (c.items || []).length).length;
+        const recent = admRecentList().map(k => { const [cid, id] = k.split("/"); const c = categories.find(x => x.id === cid); const it = c && c.items.find(x => x.id === id); return c && it ? { c, it } : null; }).filter(Boolean).slice(0, 6);
+        const now = new Date();
+        const dayStr = now.toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" }).toLocaleUpperCase("tr-TR");
+        return React.createElement("div", { className: "adm-page" },
+            React.createElement("div", { className: "adm-eyebrow" }, dayStr),
+            React.createElement("h1", { className: "adm-h1" }, "Ho\u015F geldiniz, katalog haz\u0131r."),
+            React.createElement("div", { className: "adm-grid4" },
+                React.createElement("div", { className: "adm-card adm-stat" },
+                    React.createElement("div", { className: "adm-stat-l" }, "\u00DCr\u00FCn"),
+                    React.createElement("div", { className: "adm-stat-v" }, admAll.length.toLocaleString("tr-TR")),
+                    React.createElement("div", { className: "adm-stat-s" },
+                        usedCats,
+                        " kategoride")),
+                React.createElement("div", { className: "adm-card adm-stat" },
+                    React.createElement("div", { className: "adm-stat-l" }, "Foto\u011Fraf"),
+                    React.createElement("div", { className: "adm-stat-v" }, photos.toLocaleString("tr-TR")),
+                    React.createElement("div", { className: "adm-stat-s " + ((byType["Fotoğraf yok"] || []).length ? "adm-warn" : "adm-ok") }, (byType["Fotoğraf yok"] || []).length ? `${byType["Fotoğraf yok"].length} ürün fotoğrafsız` : "Fotoğrafsız ürün yok")),
+                React.createElement("div", { className: "adm-card adm-stat" },
+                    React.createElement("div", { className: "adm-stat-l" }, "\u0130ngilizce \u00E7eviri"),
+                    React.createElement("div", { className: "adm-stat-v" }, pending ? pending : React.createElement(AdmIcon, { name: "check", size: 28 })),
+                    React.createElement("div", { className: "adm-stat-s " + (pending ? "adm-warn" : "adm-ok") }, pending ? "alan sırada bekliyor" : "Hepsi çevrildi")),
+                React.createElement("div", { className: "adm-card adm-stat" },
+                    React.createElement("div", { className: "adm-stat-l" }, "Kur (USD / EUR)"),
+                    React.createElement("div", { className: "adm-stat-v" },
+                        data.currency.usdRate,
+                        " / ",
+                        data.currency.eurRate),
+                    React.createElement("button", { type: "button", className: "adm-linkbtn", onClick: () => admGo("fiyat") }, "Kurlar\u0131 g\u00FCncelle"))),
+            React.createElement("div", { className: "adm-grid4" },
+                React.createElement("button", { type: "button", className: "adm-action adm-action-gold", onClick: () => setAdmAddPick(true) },
+                    React.createElement(AdmIcon, { name: "plus", size: 22 }),
+                    React.createElement("span", { className: "adm-action-t" }, "Yeni \u00FCr\u00FCn ekle"),
+                    React.createElement("span", { className: "adm-action-s" }, "Foto\u011Fraf, \u00F6l\u00E7\u00FC ve fiyat tek ekranda")),
+                React.createElement("button", { type: "button", className: "adm-action", onClick: () => { admGo("urunler"); setAdmView("table"); showToast("Ürünleri seçin, alttaki çubuktan % ya da ₺ uygulayın."); } },
+                    React.createElement(AdmIcon, { name: "percent", size: 22 }),
+                    React.createElement("span", { className: "adm-action-t" }, "Toplu fiyat g\u00FCncelle"),
+                    React.createElement("span", { className: "adm-action-s" }, "Se\u00E7ili \u00FCr\u00FCnlere % zam / indirim")),
+                React.createElement("button", { type: "button", className: "adm-action", onClick: () => createPDF(false, "price"), disabled: !!pdfBusy },
+                    React.createElement(AdmIcon, { name: "file", size: 22 }),
+                    React.createElement("span", { className: "adm-action-t" }, pdfBusy === "price" ? "Hazırlanıyor…" : "Fiyat listesi PDF"),
+                    React.createElement("span", { className: "adm-action-s" }, "\u00D6n izleme ve indirme")),
+                React.createElement("button", { type: "button", className: "adm-action", onClick: () => createPDF(false, "catalog"), disabled: !!pdfBusy },
+                    React.createElement(AdmIcon, { name: "book", size: 22 }),
+                    React.createElement("span", { className: "adm-action-t" }, pdfBusy === "catalog" ? "Hazırlanıyor…" : "Katalog PDF"),
+                    React.createElement("span", { className: "adm-action-s" }, "Fiyats\u0131z, se\u00E7ili \u015Fablonla"))),
+            React.createElement("div", { className: "adm-grid-2-1" },
+                React.createElement("section", { className: "adm-card" },
+                    React.createElement("div", { className: "adm-card-h" },
+                        React.createElement("h2", null, "Son d\u00FCzenlenenler"),
+                        React.createElement("button", { type: "button", className: "adm-linkbtn", onClick: () => admGo("urunler") }, "T\u00FCm \u00FCr\u00FCnler")),
+                    recent.length === 0 && React.createElement("div", { className: "adm-empty" }, "Hen\u00FCz d\u00FCzenleme yok. Bir \u00FCr\u00FCne t\u0131klad\u0131\u011F\u0131n\u0131zda burada g\u00F6r\u00FCn\u00FCr."),
+                    recent.map(({ c, it }) => {
+                        const pi = admPriceInfo(c, it);
+                        return React.createElement("button", { type: "button", key: admKey(c.id, it.id), className: "adm-recent", onClick: () => admOpenEditor(c.id, it.id) },
+                            admThumb(it, 56),
+                            React.createElement("span", { className: "adm-recent-t" },
+                                React.createElement("b", null, it.name || "Adsız ürün"),
+                                React.createElement("span", null, c.name)),
+                            React.createElement("span", { className: "adm-gold" }, pi.value === null ? "—" : admFmt(pi.value) + (pi.variant ? "'den" : "")));
+                    })),
+                React.createElement("section", { className: "adm-card" },
+                    React.createElement("div", { className: "adm-card-h" },
+                        React.createElement("h2", null, "Dikkat edilecekler")),
+                    Object.keys(byType).length === 0 && React.createElement("div", { className: "adm-note adm-note-ok" },
+                        React.createElement(AdmIcon, { name: "check", size: 16 }),
+                        "T\u00FCm \u00FCr\u00FCnlerde foto\u011Fraf ve fiyat var."),
+                    Object.entries(byType).map(([type, rows]) => React.createElement("button", { type: "button", key: type, className: "adm-note adm-note-warn", onClick: () => {
+                            if (rows.length === 1)
+                                admOpenEditor(rows[0].c.id, rows[0].it.id, type === "Fotoğraf yok" ? "foto" : type === "Ürün adı yok" ? "bilgi" : "fiyat");
+                            else {
+                                setAdmIssues(true);
+                                setAdmCat("");
+                                admGo("urunler");
+                            }
+                        } },
+                        React.createElement(AdmIcon, { name: "alert", size: 16 }),
+                        React.createElement("span", null,
+                            React.createElement("b", null, type),
+                            " \u00B7 ",
+                            rows.length,
+                            " \u00FCr\u00FCn: ",
+                            rows.slice(0, 3).map(r => r.it.name || "Adsız").join(", "),
+                            rows.length > 3 ? "…" : ""))),
+                    pending > 0 && React.createElement("div", { className: "adm-note" },
+                        React.createElement(AdmIcon, { name: "clock", size: 16 }),
+                        pending,
+                        " metnin \u0130ngilizcesi internet gelince otomatik \u00E7evrilecek."))));
+    }
+    function admRenderProducts() {
+        const shown = admRows.slice(0, admLimit);
+        const selKeys = [...admSel];
+        const allShownSelected = shown.length > 0 && shown.every(({ c, it }) => admSel.has(admKey(c.id, it.id)));
+        return React.createElement("div", { className: "adm-page adm-page-wide" },
+            React.createElement("div", { className: "adm-headrow" },
+                React.createElement("div", null,
+                    React.createElement("h1", { className: "adm-h1" }, "\u00DCr\u00FCnler & Fiyatlar"),
+                    React.createElement("p", { className: "adm-sub" }, admView === "table" ? "Fiyata tıklayıp yazın; satıra tıklayınca ürün sağda açılır." : "Karta tıklayınca ürün sağda açılır.")),
+                React.createElement("div", { className: "adm-row-gap" },
+                    React.createElement("div", { className: "adm-seg", role: "group", "aria-label": "G\u00F6r\u00FCn\u00FCm" },
+                        React.createElement("button", { type: "button", "aria-pressed": admView === "table", onClick: () => setAdmView("table") },
+                            React.createElement(AdmIcon, { name: "table", size: 16 }),
+                            "Tablo"),
+                        React.createElement("button", { type: "button", "aria-pressed": admView === "cards", onClick: () => setAdmView("cards") },
+                            React.createElement(AdmIcon, { name: "cards", size: 16 }),
+                            "Kartlar")),
+                    React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold", onClick: () => admCat ? admAddProduct(admCat) : setAdmAddPick(true) },
+                        React.createElement(AdmIcon, { name: "plus", size: 16 }),
+                        "\u00DCr\u00FCn ekle"))),
+            React.createElement("div", { className: "adm-filters" },
+                React.createElement("label", { className: "adm-search" },
+                    React.createElement(AdmIcon, { name: "search", size: 16 }),
+                    React.createElement("input", { type: "search", "aria-label": "\u00DCr\u00FCnlerde ara", placeholder: "\u00DCr\u00FCn, mod\u00FCl veya kategori ara\u2026", value: admQuery, onChange: e => { setAdmQuery(safeText(e.target.value, SECURITY_LIMITS.search)); setAdmLimit(80); } })),
+                React.createElement("select", { className: "adm-select", "aria-label": "Kategori filtresi", value: admCat, onChange: e => { setAdmCat(e.target.value); setAdmLimit(80); } },
+                    React.createElement("option", { value: "" },
+                        "T\u00FCm kategoriler \u00B7 ",
+                        admAll.length),
+                    categories.map(c => React.createElement("option", { key: c.id, value: c.id },
+                        c.name,
+                        " \u00B7 ",
+                        c.items.length))),
+                React.createElement("button", { type: "button", className: "adm-chip" + (admIssues ? " is-on" : ""), "aria-pressed": admIssues, onClick: () => setAdmIssues(v => !v) },
+                    React.createElement(AdmIcon, { name: "alert", size: 14 }),
+                    "Sadece eksikler"),
+                React.createElement("span", { className: "adm-count" },
+                    admRows.length,
+                    " \u00FCr\u00FCn")),
+            admView === "table" ? React.createElement("div", { className: "adm-tablewrap" },
+                React.createElement("table", { className: "adm-table" },
+                    React.createElement("thead", null,
+                        React.createElement("tr", null,
+                            React.createElement("th", { style: { width: 40 } },
+                                React.createElement("input", { type: "checkbox", "aria-label": "G\u00F6r\u00FCnenlerin hepsini se\u00E7", checked: allShownSelected, onChange: e => setAdmSel(prev => { const n = new Set(prev); shown.forEach(({ c, it }) => e.target.checked ? n.add(admKey(c.id, it.id)) : n.delete(admKey(c.id, it.id))); return n; }) })),
+                            React.createElement("th", { style: { width: 64 } }, "Foto"),
+                            React.createElement("th", null, "\u00DCr\u00FCn"),
+                            React.createElement("th", null, "Kategori"),
+                            React.createElement("th", null, "Kalemler"),
+                            React.createElement("th", { style: { width: 170 } }, "Fiyat"),
+                            React.createElement("th", { style: { width: 160 } }, "Tak\u0131m / ba\u015Flayan"),
+                            React.createElement("th", { style: { width: 120 } }, "Durum"))),
+                    React.createElement("tbody", null, shown.map(({ c, it }) => {
+                        var _a, _b;
+                        const k = admKey(c.id, it.id), pi = admPriceInfo(c, it), parts = pi.p.parts, iss = admIssuesOf(c, it), sel = admSel.has(k), single = parts.length === 1 ? parts[0] : null;
+                        return React.createElement("tr", { key: k, className: (sel ? "is-sel " : "") + (admEdit && admEdit.id === it.id && admEdit.cid === c.id ? "is-open" : "") },
+                            React.createElement("td", null,
+                                React.createElement("input", { type: "checkbox", "aria-label": (it.name || "Ürün") + " seç", checked: sel, onChange: () => admToggleSel(k) })),
+                            React.createElement("td", null,
+                                React.createElement("button", { type: "button", className: "adm-cellbtn", "aria-label": (it.name || "Ürün") + " düzenle", onClick: () => admOpenEditor(c.id, it.id, "foto") }, admThumb(it, 48))),
+                            React.createElement("td", null,
+                                React.createElement("button", { type: "button", className: "adm-namebtn", onClick: () => admOpenEditor(c.id, it.id) }, it.name || "Adsız ürün")),
+                            React.createElement("td", { className: "adm-muted" }, c.name),
+                            React.createElement("td", { className: "adm-muted adm-ellipsis" }, parts.length ? parts.slice(0, 3).map(p => p.name).join(" · ") + (parts.length > 3 ? ` +${parts.length - 3}` : "") : "—"),
+                            React.createElement("td", null, single ? React.createElement("span", { className: "adm-priceedit" },
+                                React.createElement("input", { type: "text", inputMode: "numeric", "aria-label": (it.name || "Ürün") + " fiyatı", value: (_a = single.amount) !== null && _a !== void 0 ? _a : "", placeholder: "\u2014", disabled: single.contactOnly, onChange: e => updatePricePart(c.id, it.id, single.id, "amount", e.target.value === "" ? null : priceNumber(e.target.value)) }),
+                                React.createElement("span", null, "\u20BA"))
+                                : React.createElement("button", { type: "button", className: "adm-linkbtn", onClick: () => admOpenEditor(c.id, it.id, "fiyat") },
+                                    parts.length,
+                                    " kalem d\u00FCzenle")),
+                            React.createElement("td", null, !pi.variant && pi.p.autoCollect === false && parts.length > 1
+                                ? React.createElement("span", { className: "adm-priceedit is-total" },
+                                    React.createElement("input", { type: "text", inputMode: "numeric", "aria-label": (it.name || "Ürün") + " takım fiyatı", value: (_b = pi.p.manualTotal) !== null && _b !== void 0 ? _b : "", placeholder: "Tak\u0131m fiyat\u0131 gir", onChange: e => updateItem(c.id, it.id, "price", { ...pi.p, manualTotal: priceNumber(e.target.value) }) }),
+                                    React.createElement("span", null, "\u20BA"))
+                                : React.createElement("span", { className: "adm-gold" }, pi.value === null ? "—" : admFmt(pi.value) + (pi.variant ? "'den" : ""))),
+                            React.createElement("td", null, iss.length ? React.createElement("span", { className: "adm-badge adm-badge-warn", title: iss.join(", ") }, iss[0]) : React.createElement("span", { className: "adm-badge adm-badge-ok" }, "Tamam")));
+                    }))),
+                shown.length === 0 && React.createElement("div", { className: "adm-empty adm-pad" }, "Bu filtreyle \u00FCr\u00FCn bulunamad\u0131."))
+                : React.createElement("div", { className: "adm-cards" },
+                    shown.map(({ c, it }) => {
+                        const k = admKey(c.id, it.id), pi = admPriceInfo(c, it), iss = admIssuesOf(c, it), src = admImgs(it)[0];
+                        return React.createElement("div", { key: k, className: "adm-pcard" + (admEdit && admEdit.id === it.id && admEdit.cid === c.id ? " is-open" : "") + (admSel.has(k) ? " is-sel" : "") },
+                            React.createElement("label", { className: "adm-pcard-check" },
+                                React.createElement("input", { type: "checkbox", "aria-label": (it.name || "Ürün") + " seç", checked: admSel.has(k), onChange: () => admToggleSel(k) })),
+                            React.createElement("button", { type: "button", className: "adm-pcard-btn", onClick: () => admOpenEditor(c.id, it.id) },
+                                React.createElement("span", { className: "adm-pcard-img" }, src ? React.createElement(CachedImage, { src: src, alt: "" }) : React.createElement(AdmIcon, { name: "image", size: 28 })),
+                                React.createElement("span", { className: "adm-pcard-body" },
+                                    React.createElement("b", null, it.name || "Adsız ürün"),
+                                    React.createElement("span", { className: "adm-muted" }, c.name),
+                                    React.createElement("span", { className: "adm-pcard-price" }, pi.value === null ? "Fiyat yok" : admFmt(pi.value) + (pi.variant ? "'den" : "")),
+                                    iss.length > 0 && React.createElement("span", { className: "adm-badge adm-badge-warn" }, iss[0]))));
+                    }),
+                    shown.length === 0 && React.createElement("div", { className: "adm-empty adm-pad" }, "Bu filtreyle \u00FCr\u00FCn bulunamad\u0131.")),
+            admRows.length > shown.length && React.createElement("div", { className: "adm-more" },
+                React.createElement("button", { type: "button", className: "adm-btn", onClick: () => setAdmLimit(n => n + 120) },
+                    "Daha fazla g\u00F6ster (",
+                    admRows.length - shown.length,
+                    " \u00FCr\u00FCn daha)")),
+            selKeys.length > 0 && React.createElement("div", { className: "adm-bulk", role: "region", "aria-label": "Toplu i\u015Flem" },
+                React.createElement("b", null,
+                    selKeys.length,
+                    " \u00FCr\u00FCn se\u00E7ildi"),
+                React.createElement("span", { className: "adm-sep" }),
+                React.createElement("span", { className: "adm-muted-l" }, "Fiyatlar\u0131"),
+                React.createElement("div", { className: "adm-seg adm-seg-dark", role: "group", "aria-label": "De\u011Fi\u015Fim t\u00FCr\u00FC" },
+                    React.createElement("button", { type: "button", "aria-pressed": admBulk.mode === "pct", onClick: () => setAdmBulk(b => ({ ...b, mode: "pct" })) }, "%"),
+                    React.createElement("button", { type: "button", "aria-pressed": admBulk.mode === "amt", onClick: () => setAdmBulk(b => ({ ...b, mode: "amt" })) }, "\u20BA")),
+                React.createElement("input", { className: "adm-bulk-in", type: "text", inputMode: "decimal", "aria-label": "De\u011Fi\u015Fim miktar\u0131", placeholder: admBulk.mode === "pct" ? "ör. 8 veya -5" : "ör. 1000", value: admBulk.value, onChange: e => setAdmBulk(b => ({ ...b, value: e.target.value.replace(/[^0-9.,-]/g, "").slice(0, 12) })), onKeyDown: e => {
+                        if (e.key === "Enter")
+                            admApplyBulk(selKeys);
+                    } }),
+                React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold", onClick: () => admApplyBulk(selKeys) }, "Uygula"),
+                React.createElement("button", { type: "button", className: "adm-btn adm-btn-ghost", onClick: () => setAdmSel(new Set()) }, "Se\u00E7imi kald\u0131r")));
+    }
+    function admRenderEditor() {
+        var _a;
+        if (!admEditing)
+            return null;
+        const { c, it } = admEditing, lay = admLayout(c), p = normalizePrice(it.price), imgs = admImgs(it), idx = c.items.findIndex(x => x.id === it.id);
+        const close = () => setAdmEdit(null);
+        return React.createElement("div", { className: "adm-drawer-wrap" },
+            React.createElement("div", { className: "adm-drawer-bg", onClick: close }),
+            React.createElement("aside", { className: "adm-drawer", role: "dialog", "aria-modal": "true", "aria-label": (it.name || "Ürün") + " düzenleniyor", onKeyDown: e => {
+                    if (e.key === "Escape") {
+                        e.stopPropagation();
+                        close();
+                    }
+                } },
+                React.createElement("div", { className: "adm-drawer-h" },
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { className: "adm-eyebrow" }, c.name),
+                        React.createElement("h2", { className: "adm-h2" }, it.name || "Adsız ürün")),
+                    React.createElement("button", { type: "button", className: "adm-iconbtn", "aria-label": "Kapat", onClick: close },
+                        React.createElement(AdmIcon, { name: "x", size: 18 }))),
+                React.createElement("div", { className: "adm-tabs", role: "tablist", "aria-label": "D\u00FCzenleme b\u00F6l\u00FCmleri" }, [["bilgi", "Bilgiler"], ["foto", `Fotoğraflar · ${imgs.length}`], ["fiyat", lay === "models" ? "Modeller & Fiyatlar" : lay === "sizes" ? "Ölçüler & Fiyatlar" : "Modüller & Fiyatlar"]].map(([id, label]) => React.createElement("button", { key: id, type: "button", role: "tab", "aria-selected": admTab === id, className: admTab === id ? "is-on" : "", onClick: () => setAdmTab(id) }, label))),
+                React.createElement("div", { className: "adm-drawer-body" },
+                    admTab === "bilgi" && React.createElement("div", { className: "adm-form" },
+                        React.createElement("label", { className: "adm-field" },
+                            React.createElement("span", null, "\u00DCr\u00FCn ad\u0131"),
+                            React.createElement("input", { className: "adm-input adm-input-lg", value: it.name, onChange: e => editTurkishField(c.id, it, "name", e.target.value), placeholder: "\u00DCr\u00FCn ad\u0131" })),
+                        React.createElement("label", { className: "adm-field" },
+                            React.createElement("span", null, "A\u00E7\u0131klama"),
+                            React.createElement("textarea", { className: "adm-input", rows: "4", value: it.desc, onChange: e => editTurkishField(c.id, it, "desc", e.target.value), placeholder: "K\u0131sa a\u00E7\u0131klama (\u00F6r. 3+1+1 tak\u0131m)" })),
+                        p.parts.length === 0 && React.createElement("label", { className: "adm-field" },
+                            React.createElement("span", null, "\u00D6l\u00E7\u00FCler"),
+                            React.createElement("input", { className: "adm-input", value: it.dims, onChange: e => { const v = e.target.value; updateItem(c.id, it.id, "dims", v); updateItem(c.id, it.id, "dims_en", v); }, placeholder: "\u00D6r. 200\u00D790\u00D775 cm" })),
+                        React.createElement("div", { className: "adm-info" }, "\u0130ngilizce kar\u015F\u0131l\u0131klar yazmay\u0131 b\u0131rakt\u0131\u011F\u0131n\u0131zda otomatik \u00E7evrilir; ayr\u0131ca bir \u015Fey yapman\u0131z gerekmez."),
+                        React.createElement("div", { className: "adm-field" },
+                            React.createElement("span", null, "S\u0131radaki yeri"),
+                            React.createElement("div", { className: "adm-row-gap" },
+                                React.createElement("button", { type: "button", className: "adm-btn", disabled: idx <= 0, onClick: () => moveItem(c.id, it.id, -1) },
+                                    React.createElement(AdmIcon, { name: "up", size: 16 }),
+                                    "Yukar\u0131"),
+                                React.createElement("button", { type: "button", className: "adm-btn", disabled: idx >= c.items.length - 1, onClick: () => moveItem(c.id, it.id, 1) },
+                                    React.createElement(AdmIcon, { name: "down", size: 16 }),
+                                    "A\u015Fa\u011F\u0131"),
+                                React.createElement("span", { className: "adm-muted" },
+                                    idx + 1,
+                                    ". s\u0131rada / ",
+                                    c.items.length)))),
+                    admTab === "foto" && React.createElement("div", { className: "adm-form" },
+                        React.createElement("button", { type: "button", className: "adm-drop", onClick: () => { var _a; return (_a = document.getElementById("adm-photo-input")) === null || _a === void 0 ? void 0 : _a.click(); } },
+                            React.createElement(AdmIcon, { name: "upload", size: 30 }),
+                            React.createElement("b", null, "Foto\u011Fraf ekle"),
+                            React.createElement("span", null, "Birden fazla se\u00E7ebilirsiniz \u00B7 otomatik net WebP'ye \u00E7evrilir \u00B7 ilk foto\u011Fraf kapak olur")),
+                        React.createElement("input", { id: "adm-photo-input", type: "file", accept: "image/*", multiple: true, className: "hidden", onChange: e => uploadProductImage(c.id, it.id, e) }),
+                        React.createElement("div", { className: "adm-photos" }, imgs.map((src, i) => React.createElement("div", { key: i + "-" + String(src).length, className: "adm-photo" + (i === 0 ? " is-cover" : "") },
+                            React.createElement(CachedImage, { src: src, alt: `${i + 1}. fotoğraf` }),
+                            i === 0 ? React.createElement("span", { className: "adm-photo-tag" }, "KAPAK") : React.createElement("button", { type: "button", className: "adm-photo-cover", onClick: () => makeCoverImage(c.id, it.id, i) }, "Kapak yap"),
+                            React.createElement("button", { type: "button", className: "adm-photo-del", "aria-label": `${i + 1}. fotoğrafı sil`, onClick: () => removeProductImage(c.id, it.id, i) },
+                                React.createElement(AdmIcon, { name: "x", size: 14 }))))),
+                        imgs.length === 0 && React.createElement("div", { className: "adm-empty" }, "Bu \u00FCr\u00FCnde hen\u00FCz foto\u011Fraf yok.")),
+                    admTab === "fiyat" && React.createElement("div", { className: "adm-form" },
+                        React.createElement("div", { className: "adm-info" },
+                            lay === "models" ? "Her satır bir model (Müdür, Şef, Misafir…) ve kendi fotoğrafı. Sitede en düşük fiyat “başlayan fiyat” olarak görünür." : lay === "sizes" ? "Her satır bir ölçü seçeneği. Fiyatlar toplanmaz; sitede en düşük fiyat “başlayan fiyat” olarak görünür." : "Her satır bir modül. Takım fiyatı otomatik toplanabilir ya da elle girilebilir.",
+                            " Fiyatlar TL, KDV hari\u00E7."),
+                        p.parts.map((part, pi) => {
+                            var _a;
+                            return React.createElement("div", { key: part.id, className: "adm-part" },
+                                lay === "models" && React.createElement("button", { type: "button", className: "adm-part-img", "aria-label": part.image ? "Model fotoğrafını değiştir" : "Model fotoğrafı ekle", onClick: () => { var _a; return (_a = document.getElementById("adm-part-img-" + part.id)) === null || _a === void 0 ? void 0 : _a.click(); } }, part.image ? React.createElement(CachedImage, { src: part.image, alt: "" }) : React.createElement(AdmIcon, { name: "image", size: 18 })),
+                                lay === "models" && React.createElement("input", { id: "adm-part-img-" + part.id, type: "file", accept: "image/jpeg,image/png,image/webp", className: "hidden", onChange: e => uploadPartImage(c.id, it.id, part.id, e) }),
+                                React.createElement("label", { className: "adm-field adm-grow" },
+                                    React.createElement("span", null, lay === "models" ? "Model" : lay === "sizes" ? "Seçenek" : "Modül"),
+                                    React.createElement("input", { className: "adm-input", value: part.name, onChange: e => updatePricePart(c.id, it.id, part.id, "name", e.target.value) })),
+                                React.createElement("label", { className: "adm-field adm-w140" },
+                                    React.createElement("span", null, "\u00D6l\u00E7\u00FC (cm)"),
+                                    React.createElement("input", { className: "adm-input", value: part.dims || "", placeholder: "200x90x75", onChange: e => { const v = e.target.value; updatePricePart(c.id, it.id, part.id, "dims", v); updatePricePart(c.id, it.id, part.id, "dims_en", v); } })),
+                                React.createElement("label", { className: "adm-field adm-w130" },
+                                    React.createElement("span", null, "Fiyat (\u20BA)"),
+                                    React.createElement("input", { className: "adm-input adm-num", type: "text", inputMode: "numeric", value: (_a = part.amount) !== null && _a !== void 0 ? _a : "", disabled: part.contactOnly, placeholder: part.contactOnly ? "Sorunuz" : "—", onChange: e => updatePricePart(c.id, it.id, part.id, "amount", e.target.value === "" ? null : priceNumber(e.target.value)) })),
+                                React.createElement("div", { className: "adm-part-tools" },
+                                    React.createElement("label", { className: "adm-mini" },
+                                        React.createElement("input", { type: "checkbox", checked: !!part.contactOnly, onChange: e => updatePricePart(c.id, it.id, part.id, "contactOnly", e.target.checked) }),
+                                        "Fiyat sorunuz"),
+                                    React.createElement("button", { type: "button", className: "adm-iconbtn adm-danger", "aria-label": (part.name || "Kalem") + " sil", onClick: () => deletePricePart(c.id, it.id, part.id) },
+                                        React.createElement(AdmIcon, { name: "trash", size: 15 }))));
+                        }),
+                        React.createElement("button", { type: "button", className: "adm-btn adm-btn-dashed", onClick: () => addPricePart(c.id, it.id) },
+                            React.createElement(AdmIcon, { name: "plus", size: 16 }),
+                            lay === "models" ? "Model ekle" : lay === "sizes" ? "Ölçü ekle" : "Modül ekle"),
+                        !isVariantLayout(lay) && React.createElement("div", { className: "adm-total" },
+                            React.createElement("div", { style: { flex: 1 } },
+                                React.createElement("b", null, "Tak\u0131m fiyat\u0131"),
+                                React.createElement("label", { className: "adm-mini" },
+                                    React.createElement("input", { type: "checkbox", checked: p.autoCollect !== false, onChange: e => setPriceAutoCollect(c.id, it.id, e.target.checked) }),
+                                    "Mod\u00FClleri otomatik topla")),
+                            p.autoCollect === false
+                                ? React.createElement("input", { className: "adm-input adm-num adm-w160", type: "text", inputMode: "numeric", "aria-label": "Tak\u0131m fiyat\u0131", value: (_a = p.manualTotal) !== null && _a !== void 0 ? _a : "", placeholder: "Tak\u0131m fiyat\u0131", onChange: e => updateItem(c.id, it.id, "price", { ...p, manualTotal: priceNumber(e.target.value) }) })
+                                : React.createElement("span", { className: "adm-gold adm-big" }, admFmt(priceTotal(it.price)))))),
+                React.createElement("div", { className: "adm-drawer-f" },
+                    React.createElement("button", { type: "button", className: "adm-btn adm-danger-btn", onClick: () => { deleteItem(c.id, it.id); setAdmEdit(null); } },
+                        React.createElement(AdmIcon, { name: "trash", size: 15 }),
+                        "\u00DCr\u00FCn\u00FC sil"),
+                    React.createElement("span", { style: { flex: 1 } }),
+                    React.createElement("button", { type: "button", className: "adm-btn", onClick: close }, "Kapat"),
+                    React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold", disabled: saving, onClick: admSaveNow },
+                        React.createElement(AdmIcon, { name: "save", size: 16 }),
+                        saving ? "Kaydediliyor…" : "Kaydet ve yayınla"))));
+    }
+    function admRenderAddPicker() {
+        if (!admAddPick)
+            return null;
+        return React.createElement("div", { className: "adm-modal-wrap", onClick: () => setAdmAddPick(false) },
+            React.createElement("div", { className: "adm-modal", role: "dialog", "aria-modal": "true", "aria-label": "Kategori se\u00E7in", onClick: e => e.stopPropagation() },
+                React.createElement("div", { className: "adm-card-h" },
+                    React.createElement("h2", null, "Yeni \u00FCr\u00FCn hangi kategoriye?"),
+                    React.createElement("button", { type: "button", className: "adm-iconbtn", "aria-label": "Kapat", onClick: () => setAdmAddPick(false) },
+                        React.createElement(AdmIcon, { name: "x", size: 18 }))),
+                React.createElement("div", { className: "adm-catgrid" }, categories.map(c => React.createElement("button", { type: "button", key: c.id, className: "adm-catbtn", onClick: () => admAddProduct(c.id) },
+                    React.createElement("b", null, c.name),
+                    React.createElement("span", null,
+                        c.items.length,
+                        " \u00FCr\u00FCn"))))));
+    }
+    function admShell(legacy) {
+        const NAV = [["panel", "Genel Bakış", "grid"], ["urunler", "Ürünler", "box"], ["fiyat", "Fiyatlar & Kurlar", "tag"], ["katalog", "Kategoriler & Kapaklar", "list"], ["pdf", "PDF & Katalog", "file"], ["genel", "Görünüm & Ayarlar", "palette"]];
+        const isNew = adminSection === "panel" || adminSection === "urunler";
+        return React.createElement("div", { className: "adm-shell", role: "dialog", "aria-modal": "true", "aria-label": "Y\u00F6netim Paneli", style: { accentColor: theme.accent, "--adm-accent": theme.accent, "--adm-ink": ink } },
+            React.createElement("nav", { className: "adm-side", "aria-label": "Y\u00F6netim men\u00FCs\u00FC" },
+                React.createElement("div", { className: "adm-brand" },
+                    React.createElement("span", { className: "adm-logo" }, "o"),
+                    React.createElement("span", null,
+                        React.createElement("b", null, data.siteName || "ofischi"),
+                        React.createElement("small", null, "Y\u00F6netim"))),
+                NAV.map(([id, label, icon]) => React.createElement("button", { key: id, type: "button", className: "adm-nav" + (adminSection === id ? " is-on" : ""), "aria-current": adminSection === id ? "page" : undefined, onClick: () => admGo(id) },
+                    React.createElement(AdmIcon, { name: icon, size: 18 }),
+                    React.createElement("span", null, label),
+                    id === "urunler" && React.createElement("small", null, admAll.length))),
+                React.createElement("div", { className: "adm-side-spacer" }),
+                React.createElement("div", { className: "adm-status" },
+                    React.createElement("div", null,
+                        React.createElement("span", { className: "adm-dot" + (admDirty ? " is-warn" : "") }),
+                        admDirty ? "Kaydedilmemiş değişiklik var" : "Her şey kaydedildi"),
+                    React.createElement("small", null, "De\u011Fi\u015Fiklikler \u201CKaydet ve yay\u0131nla\u201D ile bu cihaza kaydedilir."))),
+            React.createElement("div", { className: "adm-main" },
+                React.createElement("header", { className: "adm-top" },
+                    React.createElement("label", { className: "adm-search adm-search-top" },
+                        React.createElement(AdmIcon, { name: "search", size: 16 }),
+                        React.createElement("input", { type: "search", "aria-label": "\u00DCr\u00FCn ara", placeholder: "\u00DCr\u00FCn ara\u2026", value: admQuery, onChange: e => {
+                                setAdmQuery(safeText(e.target.value, SECURITY_LIMITS.search));
+                                setAdmLimit(80);
+                                if (adminSection !== "urunler")
+                                    setAdminSection("urunler");
+                            } })),
+                    React.createElement("span", { className: "adm-top-spacer" }),
+                    React.createElement("button", { type: "button", className: "adm-btn adm-hide-sm", onClick: () => requestCloseAdminPanel() },
+                        React.createElement(AdmIcon, { name: "eye", size: 16 }),
+                        "Siteye d\u00F6n"),
+                    React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold", disabled: saving, onClick: admSaveNow },
+                        React.createElement(AdmIcon, { name: "save", size: 16 }),
+                        saving ? "Kaydediliyor…" : React.createElement("span", null,
+                            "Kaydet",
+                            React.createElement("span", { className: "adm-hide-sm" }, " ve yay\u0131nla"))),
+                    React.createElement("button", { type: "button", className: "adm-iconbtn adm-show-sm", "aria-label": "Paneli kapat", onClick: () => requestCloseAdminPanel() },
+                        React.createElement(AdmIcon, { name: "x", size: 18 }))),
+                React.createElement("div", { className: "adm-content" },
+                    adminSection === "panel" && admRenderDashboard(),
+                    adminSection === "urunler" && admRenderProducts(),
+                    React.createElement("div", { className: "adm-legacy" + (isNew ? " hidden" : "") }, legacy))),
+            admRenderEditor(),
+            admRenderAddPicker());
+    }
+
     return React.createElement("div", { className: "luxury-bg", style: { minHeight: "100vh", backgroundColor: theme.bg, backgroundImage: cssUrl(theme.bgImage) ? `linear-gradient(${theme.bg}cc,${theme.bg}f5),${cssUrl(theme.bgImage)}` : undefined, backgroundSize: "cover", backgroundPosition: "center", color: theme.text, fontFamily: "Inter,system-ui,sans-serif" } },
         React.createElement("div", { "aria-hidden": "true", className: "fixed inset-x-0 top-0 z-30 pointer-events-none", style: { height: "calc(max(40px, env(safe-area-inset-top, 0px) + 32px) + 50px)", background: theme.bg, opacity: (pageScrolled || searchOpen) ? 1 : 0, transition: "opacity .2s ease" } }),
         React.createElement("div", { className: "fixed left-4 right-4 z-40", style: { top: "max(40px,calc(env(safe-area-inset-top, 0px) + 32px))" } },
@@ -4569,7 +5385,7 @@ function App() {
                         React.createElement(Icon, { type: "phone", size: 16 }),
                         t(language, "call"))))),
         pdfPreview && React.createElement(PdfPreviewModal, { preview: pdfPreview, language: language, onClose: closePdfPreview, onDownload: downloadPreviewPdf }),
-        toast && React.createElement("div", { role: "status", "aria-live": "polite", style: { bottom: panelOpen ? 108 : 24 }, className: "fixed left-1/2 -translate-x-1/2 max-w-[calc(100vw-32px)] z-[250] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2" },
+        toast && React.createElement("div", { role: "status", "aria-live": "polite", style: panelOpen ? { top: 80, bottom: "auto", zIndex: 260 } : { bottom: 24 }, className: "fixed left-1/2 -translate-x-1/2 max-w-[calc(100vw-32px)] z-[250] bg-neutral-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm flex items-center gap-2" },
             React.createElement(Icon, { type: "check", size: 15 }),
             toast),
         React.createElement(ProductImageLightbox, { fullScreenImage: fullScreenImage, setFullScreenImage: setFullScreenImage, onClose: () => { setFullScreenImage(null); setLightboxZoom(1); } }),
@@ -4584,15 +5400,7 @@ function App() {
                 React.createElement("div", { className: "flex gap-2" },
                     React.createElement("button", { onClick: () => setPinModal(false), className: "flex-1 py-2.5 bg-neutral-800 rounded-lg text-sm text-neutral-300" }, t("TR", "cancel")),
                     React.createElement("button", { onClick: tryUnlock, className: "flex-1 py-2.5 rounded-lg text-sm font-bold", style: { background: theme.accent, color: ink } }, hasAdminPin() ? t("TR", "login") : "PIN Oluştur")))),
-        panelOpen && unlocked && React.createElement("div", { className: "fixed inset-0 z-[180] flex justify-end" },
-            React.createElement("div", { className: "flex-1 bg-black/40", onClick: () => requestCloseAdminPanel() }),
-            React.createElement("aside", { role: "dialog", "aria-modal": "true", "aria-label": "Y\u00F6netim Paneli", className: "w-full sm:w-[500px] h-full bg-neutral-950 text-white overflow-y-auto overscroll-contain shadow-2xl admin-panel-scroll", style: { accentColor: theme.accent } },
-                React.createElement("div", { className: "sticky top-0 z-20 bg-neutral-950 border-b border-neutral-800 px-5 pt-5 pb-3" },
-                    React.createElement("div", { className: "flex items-center justify-between mb-4" },
-                        React.createElement("h2", { className: "font-bold text-[17px]" }, t("TR", "adminPanel")),
-                        React.createElement("button", { type: "button", "aria-label": "Paneli kapat", onClick: () => requestCloseAdminPanel(), className: "w-11 h-11 -mr-2 flex items-center justify-center rounded-full text-neutral-400 hover:text-white" },
-                            React.createElement(Icon, { type: "x", size: 21 }))),
-                    React.createElement("div", { className: "grid grid-cols-4 gap-1 bg-neutral-900 rounded-xl p-1" }, [["genel", "Genel"], ["katalog", "Katalog"], ["fiyat", "Fiyat"], ["pdf", "PDF"]].map(([id, label]) => React.createElement("button", { type: "button", key: id, "aria-pressed": adminSection === id, onClick: () => setAdminSection(id), className: "min-h-[40px] py-2 rounded-lg text-xs font-semibold", style: { background: adminSection === id ? theme.accent : "transparent", color: adminSection === id ? ink : "#a3a3a3" } }, label)))),
+        panelOpen && unlocked && admShell(
                 React.createElement("div", { className: "p-5" },
                     React.createElement("div", { className: adminSection === "genel" ? "" : "hidden" },
                         React.createElement("label", { className: "block mb-4" },
@@ -4888,7 +5696,7 @@ function App() {
                         React.createElement("button", { type: "button", onClick: save, disabled: saving || !data, className: "w-full py-3.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50", style: { background: saved ? "#12B76A" : theme.accent, animation: saved ? "pop .3s ease" : saving ? "none" : "pulse 2.2s infinite" } },
                             saved ? React.createElement(Icon, { type: "check", size: 17 }) : React.createElement(Icon, { type: "save", size: 17 }),
                             " ",
-                            saved ? t("TR", "saved") : saving ? t("TR", "saving") : t("TR", "save")))))));
+                            saved ? t("TR", "saved") : saving ? t("TR", "saving") : t("TR", "save"))))));
 }
 const root = document.getElementById("root");
 if (root)
