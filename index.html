@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-PPu7ZkRu+R4T8QVdm6kXwY1ArHzZgUDBhLsNHv1tdwk=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-t0dNmil+K9Us2EO+5ZMj/fKMGW4xolx6oP2eG5EBWyY=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -417,6 +417,18 @@ header{animation:luxuryEnter 1s cubic-bezier(.2,.75,.2,1) both}
  .adm-catgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .adm-w130,.adm-w140{width:calc(50% - 5px)}
 }
+
+.adm-grip{width:36px;height:40px;border:0;background:transparent;color:#7D786F;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;cursor:grab;touch-action:none}
+.adm-grip:hover{color:#F3F0E8;background:#26262B}
+.adm-grip:active{cursor:grabbing}
+.adm-pcard-grip{position:absolute;top:8px;right:8px;z-index:2}
+.adm-pcard-grip .adm-grip{background:rgba(14,14,16,.72);color:#E8E3D8;width:40px;height:40px}
+.is-dragging{opacity:.4}
+.adm-pcard.is-drop{box-shadow:0 0 0 3px var(--adm-accent,#C9A227);transform:scale(1.02);transition:transform .12s}
+.adm-table tr.is-drop td{background:#2A2312;box-shadow:inset 0 3px 0 var(--adm-accent,#C9A227)}
+.adm-pcard.is-dropbad{box-shadow:0 0 0 3px #B24A4A}
+.adm-table tr.is-dropbad td{box-shadow:inset 0 3px 0 #B24A4A}
+body.adm-dragging{cursor:grabbing;user-select:none}
 
 </style>
 <style id="admin-clean-final">
@@ -3471,6 +3483,13 @@ function AdmIcon({ name, size = 18 }) {
         case "save": return React.createElement("svg", { ...p },
             React.createElement("path", { d: "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" }),
             React.createElement("path", { d: "M17 21v-8H7v8M7 3v5h8" }));
+        case "grip": return React.createElement("svg", { ...p },
+            React.createElement("circle", { cx: "9", cy: "6", r: "1.3" }),
+            React.createElement("circle", { cx: "15", cy: "6", r: "1.3" }),
+            React.createElement("circle", { cx: "9", cy: "12", r: "1.3" }),
+            React.createElement("circle", { cx: "15", cy: "12", r: "1.3" }),
+            React.createElement("circle", { cx: "9", cy: "18", r: "1.3" }),
+            React.createElement("circle", { cx: "15", cy: "18", r: "1.3" }));
         case "logout": return React.createElement("svg", { ...p },
             React.createElement("path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" }));
         default: return React.createElement("svg", { ...p },
@@ -3487,7 +3506,7 @@ function App() {
         return null;
     } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreview, setPdfPreview] = useState(null), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
     /* Yeni yönetim paneli durumu */
-    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false);
+    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false), [admDrag, setAdmDrag] = useState(null);
     const admBaseRef = useRef(null);
     useEffect(() => { document.documentElement.lang = language.toLowerCase(); }, [language]);
     useEffect(() => {
@@ -4847,6 +4866,83 @@ function App() {
         setAdmSel(new Set());
         showToast(`${keys.length} ürün silindi. Kalıcı olması için "Kaydet ve yayınla".`);
     }
+    /* --- Sürükle-bırak ile sıralama (fare ve dokunmatik; tutamaçtan tutulur) --- */
+    function admMoveTo(cid, fromId, toId) {
+        if (fromId === toId)
+            return;
+        updateData(x => {
+            x.categories = x.categories.map(c => {
+                if (c.id !== cid)
+                    return c;
+                const l = [...c.items], i = l.findIndex(a => a.id === fromId), j = l.findIndex(a => a.id === toId);
+                if (i < 0 || j < 0)
+                    return c;
+                const [m] = l.splice(i, 1);
+                l.splice(j, 0, m);
+                return { ...c, items: l };
+            });
+        });
+    }
+    function admDragStart(e, c, it) {
+        if (e.button !== undefined && e.button !== 0)
+            return;
+        e.preventDefault();
+        e.stopPropagation();
+        const from = { cid: c.id, id: it.id, key: admKey(c.id, it.id) };
+        let over = null, lastY = e.clientY, raf = 0;
+        setAdmDrag({ from: from.key, over: null, bad: false });
+        const scroller = document.querySelector(".adm-content");
+        const tick = () => {
+            if (!scroller)
+                return;
+            const r = scroller.getBoundingClientRect();
+            const edge = 80;
+            if (lastY < r.top + edge)
+                scroller.scrollTop -= Math.ceil((r.top + edge - lastY) / 6);
+            else if (lastY > r.bottom - edge)
+                scroller.scrollTop += Math.ceil((lastY - (r.bottom - edge)) / 6);
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        const move = ev => {
+            lastY = ev.clientY;
+            const el = document.elementFromPoint(ev.clientX, ev.clientY);
+            const t = el && el.closest ? el.closest("[data-adm-key]") : null;
+            const key = t ? t.getAttribute("data-adm-key") : null;
+            const bad = !!key && key.split("/")[0] !== from.cid;
+            if (key !== (over && over.key) || bad !== (over && over.bad)) {
+                over = key ? { key, bad } : null;
+                setAdmDrag({ from: from.key, over: key, bad });
+            }
+            ev.preventDefault();
+        };
+        const end = () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", end);
+            window.removeEventListener("pointercancel", end);
+            setAdmDrag(null);
+            if (!over || over.key === from.key)
+                return;
+            if (over.bad) {
+                showToast("Ürün sadece kendi kategorisi içinde taşınabilir.");
+                return;
+            }
+            admMoveTo(from.cid, from.id, over.key.slice(from.cid.length + 1));
+            showToast("Sıra değişti. Kalıcı olması için \u201CKaydet ve yayınla\u201D.");
+        };
+        window.addEventListener("pointermove", move, { passive: false });
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+    }
+    const admDragCls = k => !admDrag ? "" : (admDrag.from === k ? " is-dragging" : admDrag.over === k ? (admDrag.bad ? " is-dropbad" : " is-drop") : "");
+    const admGrip = (c, it) => React.createElement("button", { type: "button", className: "adm-grip", "aria-label": (it.name || "Ürün") + " sırasını sürükleyerek değiştir", title: "S\u00FCr\u00FCkleyerek s\u0131rala", onPointerDown: e => admDragStart(e, c, it), onKeyDown: e => {
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                e.preventDefault();
+                moveItem(c.id, it.id, e.key === "ArrowUp" ? -1 : 1);
+            }
+        } },
+        React.createElement(AdmIcon, { name: "grip", size: 16 }));
     async function admSaveNow() {
         await save(true);
     }
@@ -4975,7 +5071,7 @@ function App() {
             React.createElement("div", { className: "adm-headrow" },
                 React.createElement("div", null,
                     React.createElement("h1", { className: "adm-h1" }, "\u00DCr\u00FCnler & Fiyatlar"),
-                    React.createElement("p", { className: "adm-sub" }, admView === "table" ? "Fiyata tıklayıp yazın; satıra tıklayınca ürün sağda açılır." : "Karta tıklayınca ürün sağda açılır.")),
+                    React.createElement("p", { className: "adm-sub" }, admView === "table" ? "Fiyata tıklayıp yazın; satıra tıklayınca ürün sağda açılır. Sırayı değiştirmek için ⋮⋮ tutamacından sürükleyin." : "Karta tıklayınca ürün sağda açılır. Sırayı değiştirmek için sağ üstteki ⋮⋮ tutamacından sürükleyin.")),
                 React.createElement("div", { className: "adm-row-gap" },
                     React.createElement("div", { className: "adm-seg", role: "group", "aria-label": "G\u00F6r\u00FCn\u00FCm" },
                         React.createElement("button", { type: "button", "aria-pressed": admView === "table", onClick: () => setAdmView("table") },
@@ -5009,6 +5105,7 @@ function App() {
                 React.createElement("table", { className: "adm-table" },
                     React.createElement("thead", null,
                         React.createElement("tr", null,
+                            React.createElement("th", { style: { width: 36 }, "aria-label": "S\u0131rala" }),
                             React.createElement("th", { style: { width: 40 } },
                                 React.createElement("input", { type: "checkbox", "aria-label": "G\u00F6r\u00FCnenlerin hepsini se\u00E7", checked: allShownSelected, onChange: e => setAdmSel(prev => { const n = new Set(prev); shown.forEach(({ c, it }) => e.target.checked ? n.add(admKey(c.id, it.id)) : n.delete(admKey(c.id, it.id))); return n; }) })),
                             React.createElement("th", { style: { width: 64 } }, "Foto"),
@@ -5021,7 +5118,8 @@ function App() {
                     React.createElement("tbody", null, shown.map(({ c, it }) => {
                         var _a, _b;
                         const k = admKey(c.id, it.id), pi = admPriceInfo(c, it), parts = pi.p.parts, iss = admIssuesOf(c, it), sel = admSel.has(k), single = parts.length === 1 ? parts[0] : null;
-                        return React.createElement("tr", { key: k, className: (sel ? "is-sel " : "") + (admEdit && admEdit.id === it.id && admEdit.cid === c.id ? "is-open" : "") },
+                        return React.createElement("tr", { key: k, "data-adm-key": k, className: (sel ? "is-sel " : "") + (admEdit && admEdit.id === it.id && admEdit.cid === c.id ? "is-open" : "") + admDragCls(k) },
+                            React.createElement("td", null, admGrip(c, it)),
                             React.createElement("td", null,
                                 React.createElement("input", { type: "checkbox", "aria-label": (it.name || "Ürün") + " seç", checked: sel, onChange: () => admToggleSel(k) })),
                             React.createElement("td", null,
@@ -5047,7 +5145,8 @@ function App() {
                 : React.createElement("div", { className: "adm-cards" },
                     shown.map(({ c, it }) => {
                         const k = admKey(c.id, it.id), pi = admPriceInfo(c, it), iss = admIssuesOf(c, it), src = admImgs(it)[0];
-                        return React.createElement("div", { key: k, className: "adm-pcard" + (admEdit && admEdit.id === it.id && admEdit.cid === c.id ? " is-open" : "") + (admSel.has(k) ? " is-sel" : "") },
+                        return React.createElement("div", { key: k, "data-adm-key": k, className: "adm-pcard" + (admEdit && admEdit.id === it.id && admEdit.cid === c.id ? " is-open" : "") + (admSel.has(k) ? " is-sel" : "") + admDragCls(k) },
+                            React.createElement("span", { className: "adm-pcard-grip" }, admGrip(c, it)),
                             React.createElement("label", { className: "adm-pcard-check" },
                                 React.createElement("input", { type: "checkbox", "aria-label": (it.name || "Ürün") + " seç", checked: admSel.has(k), onChange: () => admToggleSel(k) })),
                             React.createElement("button", { type: "button", className: "adm-pcard-btn", onClick: () => admOpenEditor(c.id, it.id) },
