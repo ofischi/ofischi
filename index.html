@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-r3Ql89UpS10WWGmX7auSimTmjGX6eDV7JIz/WaquZfY=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-LCA+n1H3WeHbPyl2NqtiYiKfjC+Nc3IninY8yLUxqnA=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2368,7 +2368,11 @@ function pdfVariantRows(item, lang) {
     const amt = p.manualTotal !== null && p.manualTotal !== undefined ? p.manualTotal : priceTotal(p);
     return [{ name: "", dims: item?.dims || "", amount: amt, contactOnly: amt === null, image: null }];
 }
+/* Fiyatsız katalogda ölçü kartları / model sıraları fiyat göstermez. */
+let pdfNoPrice = false;
 function pdfVariantPrice(data, r, lang) {
+    if (pdfNoPrice)
+        return { text: "", muted: true, none: true };
     if (r.contactOnly || r.amount === null || r.amount === undefined)
         return { text: lang === "EN" ? "Ask for price" : "Fiyat sorunuz", muted: true };
     return { text: pdfMoney(data, r.amount), muted: false };
@@ -2420,13 +2424,14 @@ function pdfSizeCard(data, item, lang, x, y, w, h, asset, acc) {
     c += pdfRect(x + pad, ty, 18, 1.5, acc);
     ty -= 5;
     c += pdfTextOp(lang === "EN" ? "SIZE (cm)" : "ÖLÇÜ (cm)", x + pad, ty - 8, 6.4, { bold: true, color: [0.55, 0.55, 0.55] });
-    c += pdfTextOp(lang === "EN" ? "PRICE" : "FİYAT", x + w - pad, ty - 8, 6.4, { align: "right", bold: true, color: [0.55, 0.55, 0.55] });
+    if (!pdfNoPrice)
+        c += pdfTextOp(lang === "EN" ? "PRICE" : "FİYAT", x + w - pad, ty - 8, 6.4, { align: "right", bold: true, color: [0.55, 0.55, 0.55] });
     ty -= PDF_SIZE.headH;
     pdfVariantRows(item, lang).forEach((r, i) => {
         const rowTop = ty - i * PDF_SIZE.rowH, cy = rowTop - PDF_SIZE.rowH + 5;
         if (i % 2 === 0)
             c += pdfRoundRect(x + pad - 4, rowTop - PDF_SIZE.rowH + 1, w - 2 * pad + 8, PDF_SIZE.rowH - 2, 3, [0.972, 0.969, 0.962]);
-        const pr = pdfVariantPrice(data, r, lang), prSize = pr.muted ? 7.2 : 9.2, prW = pdfFontWidth(pr.text, prSize) + 4;
+        const pr = pdfVariantPrice(data, r, lang), prSize = pr.muted ? 7.2 : 9.2, prW = pr.none ? 0 : pdfFontWidth(pr.text, prSize) + 4;
         const dl = String(r.dims || "").trim() ? pdfDimsLabel(r.dims) : "", main = dl || r.name || "—", sub = dl ? r.name : "";
         const mainMax = Math.max(30, w - 2 * pad - prW - 6), mainW = Math.min(pdfFontWidth(main, 8.8) + 3, mainMax);
         c += pdfTextOp(main, x + pad, cy, 8.8, { bold: true, maxWidth: mainMax, maxLines: 1, color: [0.1, 0.1, 0.1] });
@@ -2435,14 +2440,16 @@ function pdfSizeCard(data, item, lang, x, y, w, h, asset, acc) {
             if (subMax > 18)
                 c += pdfTextOp(sub, x + pad + mainW + 3, cy, 7.2, { maxWidth: subMax, maxLines: 1, color: [0.48, 0.48, 0.48] });
         }
-        c += pdfTextOp(pr.text, x + w - pad, cy, prSize, { align: "right", bold: !pr.muted, maxWidth: prW + 2, maxLines: 1, color: pr.muted ? [0.5, 0.5, 0.5] : [0.06, 0.06, 0.06] });
+        if (!pr.none)
+            c += pdfTextOp(pr.text, x + w - pad, cy, prSize, { align: "right", bold: !pr.muted, maxWidth: prW + 2, maxLines: 1, color: pr.muted ? [0.5, 0.5, 0.5] : [0.06, 0.06, 0.06] });
     });
     return c;
 }
+function pdfModelCellH() { return PDF_MODEL.cellH - (pdfNoPrice ? 14 : 0); }
 function pdfModelCols(n) { return Math.min(PDF_MODEL.maxCols, Math.max(PDF_MODEL.minCols, n)); }
 function pdfModelRowHeight(item, lang) {
     const n = Math.max(1, pdfVariantRows(item, lang).length), cols = pdfModelCols(n);
-    return Math.ceil(PDF_MODEL.headH + Math.ceil(n / cols) * PDF_MODEL.cellH + 6);
+    return Math.ceil(PDF_MODEL.headH + Math.ceil(n / cols) * pdfModelCellH() + 6);
 }
 /* B1 — MODEL SIRASI: seri adı + açıklama, altında her model ayrı panelde (resim · model · ölçü · fiyat).
    Model fotoğrafı: önce modelin kendi fotoğrafı, yoksa ürün fotoğrafları sırayla (1. foto → 1. model…), o da yoksa ana fotoğraf. */
@@ -2459,8 +2466,8 @@ function pdfModelRow(data, item, lang, x, y, w, h, useImg, acc) {
     const rows = pdfVariantRows(item, lang), n = rows.length, cols = pdfModelCols(n), gap = 8, inner = w - 20, cellW = (inner - gap * (cols - 1)) / cols;
     const mainSrc = pdfProductImageSource(item, data), gallery = (Array.isArray(item.images) ? item.images : []).map(pdfImageSource).filter(Boolean);
     rows.forEach((r, i) => {
-        const col = i % cols, row = Math.floor(i / cols), cx = x + 10 + col * (cellW + gap), cTop = top - PDF_MODEL.headH - row * PDF_MODEL.cellH;
-        const panelH = PDF_MODEL.cellH - 8;
+        const col = i % cols, row = Math.floor(i / cols), cx = x + 10 + col * (cellW + gap), cTop = top - PDF_MODEL.headH - row * pdfModelCellH();
+        const panelH = pdfModelCellH() - 8;
         c += pdfRoundRect(cx, cTop - panelH, cellW, panelH, 6, [0.975, 0.972, 0.966]);
         const ih = PDF_MODEL.imgH, boxY = cTop - 4 - ih;
         const a = useImg(pdfImageSource(r.image)) || useImg(gallery[i]) || useImg(mainSrc);
@@ -2475,7 +2482,8 @@ function pdfModelRow(data, item, lang, x, y, w, h, useImg, acc) {
             c += pdfTextOp(pdfDimsLabel(r.dims) + " cm", cx + cellW / 2, ly, 6.6, { align: "center", maxWidth: cellW - 10, maxLines: 1, color: [0.5, 0.5, 0.5] });
         ly -= 13.5;
         const pr = pdfVariantPrice(data, r, lang);
-        c += pdfTextOp(pr.text, cx + cellW / 2, ly, pr.muted ? 7.4 : 10.8, { align: "center", bold: !pr.muted, maxWidth: cellW - 10, maxLines: 1, color: pr.muted ? [0.5, 0.5, 0.5] : [0.06, 0.06, 0.06] });
+        if (!pr.none)
+            c += pdfTextOp(pr.text, cx + cellW / 2, ly, pr.muted ? 7.4 : 10.8, { align: "center", bold: !pr.muted, maxWidth: cellW - 10, maxLines: 1, color: pr.muted ? [0.5, 0.5, 0.5] : [0.06, 0.06, 0.06] });
     });
     return c;
 }
@@ -2503,7 +2511,7 @@ async function pdfFlowPages(data, lang, preparedImages, pages, opts = {}) {
             await flush();
             pages.push(await renderPdfCategoryCoverPage(data, lang, category, pages.length + 1));
         }
-        const layout = opts.catalog ? "table" : categoryLayoutOf(data, category.id);
+        const layout = opts.forceTable ? "table" : categoryLayoutOf(data, category.id);
         if (layout !== "table") {
             /* Ölçü kartları / model sırası: yükseklik bazlı sayfalama */
             const blocks = layout === "sizes" ? pdfSizeRowBlocks(items, lang) : items.map(it => ({ type: "modelRow", item: it, h: pdfModelRowHeight(it, lang) }));
@@ -2545,6 +2553,7 @@ async function buildPriceListPDF(rawData, lang) {
     /* PDF dili artık para biriminden değil, sitenin seçili dilinden gelir. */
     const pdfLang = lang === "EN" ? "EN" : lang === "TR" ? "TR" : (currency === "TRY" ? "TR" : "EN");
     pdfAccentCurrent = pdfCatalogAccent(source);
+    pdfNoPrice = false;
     const prepared = await pdfPrepareImages(source), data = prepared.data;
     const pages = [await renderPdfCoverPage(data, pdfLang)];
     await pdfFlowPages(data, pdfLang, prepared.images, pages);
@@ -2780,27 +2789,37 @@ function pdfRenderDergiPage(data, lang, category, items, startIndex, pageNo, ass
 }
 const PDF_CATALOG_TEMPLATES = [
     { id: "klasik", name: "Klasik Liste", desc: "Fiyat listesiyle aynı düzen; fiyat yerine ölçüler ve açıklama. Sayfa başına 7 ürün." },
-    { id: "vitrin", name: "Vitrin", desc: "Her ürün tek sayfada: büyük görsel, ek fotoğraflar, açıklama ve ölçü tablosu." },
+    { id: "vitrin", name: "Vitrin", desc: "Takımlar (VIP → Personel) her model tek sayfada; diğer kategoriler akıllı düzende, sayfa başına birden çok ürün." },
     { id: "izgara", name: "Izgara", desc: "Sayfa başına 6 ürün kartı. Geniş ürün yelpazesine hızlı göz atma." },
     { id: "dergi", name: "Dergi", desc: "Sayfa başına 2 ürün, görseller sırayla solda ve sağda. Sunum havası." }
 ];
 function pdfCatalogTemplateId(v) { return PDF_CATALOG_TEMPLATES.some(t => t.id === v) ? v : "vitrin"; }
+const PDF_VITRIN_FULL_PAGE = new Set(["vip-makam-takimlari", "makam-takimlari", "yonetici-takimlari", "personel-takimlari"]);
 async function pdfPrepareCatalogAssets(data, tpl) {
-    const max = { klasik: 1000, vitrin: 1600, izgara: 900, dergi: 1300 }[tpl] || 1000;
-    const want = [];
+    const maxFor = { klasik: 1000, vitrin: 1600, izgara: 900, dergi: 1300 }[tpl] || 1000;
+    const want = [], size = new Map(), add = (s, m) => { if (!s)
+        return; if (!size.has(s))
+        want.push(s); size.set(s, Math.max(size.get(s) || 0, m)); };
     for (const c of data.categories || [])
         for (const it of c.items || []) {
             const imgs = pdfItemImages(it);
-            for (const s of (tpl === "vitrin" ? imgs.slice(0, 5) : imgs.slice(0, 1)))
-                if (!want.includes(s))
-                    want.push(s);
+            if (tpl === "vitrin" && PDF_VITRIN_FULL_PAGE.has(c.id))
+                imgs.slice(0, 5).forEach(s => add(s, maxFor));
+            else if (tpl === "vitrin") {
+                /* Akış düzenindeki kategoriler: ana görsel + model fotoğrafları, daha küçük çözünürlük */
+                add(pdfProductImageSource(it, data), 1000);
+                imgs.slice(0, 6).forEach(s => add(s, 1000));
+                normalizePrice(it.price).parts.forEach(p => add(pdfImageSource(p.image), 1000));
+            }
+            else
+                imgs.slice(0, 1).forEach(s => add(s, maxFor));
         }
     const map = new Map();
     let i = 0;
     /* Aynı anda en fazla 4 görsel işlenir (büyük kataloglarda bellek taşmasın). */
     const worker = async () => { while (i < want.length) {
         const src = want[i++];
-        map.set(src, await pdfImageAsset(src, { max, quality: .86 }));
+        map.set(src, await pdfImageAsset(src, { max: size.get(src), quality: .86 }));
     } };
     await Promise.all(Array.from({ length: Math.min(4, want.length) }, worker));
     return map;
@@ -2814,7 +2833,39 @@ async function buildCatalogPDF(rawData, lang, templateId) {
     const title = L === "EN" ? "PRODUCT CATALOG" : (String(source.pdf?.catalogTitle || "").trim() || "ÜRÜN KATALOĞU");
     const pages = [await renderPdfCoverPage(data, L, title)];
     if (tpl === "klasik") {
-        await pdfFlowPages(data, L, assets, pages, { catalog: true, cardHeight: pdfCatalogCardHeight });
+        await pdfFlowPages(data, L, assets, pages, { catalog: true, forceTable: true, cardHeight: pdfCatalogCardHeight });
+    }
+    else if (tpl === "vitrin") {
+        /* VİTRİN: takım kategorileri (VIP → Personel) her model tek sayfa; diğer kategoriler
+           fiyat listesindeki akıllı düzenle (ölçü kartları / model sırası / liste), fiyatsız ve sıkışık. */
+        let group = [];
+        const flushGroup = async () => {
+            if (!group.length)
+                return;
+            pdfNoPrice = true;
+            try {
+                await pdfFlowPages({ ...data, categories: group }, L, assets, pages, { catalog: true, cardHeight: pdfCatalogCardHeight });
+            }
+            finally {
+                pdfNoPrice = false;
+            }
+            group = [];
+        };
+        for (const category of data.categories) {
+            const items = category.items || [];
+            if (!items.length)
+                continue;
+            if (!PDF_VITRIN_FULL_PAGE.has(category.id)) {
+                group.push(category);
+                continue;
+            }
+            await flushGroup();
+            if (data.pdf?.useCategoryCovers)
+                pages.push(await renderPdfCategoryCoverPage(data, L, category, pages.length + 1));
+            for (const item of items)
+                pages.push(pdfRenderVitrinPage(data, L, category, item, pages.length + 1, assets));
+        }
+        await flushGroup();
     }
     else {
         for (const category of data.categories) {
