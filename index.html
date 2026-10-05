@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-bou5YzS18JPggugGkNP6erIJcADvEWzly+Qs2arc/5c=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-A0G+0ZWNSA2fPOMIzXdq0ac/YdUQcESDdua0BPsKXGk=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2724,6 +2724,34 @@ function pdfRenderVitrinPage(data, lang, category, item, pageNo, assets) {
     c += t.content;
     return { content: c, images: reg.map, pageNo };
 }
+/* VİTRİN İKİLİ: sayfa başına 2 model (oturma grupları) — her yarıda ad, büyük görsel, açıklama ve ölçü tablosu */
+function pdfRenderVitrinDuoPage(data, lang, category, items, pageNo, assets) {
+    const L = PDF_LAYOUT, W = L.W, H = L.H, acc = pdfCatalogAccent(data), X = 36, CW = W - 72, reg = pdfPageImages();
+    const catName = pdfText(lang, category.name, category.name_en, category.name) || "";
+    let c = pdfCatalogChrome(data, pageNo, lang, catName);
+    c += pdfTextOp(catName.toLocaleUpperCase(lang === "EN" ? "en-US" : "tr-TR"), X, H - 66, 8.5, { bold: true, color: acc, maxWidth: CW, maxLines: 1 });
+    const areaTop = H - 80, areaBottom = 48, gap = 26, slotH = (areaTop - areaBottom - gap) / 2;
+    items.forEach((item, i) => {
+        const top = areaTop - i * (slotH + gap), bottom = top - slotH;
+        const name = pdfText(lang, item.name, item.name_en, item.name) || "—";
+        c += pdfTextOp(name, X, top - 18, 17, { bold: true, maxWidth: CW, maxLines: 1, color: [0.07, 0.07, 0.07] });
+        c += pdfRect(X, top - 27, 24, 1.8, acc);
+        const desc = pdfDescText(lang, item), dl = desc ? pdfWrapText(desc, CW, 9, 2).length : 0, descH = dl ? dl * 12.5 + 6 : 0;
+        const rows = pdfCatalogRows(item, lang), tableH = pdfDimsTableHeight(rows, 4 * 14, 14);
+        const imgTop = top - 36, imgBottom = bottom + tableH + descH + 10;
+        const src = pdfItemImages(item)[0];
+        c += pdfImageBox(reg.use(src, assets.get(src)), X, imgBottom, CW, imgTop - imgBottom, lang);
+        let y = imgBottom - 8;
+        if (desc) {
+            c += pdfTextOp(desc, X, y - 9, 9, { maxWidth: CW, maxLines: 2, leading: 12.5, color: [0.28, 0.28, 0.28] });
+            y -= descH;
+        }
+        c += pdfDimsTable(rows, lang, X, y, CW, y - bottom, acc, { rowH: 14, fs: 8.4, nameRatio: .55 }).content;
+        if (i === 0 && items.length > 1)
+            c += pdfLine(X, bottom - gap / 2, X + CW, bottom - gap / 2, [0.86, 0.86, 0.86], .5);
+    });
+    return { content: c, images: reg.map, pageNo };
+}
 /* Izgara ve Dergi sayfalarının kategori başlığı */
 function pdfCatalogSectionHeader(data, lang, category, cont, X, CW) {
     const L = PDF_LAYOUT, H = L.H, acc = pdfCatalogAccent(data);
@@ -2797,12 +2825,13 @@ function pdfRenderDergiPage(data, lang, category, items, startIndex, pageNo, ass
 }
 const PDF_CATALOG_TEMPLATES = [
     { id: "klasik", name: "Klasik Liste", desc: "Fiyat listesiyle aynı düzen; fiyat yerine ölçüler ve açıklama. Sayfa başına 7 ürün." },
-    { id: "vitrin", name: "Vitrin", desc: "Takımlar (VIP → Personel) her model tek sayfada; diğer kategoriler akıllı düzende, sayfa başına birden çok ürün." },
+    { id: "vitrin", name: "Vitrin", desc: "Takımlar (VIP → Personel) her model tek sayfada, oturma grupları sayfa başına 2 model; diğer kategoriler akıllı düzende." },
     { id: "izgara", name: "Izgara", desc: "Sayfa başına 6 ürün kartı. Geniş ürün yelpazesine hızlı göz atma." },
     { id: "dergi", name: "Dergi", desc: "Sayfa başına 2 ürün, görseller sırayla solda ve sağda. Sunum havası." }
 ];
 function pdfCatalogTemplateId(v) { return PDF_CATALOG_TEMPLATES.some(t => t.id === v) ? v : "vitrin"; }
 const PDF_VITRIN_FULL_PAGE = new Set(["vip-makam-takimlari", "makam-takimlari", "yonetici-takimlari", "personel-takimlari"]);
+const PDF_VITRIN_DUO_PAGE = new Set(["oturma-gruplari"]);
 async function pdfPrepareCatalogAssets(data, tpl) {
     const maxFor = { klasik: 1000, vitrin: 1600, izgara: 900, dergi: 1300 }[tpl] || 1000;
     const want = [], size = new Map(), add = (s, m) => { if (!s)
@@ -2813,6 +2842,8 @@ async function pdfPrepareCatalogAssets(data, tpl) {
             const imgs = pdfItemImages(it);
             if (tpl === "vitrin" && PDF_VITRIN_FULL_PAGE.has(c.id))
                 imgs.slice(0, 5).forEach(s => add(s, maxFor));
+            else if (tpl === "vitrin" && PDF_VITRIN_DUO_PAGE.has(c.id))
+                imgs.slice(0, 1).forEach(s => add(s, 1300));
             else if (tpl === "vitrin") {
                 /* Akış düzenindeki kategoriler: ana görsel + model fotoğrafları, daha küçük çözünürlük */
                 add(pdfProductImageSource(it, data), 1000);
@@ -2866,13 +2897,19 @@ async function pdfBuildCatalogInner(rawData, lang, templateId) {
             const items = category.items || [];
             if (!items.length)
                 continue;
-            if (!PDF_VITRIN_FULL_PAGE.has(category.id)) {
+            const duo = PDF_VITRIN_DUO_PAGE.has(category.id);
+            if (!duo && !PDF_VITRIN_FULL_PAGE.has(category.id)) {
                 group.push(category);
                 continue;
             }
             await flushGroup();
             if (data.pdf?.useCategoryCovers)
                 pages.push(await renderPdfCategoryCoverPage(data, L, category, pages.length + 1));
+            if (duo) {
+                for (let i = 0; i < items.length; i += 2)
+                    pages.push(pdfRenderVitrinDuoPage(data, L, category, items.slice(i, i + 2), pages.length + 1, assets));
+                continue;
+            }
             for (const item of items)
                 pages.push(pdfRenderVitrinPage(data, L, category, item, pages.length + 1, assets));
         }
