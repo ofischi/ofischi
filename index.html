@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-C8Stog5ygCzKjv7QPLBV1oXRUiDEKjTW459fDyK0WEM=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-PPu7ZkRu+R4T8QVdm6kXwY1ArHzZgUDBhLsNHv1tdwk=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -4833,6 +4833,20 @@ function App() {
         setAdmBulk(b => ({ ...b, value: "" }));
         showToast(`${keys.length} ürünün fiyatı güncellendi. Yayınlamak için "Kaydet ve yayınla".`);
     }
+    function admBulkDelete(keys) {
+        if (!keys.length)
+            return;
+        const ks = new Set(keys);
+        const names = admAll.filter(({ c, it }) => ks.has(admKey(c.id, it.id))).map(({ it }) => it.name || "Adsız ürün");
+        const list = names.slice(0, 8).join(", ") + (names.length > 8 ? ` ve ${names.length - 8} ürün daha` : "");
+        if (!window.confirm(`${keys.length} ürün silinsin mi?\n\n${list}\n\n"Kaydet ve yayınla"ya basmadan paneli kaydetmeden kapatırsanız silme geri alınır.`))
+            return;
+        updateData(x => { x.categories = x.categories.map(c => ({ ...c, items: c.items.filter(it => !ks.has(admKey(c.id, it.id))) })); });
+        if (admEdit && ks.has(admKey(admEdit.cid, admEdit.id)))
+            setAdmEdit(null);
+        setAdmSel(new Set());
+        showToast(`${keys.length} ürün silindi. Kalıcı olması için "Kaydet ve yayınla".`);
+    }
     async function admSaveNow() {
         await save(true);
     }
@@ -5064,6 +5078,9 @@ function App() {
                             admApplyBulk(selKeys);
                     } }),
                 React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold", onClick: () => admApplyBulk(selKeys) }, "Uygula"),
+                React.createElement("button", { type: "button", className: "adm-btn adm-danger-btn", onClick: () => admBulkDelete(selKeys) },
+                    React.createElement(AdmIcon, { name: "trash", size: 16 }),
+                    "Se\u00E7ilenleri sil"),
                 React.createElement("button", { type: "button", className: "adm-btn adm-btn-ghost", onClick: () => setAdmSel(new Set()) }, "Se\u00E7imi kald\u0131r")));
     }
     function admRenderEditor() {
