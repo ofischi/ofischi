@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-t0dNmil+K9Us2EO+5ZMj/fKMGW4xolx6oP2eG5EBWyY=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-r3Ql89UpS10WWGmX7auSimTmjGX6eDV7JIz/WaquZfY=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2115,7 +2115,7 @@ function pdfPageMetrics() { return { width: 595.28, height: 841.89 }; }
 const PDF_LAYOUT = {
     W: 595.28, H: 841.89,
     rail: 18, left: 27, right: 8, top: 18, bottom: 25,
-    gap: 2.5,
+    gap: 5,
     cardW: 560.28,
     imageW: 190,
     imageH: 82,
@@ -2138,9 +2138,11 @@ PDF_LAYOUT.c3 = PDF_LAYOUT.c2 + PDF_LAYOUT.unitW;
 /* 5 satıra kadar tüm ürün kartları aynı yükseklikte (sayfa başına 7 ürün düzeni korunur).
    Daha fazla fiyat kalemi olan ürünlerde kart uzar; satırlar okunaklı kalır, üst üste binmez. */
 const PDF_ROW_MIN_H = 12.4;
+/* Takım tablosu kartı (A1 tasarım diliyle): görsel paneli, ad + altın çizgi, satır alanı başlangıcı */
+const PDF_TBL = { imgW: 178, headTop: 35, pad: 6, setW: 104 };
 function pdfMaxRowsPerCard() {
     const L = PDF_LAYOUT;
-    return Math.floor((L.H - L.top - L.bottom - L.categoryH - L.gap - L.titleH - L.headerH - 4) / PDF_ROW_MIN_H);
+    return Math.floor((L.H - L.top - L.bottom - L.categoryH - L.gap - PDF_TBL.headTop - PDF_TBL.pad) / PDF_ROW_MIN_H);
 }
 function pdfVisibleRows(item, lang) {
     const rows = pdfRowsForItem(item), max = pdfMaxRowsPerCard();
@@ -2151,7 +2153,7 @@ function pdfVisibleRows(item, lang) {
 }
 function pdfCardHeight(item) {
     const L = PDF_LAYOUT, rows = pdfVisibleRows(item, "TR").length;
-    const need = L.titleH + L.headerH + rows * PDF_ROW_MIN_H + 2;
+    const need = PDF_TBL.headTop + rows * PDF_ROW_MIN_H + PDF_TBL.pad;
     return Math.max(L.cardH, Math.ceil(need));
 }
 function pdfCategoryHeight() { return PDF_LAYOUT.categoryH; }
@@ -2180,70 +2182,56 @@ function pdfCategoryBlock(category, lang, x, y, w) {
     c += pdfTextOp(pdfText(lang, category.name, category.name_en, category.name), x + w / 2, y + 5.1, 11.8, { align: "center", bold: true, maxWidth: w - 10, maxLines: 1, color: [1, 1, 1] });
     return c;
 }
+/* ORTAK KART İSKELETİ (takım tablosu + klasik katalog): yumuşak gölgeli kart, bej görsel paneli, ad + altın çizgi */
+function pdfTblFrame(item, lang, x, y, w, h, asset, id, acc, nameRight) {
+    const T = PDF_TBL, top = y + h, title = pdfText(lang, item.name, item.name_en, item.name) || "—";
+    let c = pdfSoftCard(x, y, w, h, 7);
+    c += pdfRoundRect(x + 5, y + 5, T.imgW - 10, h - 10, 5, PDF_IMG_BG);
+    if (asset)
+        c += pdfDrawImage("Im" + id, asset, x + 10, y + 9, T.imgW - 20, h - 18, true);
+    else
+        c += pdfTextOp(lang === "EN" ? "NO PRODUCT IMAGE" : "ÜRÜN GÖRSELİ YOK", x + T.imgW / 2, y + h / 2 - 3, 7.4, { align: "center", bold: true, color: [0.62, 0.62, 0.62], maxWidth: T.imgW - 20 });
+    const tx = x + T.imgW + 8, nameMax = nameRight - tx;
+    c += pdfTextOp(title, tx, top - 16, 11.6, { bold: true, maxWidth: nameMax, maxLines: 1, color: [0.06, 0.06, 0.06] });
+    c += pdfRect(tx, top - 22.5, 20, 1.5, acc);
+    c += pdfLine(tx + 24, top - 21.75, nameRight, top - 21.75, [0.89, 0.885, 0.875], .4);
+    return { c, tx, top };
+}
+function pdfTblCaption(text, x, y, align) { return pdfTextOp(text, x, y, 6.3, { align, bold: true, color: [0.55, 0.55, 0.55], maxLines: 1 }); }
 function pdfProductBlock(data, category, item, lang, x, y, w, h, asset, id) {
-    const L = PDF_LAYOUT, rows = pdfVisibleRows(item, lang), title = pdfText(lang, item.name, item.name_en, item.name) || "—";
-    let c = "";
-    /* Outer rectangle and title strip. */
-    c += pdfRect(x, y, w, h, [1, 1, 1], [0.18, 0.18, 0.18], .55);
-    const titleY = y + h - L.titleH;
-    c += pdfRect(x, titleY, w, L.titleH, [0.98, 0.98, 0.98], [0.18, 0.18, 0.18], .45);
-    c += pdfTextOp(title, x + w / 2, titleY + 5.0, 11.8, { align: "center", bold: true, maxWidth: w - 12, maxLines: 1 });
-    /* Left image panel: identical dimensions for every product sheet. */
-    const bodyY = y, bodyH = h - L.titleH;
-    c += pdfRect(x + 0.5, bodyY + 0.5, L.imageW - 1, bodyH - 1, [0.97, 0.97, 0.96], [0.45, 0.45, 0.45], .45);
-    const imageBoxH = Math.min(L.imageH, bodyH - 4), imageBoxY = bodyY + (bodyH - imageBoxH) / 2;
-    if (asset) {
-        c += pdfDrawImage("Im" + id, asset, x + 2, imageBoxY, L.imageW - 4, imageBoxH, true);
-    }
-    else {
-        c += pdfTextOp(lang === "EN" ? "NO PRODUCT IMAGE" : "ÜRÜN GÖRSELİ YOK", x + L.imageW / 2, bodyY + bodyH / 2 - 3.2, 8.7, { align: "center", bold: true, maxWidth: L.imageW - 12, maxLines: 2 });
-    }
-    /* Right table: fixed columns for EVERY product. */
-    const tx = L.tableX, tw = L.tableW, headerY = bodyY + bodyH - L.headerH;
-    c += pdfRect(tx, headerY, tw, L.headerH, [0.05, 0.05, 0.05], [0.05, 0.05, 0.05], .4);
-    c += pdfTextOp(lang === "EN" ? "MODULE" : "MODÜL", tx + L.moduleW / 2, headerY + 5.0, 8.5, { align: "center", bold: true, maxWidth: L.moduleW - 4, maxLines: 1, color: [1, 1, 1] });
-    c += pdfTextOp(lang === "EN" ? "DIMENSIONS" : "ÖLÇÜLER", L.c1 + L.dimW / 2, headerY + 5.0, 8.3, { align: "center", bold: true, maxWidth: L.dimW - 4, maxLines: 1, color: [1, 1, 1] });
-    c += pdfTextOp(lang === "EN" ? "UNIT PRICE" : "BİRİM FİYATI", L.c2 + L.unitW / 2, headerY + 5.0, 8.1, { align: "center", bold: true, maxWidth: L.unitW - 4, maxLines: 1, color: [1, 1, 1] });
-    c += pdfTextOp(lang === "EN" ? "SET PRICE" : "TAKIM FİYATI", L.c3 + L.setW / 2, headerY + 5.0, 8.1, { align: "center", bold: true, maxWidth: L.setW - 4, maxLines: 1, color: [1, 1, 1] });
-    /* Dimension sub-labels are printed once directly under the header, keeping the grid stable. */
-    const dimsBandH = 0; // Dimensions are three fixed sub-columns in the body.
-    const bodyTableY = bodyY, bodyTableH = bodyH - L.headerH;
-    const rowH = bodyTableH / Math.max(rows.length, 1);
+    const T = PDF_TBL, acc = pdfCatalogAccent(data), rows = pdfVisibleRows(item, lang);
+    const setX = x + w - 8 - T.setW, right = setX - 10;
+    let { c, tx, top } = pdfTblFrame(item, lang, x, y, w, h, asset, id, acc, right);
+    /* Sütunlar: Modül · G/D/Y · Birim fiyat (sağa yaslı) */
+    const unitW = 74, dimW = 78, third = dimW / 3, ux = right, dx = right - unitW - dimW, modW = dx - tx - 6;
+    const capY = top - 31;
+    c += pdfTblCaption(lang === "EN" ? "MODULE" : "MODÜL", tx, capY, "left");
+    ["G/W", "D/D", "Y/H"].forEach((t, j) => { c += pdfTblCaption(t, dx + third * (j + .5), capY, "center"); });
+    c += pdfTblCaption(lang === "EN" ? "UNIT PRICE" : "BİRİM FİYAT", ux, capY, "right");
+    const rowsTop = top - T.headTop, rowH = Math.min(15.5, (rowsTop - (y + T.pad)) / Math.max(rows.length, 1));
     for (let i = 0; i < rows.length; i++) {
-        const rowTop = headerY - (i * rowH), rowBottom = rowTop - rowH;
-        if (i % 2 === 1)
-            c += pdfRect(tx, rowBottom, tw, rowH, [0.985, 0.985, 0.985]);
-        c += pdfLine(tx, rowBottom, tx + tw, rowBottom, [0.72, 0.72, 0.72], .35);
-        const part = rows[i] || {}, [dw, dd, dh] = pdfDimsParts(part.dims), mod = pdfText(lang, part.name, part.name_en, part.name) || "—";
-        const fs = Math.min(8.9, Math.max(7, rowH * 0.62)), cy = rowBottom + rowH / 2 - fs * 0.34;
+        const rt = rowsTop - i * rowH, rb = rt - rowH, part = rows[i] || {};
+        if (i % 2 === 0)
+            c += pdfRoundRect(tx - 4, rb + .8, right - tx + 8, rowH - 1.6, 3, [0.972, 0.969, 0.962]);
+        const fs = Math.min(8.8, Math.max(7, rowH * 0.6)), cy = rb + rowH / 2 - fs * 0.34;
+        const mod = pdfText(lang, part.name, part.name_en, part.name) || "—";
         if (part.__more) {
-            c += pdfTextOp(mod, tx + 4, cy, fs, { bold: true, maxWidth: L.tableW - L.setW - 8, maxLines: 1, color: [0.35, 0.35, 0.35] });
+            c += pdfTextOp(mod, tx, cy, fs, { bold: true, maxWidth: right - tx, maxLines: 1, color: [0.45, 0.45, 0.45] });
             continue;
         }
-        c += pdfTextOp(mod, tx + 4, cy, fs, { bold: true, maxWidth: L.moduleW - 7, maxLines: 1 });
-        const dx = L.c1, third = L.dimW / 3;
-        c += pdfTextOp(dw, dx + third / 2, cy, fs, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1 });
-        c += pdfTextOp(dd, dx + third * 1.5, cy, fs, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1 });
-        c += pdfTextOp(dh, dx + third * 2.5, cy, fs, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1 });
-        const price = part.contactOnly ? (lang === "EN" ? "Contact us" : "İletişime geçin") : pdfMoney(data, part.amount);
-        c += pdfTextOp(price, L.c2 + L.unitW / 2, cy, Math.min(9, fs + 0.1), { align: "center", bold: true, maxWidth: L.unitW - 4, maxLines: 1 });
+        c += pdfTextOp(mod, tx, cy, fs, { bold: true, maxWidth: modW, maxLines: 1, color: [0.1, 0.1, 0.1] });
+        pdfDimsParts(part.dims).forEach((v, j) => { c += pdfTextOp(v, dx + third * (j + .5), cy, fs - .3, { align: "center", maxWidth: third - 2, maxLines: 1, color: [0.3, 0.3, 0.3] }); });
+        const muted = part.contactOnly || part.amount === null || part.amount === undefined;
+        const price = muted ? (lang === "EN" ? "Contact us" : "İletişime geçin") : pdfMoney(data, part.amount);
+        c += pdfTextOp(price, ux, cy, muted ? fs - 1 : fs + .2, { align: "right", bold: !muted, maxWidth: unitW - 2, maxLines: 1, color: muted ? [0.5, 0.5, 0.5] : [0.06, 0.06, 0.06] });
     }
-    /* Fixed vertical grid lines. */
-    c += pdfLine(L.c1, bodyY, L.c1, headerY, [0.35, 0.35, 0.35], .4);
-    c += pdfLine(L.c2, bodyY, L.c2, headerY, [0.35, 0.35, 0.35], .4);
-    c += pdfLine(L.c3, bodyY, L.c3, headerY, [0.35, 0.35, 0.35], .4);
-    /* Three dimension sub-columns. */
-    const third = L.dimW / 3;
-    c += pdfLine(L.c1 + third, bodyY, L.c1 + third, headerY, [0.55, 0.55, 0.55], .3);
-    c += pdfLine(L.c1 + third * 2, bodyY, L.c1 + third * 2, headerY, [0.55, 0.55, 0.55], .3);
-    /* Tiny G/W D/D Y/H labels inside the dimension header, without changing the fixed grid. */
-    c += pdfRect(L.c1, headerY, L.dimW, L.headerH, [0.05, 0.05, 0.05], null, 0);
-    c += pdfTextOp("G/W", L.c1 + third / 2, headerY + 5.0, 7.2, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1, color: [1, 1, 1] });
-    c += pdfTextOp("D/D", L.c1 + third * 1.5, headerY + 5.0, 7.2, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1, color: [1, 1, 1] });
-    c += pdfTextOp("Y/H", L.c1 + third * 2.5, headerY + 5.0, 7.2, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1, color: [1, 1, 1] });
-    /* Set price is a single dedicated vertical cell. */
-    c += pdfRect(L.c3, bodyY, L.setW, bodyTableH, null, [0.35, 0.35, 0.35], .45);
-    c += pdfTextOp(pdfTotal(data, item, lang), L.c3 + L.setW / 2, bodyY + bodyTableH / 2 - 3.0, 10.8, { align: "center", bold: true, maxWidth: L.setW - 6, maxLines: 2 });
+    /* Takım fiyatı: sağda ayrı, altın vurgulu panel */
+    const ph = h - 12, py = y + 6, mid = py + ph / 2;
+    c += pdfRoundRect(setX, py, T.setW, ph, 6, [0.99, 0.982, 0.958], [acc[0] * .6 + .4, acc[1] * .6 + .4, acc[2] * .6 + .4], .6);
+    c += pdfTextOp(lang === "EN" ? "SET PRICE" : "TAKIM FİYATI", setX + T.setW / 2, mid + 9, 6.5, { align: "center", bold: true, color: [0.5, 0.47, 0.4], maxWidth: T.setW - 8, maxLines: 1 });
+    c += pdfRect(setX + T.setW / 2 - 8, mid + 4.5, 16, 1.1, acc);
+    const total = pdfTotal(data, item, lang), isMoney = /\d/.test(total);
+    c += pdfTextOp(total, setX + T.setW / 2, mid - 9, isMoney ? 12.4 : 8.6, { align: "center", bold: true, maxWidth: T.setW - 8, maxLines: 1, color: isMoney ? [acc[0] * .72, acc[1] * .72, acc[2] * .72] : [0.45, 0.45, 0.45] });
     return c;
 }
 async function renderPdfCoverPage(data, lang, titleOverride) {
@@ -2655,51 +2643,32 @@ function pdfDimsTable(rows, lang, x, yTop, w, maxH, acc, { rowH = 15, fs = 8.6, 
 /* --- Şablon 1: KLASİK LİSTE (fiyat listesi düzeni, fiyat sütunları yerine ölçüler + açıklama) --- */
 function pdfCatalogCardHeight(item) {
     const L = PDF_LAYOUT, rows = Math.max(1, pdfVisibleRows(item, "TR").length), hasDesc = !!String(item?.desc || "").trim();
-    const need = Math.ceil(L.titleH + L.headerH + rows * PDF_ROW_MIN_H + (hasDesc ? 24 : 0) + 2);
+    const need = Math.ceil(PDF_TBL.headTop + rows * PDF_ROW_MIN_H + (hasDesc ? 24 : 0) + PDF_TBL.pad);
     return Math.min(L.H - L.top - L.bottom - L.categoryH - L.gap, Math.max(L.cardH, need));
 }
 function pdfCatalogListBlock(data, category, item, lang, x, y, w, h, asset, id) {
-    const L = PDF_LAYOUT, title = pdfText(lang, item.name, item.name_en, item.name) || "—";
-    let c = pdfRect(x, y, w, h, [1, 1, 1], [0.18, 0.18, 0.18], .55);
-    const titleY = y + h - L.titleH;
-    c += pdfRect(x, titleY, w, L.titleH, [0.98, 0.98, 0.98], [0.18, 0.18, 0.18], .45);
-    c += pdfTextOp(title, x + w / 2, titleY + 5.0, 11.8, { align: "center", bold: true, maxWidth: w - 12, maxLines: 1 });
-    const bodyH = h - L.titleH;
-    c += pdfRect(x + 0.5, y + 0.5, L.imageW - 1, bodyH - 1, [0.97, 0.97, 0.96], [0.45, 0.45, 0.45], .45);
-    const imageBoxH = Math.min(L.imageH, bodyH - 4), imageBoxY = y + (bodyH - imageBoxH) / 2;
-    if (asset)
-        c += pdfDrawImage("Im" + id, asset, x + 2, imageBoxY, L.imageW - 4, imageBoxH, true);
-    else
-        c += pdfTextOp(lang === "EN" ? "NO PRODUCT IMAGE" : "ÜRÜN GÖRSELİ YOK", x + L.imageW / 2, y + bodyH / 2 - 3.2, 8.7, { align: "center", bold: true, maxWidth: L.imageW - 12, maxLines: 2 });
-    const tx = L.tableX, tw = L.tableW, headerY = y + bodyH - L.headerH, dimW = 150, third = dimW / 3, modW = tw - dimW, dx = tx + modW;
-    c += pdfRect(tx, headerY, tw, L.headerH, [0.05, 0.05, 0.05], [0.05, 0.05, 0.05], .4);
-    c += pdfTextOp(lang === "EN" ? "MODULE" : "MODÜL", tx + modW / 2, headerY + 5.0, 8.5, { align: "center", bold: true, maxWidth: modW - 4, maxLines: 1, color: [1, 1, 1] });
-    ["G/W", "D/D", "Y/H"].forEach((t, i) => { c += pdfTextOp(t, dx + third * (i + .5), headerY + 5.0, 7.6, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1, color: [1, 1, 1] }); });
+    const T = PDF_TBL, acc = pdfCatalogAccent(data), right = x + w - 12;
+    let { c, tx, top } = pdfTblFrame(item, lang, x, y, w, h, asset, id, acc, right);
+    const dimW = 132, third = dimW / 3, dx = right - dimW, modW = dx - tx - 6, capY = top - 31;
+    c += pdfTblCaption(lang === "EN" ? "MODULE" : "MODÜL", tx, capY, "left");
+    ["G/W", "D/D", "Y/H"].forEach((t, j) => { c += pdfTblCaption(t, dx + third * (j + .5), capY, "center"); });
     const desc = pdfText(lang, item.desc, item.desc_en, item.desc), descH = desc ? 24 : 0;
-    const rows = pdfVisibleRows(item, lang), rowsTop = headerY, rowsH = bodyH - L.headerH - descH, rowH = rowsH / Math.max(rows.length, 1);
+    const rows = pdfVisibleRows(item, lang), rowsTop = top - T.headTop, rowH = Math.min(15.5, (rowsTop - (y + T.pad + descH)) / Math.max(rows.length, 1));
     for (let i = 0; i < rows.length; i++) {
-        const rowBottom = rowsTop - (i + 1) * rowH;
-        if (i % 2 === 1)
-            c += pdfRect(tx, rowBottom, tw, rowH, [0.985, 0.985, 0.985]);
-        c += pdfLine(tx, rowBottom, tx + tw, rowBottom, [0.78, 0.78, 0.78], .35);
-        const part = rows[i] || {}, fs = Math.min(8.9, Math.max(7, rowH * 0.62)), cy = rowBottom + rowH / 2 - fs * 0.34;
+        const rt = rowsTop - i * rowH, rb = rt - rowH, part = rows[i] || {};
+        if (i % 2 === 0)
+            c += pdfRoundRect(tx - 4, rb + .8, right - tx + 8, rowH - 1.6, 3, [0.972, 0.969, 0.962]);
+        const fs = Math.min(8.8, Math.max(7, rowH * 0.6)), cy = rb + rowH / 2 - fs * 0.34;
         const mod = pdfText(lang, part.name, part.name_en, part.name) || "—";
         if (part.__more) {
-            c += pdfTextOp(mod, tx + 5, cy, fs, { bold: true, maxWidth: tw - 10, maxLines: 1, color: [0.35, 0.35, 0.35] });
+            c += pdfTextOp(mod, tx, cy, fs, { bold: true, maxWidth: right - tx, maxLines: 1, color: [0.45, 0.45, 0.45] });
             continue;
         }
-        c += pdfTextOp(mod, tx + 5, cy, fs, { bold: true, maxWidth: modW - 9, maxLines: 1 });
-        const [dw, dd, dh] = pdfDimsParts(part.dims);
-        [dw, dd, dh].forEach((v, j) => { c += pdfTextOp(v, dx + third * (j + .5), cy, fs, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1 }); });
+        c += pdfTextOp(mod, tx, cy, fs, { bold: true, maxWidth: modW, maxLines: 1, color: [0.1, 0.1, 0.1] });
+        pdfDimsParts(part.dims).forEach((v, j) => { c += pdfTextOp(v, dx + third * (j + .5), cy, fs, { align: "center", bold: true, maxWidth: third - 2, maxLines: 1, color: [0.2, 0.2, 0.2] }); });
     }
-    const gridBottom = y + descH;
-    c += pdfLine(dx, gridBottom, dx, headerY, [0.35, 0.35, 0.35], .4);
-    c += pdfLine(dx + third, gridBottom, dx + third, headerY, [0.6, 0.6, 0.6], .3);
-    c += pdfLine(dx + third * 2, gridBottom, dx + third * 2, headerY, [0.6, 0.6, 0.6], .3);
-    if (desc) {
-        c += pdfLine(tx, gridBottom, tx + tw, gridBottom, [0.45, 0.45, 0.45], .45);
-        c += pdfTextOp(desc, tx + 5, gridBottom - 9.6, 7.8, { maxWidth: tw - 10, maxLines: 2, leading: 9.6, color: [0.28, 0.28, 0.28] });
-    }
+    if (desc)
+        c += pdfTextOp(desc, tx, y + T.pad + descH - 10, 7.6, { maxWidth: right - tx, maxLines: 2, leading: 9.4, color: [0.4, 0.4, 0.4] });
     return c;
 }
 /* --- Şablon 2: VİTRİN (her ürün tek sayfa) --- */
