@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-8bZ+dbxaXWrOlld2AaCgaVaS5IsPoR8JLmCGPg1fGvk=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-zmCHESkGhYrRsfOf/y9mc5JXb6UCfNxz2PWUZmf7byQ=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1262,6 +1262,21 @@ function trTimeout(promise, ms) {
         Promise.resolve(promise).then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
     });
 }
+/* Bozuk çeviri: kaynak metinden anormal uzun, markdown (**, ##) içeren veya satır sayısı uyuşmayan çıktı
+   (ör. tek kelimelik ürün adı için model "makale" yazmış). Bunlar kabul edilmez, kayıtlıysa yeniden çevrilir. */
+function trBadEn(tr, en) {
+    tr = String(tr ?? "").trim();
+    en = String(en ?? "").trim();
+    if (!tr || !en)
+        return false;
+    if (en.length > tr.length * 3 + 40)
+        return true;
+    if (/\*\*|^#{1,6}\s|^\s*[*-]\s+\S/m.test(en) && !/\*\*|^#{1,6}\s/m.test(tr))
+        return true;
+    if (!/\n/.test(tr) && /\n/.test(en))
+        return true;
+    return false;
+}
 /* Cihaz içi dil modeli bazen yorum ekler ("Elbette, işte çeviri:" gibi); makul uzunlukta tek parça çıktıyı kabul et. */
 function trSaneOutput(source, out) {
     const o = String(out || "").trim();
@@ -1294,35 +1309,6 @@ async function aiTranslateResult(text, type = "general") {
     }
     catch (e) {
         console.warn("On-device Translator unavailable:", e);
-    }
-    /* Browser AI APIs where available */
-    try {
-        if (window.LanguageModel && typeof window.LanguageModel.create === "function" && typeof window.LanguageModel.availability === "function" && (await trTimeout(window.LanguageModel.availability(), 3000)) === "available") {
-            const session = await trTimeout(window.LanguageModel.create({
-                systemPrompt: "You are a professional Turkish-to-English translator for an office furniture catalog. " +
-                    "Translate naturally, not word-for-word. Preserve brand names, product codes, numbers, dimensions, units and technical specifications exactly. " +
-                    "Use concise premium catalog English. Return translation only."
-            }), 6000);
-            const result = await trTimeout(session.prompt(source), 12000);
-            if (trSaneOutput(source, result))
-                return { text: preserveTechnicalTokens(source, result.trim()), good: true };
-        }
-    }
-    catch (e) {
-        console.warn("Browser AI unavailable:", e);
-    }
-    try {
-        if (window.ai && window.ai.languageModel && typeof window.ai.languageModel.create === "function" && typeof window.ai.languageModel.capabilities === "function" && (await trTimeout(window.ai.languageModel.capabilities(), 3000))?.available === "readily") {
-            const session = await trTimeout(window.ai.languageModel.create({
-                systemPrompt: "Translate Turkish to professional English for an office furniture catalog. Preserve brands, codes, dimensions, numbers and units. Translation only."
-            }), 6000);
-            const result = await trTimeout(session.prompt(source), 12000);
-            if (trSaneOutput(source, result))
-                return { text: preserveTechnicalTokens(source, result.trim()), good: true };
-        }
-    }
-    catch (e) {
-        console.warn("Web AI unavailable:", e);
     }
     /* deterministic professional catalog fallback */
     const exact = {
@@ -1498,7 +1484,11 @@ function trPendingRemove(keys) { const p = trPendingLoad(); let ch = false; for 
 function trDecide(tr, en, src, isName) {
     tr = String(tr ?? "").trim();
     en = String(en ?? "").trim();
-    if (!tr || src === tr)
+    if (!tr)
+        return "none";
+    if (trBadEn(tr, en))
+        return "translate";
+    if (src === tr)
         return "none";
     if (!/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) || (isName && /^[^\s]+$/.test(tr) && tr === tr.toLocaleUpperCase("tr-TR")))
         return "none";
@@ -1520,27 +1510,34 @@ function trSameAdd(k) { try {
     lsSet(TR_SAME_KEY, JSON.stringify([...set].slice(-1000)));
 }
 catch (_) { } }
-function trMissingKeys(data) {
+function trMissingKeys(data, onlyBad = false) {
     const same = trSameSet(), single = tr => !/\s/.test(tr) && tr === tr.toLocaleUpperCase("tr-TR");
     const keys = [];
     if (!data)
         return keys;
     for (const f of ["siteName", "subtitle", "eyebrow"]) {
         const tr = String(data[f] ?? "").trim(), en = String(data[f + "_en"] ?? "").trim();
-        if (tr && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) && (!en || (en === tr && !same.has("general|" + f + "|" + tr))) && !(single(tr) && en === tr))
+        if (trBadEn(tr, en)) {
+            keys.push("general|" + f);
+            continue;
+        }
+        if (!onlyBad && tr && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) && (!en || (en === tr && !same.has("general|" + f + "|" + tr))) && !(single(tr) && en === tr))
             keys.push("general|" + f);
     }
     for (const c of (data.categories || [])) {
         const tr = String(c.name ?? "").trim(), en = String(c.name_en ?? "").trim();
-        if (tr && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) && (!en || /^new category$/i.test(en) || (en === tr && !same.has("cat|" + c.id + "|" + tr))) && !(single(tr) && en === tr))
+        if (trBadEn(tr, en))
+            keys.push("cat|" + c.id);
+        else if (!onlyBad && tr && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) && (!en || /^new category$/i.test(en) || (en === tr && !same.has("cat|" + c.id + "|" + tr))) && !(single(tr) && en === tr))
             keys.push("cat|" + c.id);
         for (const it of (c.items || [])) {
-            if (trDecide(it.name, it.name_en, it.name_src, true) === "translate")
+            const want = (tr, en, src, isName) => onlyBad ? trBadEn(tr, en) : trDecide(tr, en, src, isName) === "translate";
+            if (want(it.name, it.name_en, it.name_src, true))
                 keys.push("item|" + c.id + "|" + it.id + "|name");
-            if (trDecide(it.desc, it.desc_en, it.desc_src, false) === "translate")
+            if (want(it.desc, it.desc_en, it.desc_src, false))
                 keys.push("item|" + c.id + "|" + it.id + "|desc");
             for (const part of normalizePrice(it.price).parts)
-                if (trDecide(part.name, part.name_en, part.name_src, false) === "translate")
+                if (want(part.name, part.name_en, part.name_src, false))
                     keys.push("part|" + c.id + "|" + it.id + "|" + part.id);
         }
     }
@@ -1573,13 +1570,14 @@ async function translateCachedResult(text, type) {
     };
     try {
         const cached = lsGet(key);
-        if (cached && cached.trim() !== source && !isBadPlaceholder(cached))
+        if (cached && cached.trim() !== source && !isBadPlaceholder(cached) && !trBadEn(source, cached))
             return { text: cached.trim(), good: true };
     }
     catch (e) { }
     const ai = await aiTranslateResult(source, type), result = ai.text;
-    const good = ai.good && !!result && !isBadPlaceholder(result);
-    const finalResult = (result && result.trim() !== source && !isBadPlaceholder(result)) ? result.trim() : translateFallbackSync(source);
+    const resultBad = trBadEn(source, result);
+    const good = ai.good && !!result && !isBadPlaceholder(result) && !resultBad;
+    const finalResult = (result && result.trim() !== source && !isBadPlaceholder(result) && !resultBad) ? result.trim() : translateFallbackSync(source);
     /* Yalnızca gerçek çeviriler önbelleğe alınır; kaba sözlük yedeği kalıcı hale gelmez. */
     if (good && finalResult && finalResult.trim() !== source && !isBadPlaceholder(finalResult)) {
         lsSet(key, finalResult);
@@ -3921,8 +3919,19 @@ function App() {
     useEffect(() => {
         if (!data)
             return;
-        const run = () => { if (trPendingLoad().size && navigator.onLine !== false && dataRef.current)
-            autoTranslateMissing(dataRef.current).catch(() => { }); };
+        const run = () => {
+            if (dataRef.current && navigator.onLine !== false) {
+                /* Daha önce kaydedilmiş bozuk İngilizce metinler (makale gibi uzun çıktılar) bulunup yeniden çevrilir. */
+                const bad = trMissingKeys(dataRef.current, true);
+                if (bad.length) {
+                    const set = trPendingLoad();
+                    bad.forEach(k => set.add(k));
+                    trPendingSave(set);
+                }
+            }
+            if (trPendingLoad().size && navigator.onLine !== false && dataRef.current)
+                autoTranslateMissing(dataRef.current).catch(() => { });
+        };
         const tm = setTimeout(run, 2500);
         window.addEventListener("online", run);
         return () => { clearTimeout(tm); window.removeEventListener("online", run); };
@@ -3992,11 +4001,11 @@ function App() {
                 en = String(en ?? "").trim();
                 if (!tr)
                     return "none";
-                if (src === tr)
+                if (src === tr && !trBadEn(tr, en))
                     return "none"; /* bu kaynak zaten işlendi */
                 if (plain(tr) || (isName && isModelText(tr)))
                     return "mark"; /* sayı/kod ve tek kelimelik model adı çevrilmez */
-                const hasEn = !!en && en !== tr && en !== translateFallbackSync(tr) && !/^(new product|new part|new category)$/i.test(en);
+                const hasEn = !!en && en !== tr && en !== translateFallbackSync(tr) && !/^(new product|new part|new category)$/i.test(en) && !trBadEn(tr, en);
                 if (hasEn && !src)
                     return "mark"; /* eski kayıt: İngilizcesi var, sadece kaynağı işaretle */
                 return "translate";
@@ -4015,7 +4024,7 @@ function App() {
                 }
                 if (kind === "cat") {
                     const cc = (snap.categories || []).find(x => x.id === a1), tr = String(cc?.name ?? "").trim(), en = String(cc?.name_en ?? "").trim();
-                    if (!cc || !tr || (en && en !== tr && !/^new category$/i.test(en)))
+                    if (!cc || !tr || (en && en !== tr && !/^new category$/i.test(en) && !trBadEn(tr, en)))
                         trPendingRemove([pk]);
                     else
                         jobs.push({ kind: "cat", cid: a1, tr, type: "category", mode: "translate", pk });
@@ -4031,7 +4040,7 @@ function App() {
                     if (mode === "none")
                         trPendingRemove([pk]);
                     else
-                        jobs.push({ kind: "item", cid: a1, iid: b1, key: c1, tr: String(it[c1] ?? "").trim(), type: c1, mode, pk });
+                        jobs.push({ kind: "item", cid: a1, iid: b1, key: c1, tr: String(it[c1] ?? "").trim(), type: c1, mode, pk, en: (mode === "mark" && trBadEn(it[c1], it[c1 + "_en"])) ? String(it[c1] ?? "").trim() : undefined });
                 }
                 else if (kind === "part") {
                     const part = normalizePrice(it.price).parts.find(x => x.id === c1);
@@ -4043,7 +4052,7 @@ function App() {
                     if (mode === "none")
                         trPendingRemove([pk]);
                     else
-                        jobs.push({ kind: "part", cid: a1, iid: b1, pid: c1, tr: String(part.name ?? "").trim(), type: "price_part", mode, pk });
+                        jobs.push({ kind: "part", cid: a1, iid: b1, pid: c1, tr: String(part.name ?? "").trim(), type: "price_part", mode, pk, en: (mode === "mark" && trBadEn(part.name, part.name_en)) ? String(part.name ?? "").trim() : undefined });
                 }
                 else
                     trPendingRemove([pk]);
