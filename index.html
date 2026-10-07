@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-c73JA2wcCvir7uXoBEuL7Xpw46dXc8smGRld722vNS8=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-8bZ+dbxaXWrOlld2AaCgaVaS5IsPoR8JLmCGPg1fGvk=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1473,14 +1473,14 @@ async function aiTranslateResult(text, type = "general") {
 const TR_PENDING_KEY = "ofischi_tr_pending_v1";
 function trPendingLoad() { try {
     const a = JSON.parse(lsGet(TR_PENDING_KEY) || "[]");
-    return new Set(Array.isArray(a) ? a.filter(x => typeof x === "string").slice(0, 500) : []);
+    return new Set(Array.isArray(a) ? a.filter(x => typeof x === "string").slice(0, 3000) : []);
 }
 catch (_) {
     return new Set();
 } }
 function trPendingSave(set) { try {
     if (set.size)
-        lsSet(TR_PENDING_KEY, JSON.stringify([...set].slice(0, 500)));
+        lsSet(TR_PENDING_KEY, JSON.stringify([...set].slice(0, 3000)));
     else
         lsRemove(TR_PENDING_KEY);
 }
@@ -1493,6 +1493,59 @@ function trPendingRemove(keys) { const p = trPendingLoad(); let ch = false; for 
     if (p.delete(k))
         ch = true; if (ch)
     trPendingSave(p); }
+/* Çevirisi EKSİK alanları bulur (yalnızca bunlar çevrilir; çevrilmiş olanlara dokunulmaz, ağa istek gitmez).
+   Dönen anahtarlar bekleyen-çeviri kuyruğu biçimindedir. */
+function trDecide(tr, en, src, isName) {
+    tr = String(tr ?? "").trim();
+    en = String(en ?? "").trim();
+    if (!tr || src === tr)
+        return "none";
+    if (!/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) || (isName && /^[^\s]+$/.test(tr) && tr === tr.toLocaleUpperCase("tr-TR")))
+        return "none";
+    const hasEn = !!en && en !== tr && en !== translateFallbackSync(tr) && !/^(new product|new part|new category)$/i.test(en);
+    return hasEn ? "none" : "translate";
+}
+/* Çevirisi kaynakla aynı çıkan (marka adı gibi) genel/kategori metinleri tekrar "eksik" sayılmasın. */
+const TR_SAME_KEY = "ofischi_tr_same_v1";
+function trSameSet() { try {
+    const a = JSON.parse(lsGet(TR_SAME_KEY) || "[]");
+    return new Set(Array.isArray(a) ? a.filter(x => typeof x === "string") : []);
+}
+catch (_) {
+    return new Set();
+} }
+function trSameAdd(k) { try {
+    const set = trSameSet();
+    set.add(k);
+    lsSet(TR_SAME_KEY, JSON.stringify([...set].slice(-1000)));
+}
+catch (_) { } }
+function trMissingKeys(data) {
+    const same = trSameSet(), single = tr => !/\s/.test(tr) && tr === tr.toLocaleUpperCase("tr-TR");
+    const keys = [];
+    if (!data)
+        return keys;
+    for (const f of ["siteName", "subtitle", "eyebrow"]) {
+        const tr = String(data[f] ?? "").trim(), en = String(data[f + "_en"] ?? "").trim();
+        if (tr && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) && (!en || (en === tr && !same.has("general|" + f + "|" + tr))) && !(single(tr) && en === tr))
+            keys.push("general|" + f);
+    }
+    for (const c of (data.categories || [])) {
+        const tr = String(c.name ?? "").trim(), en = String(c.name_en ?? "").trim();
+        if (tr && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(tr) && (!en || /^new category$/i.test(en) || (en === tr && !same.has("cat|" + c.id + "|" + tr))) && !(single(tr) && en === tr))
+            keys.push("cat|" + c.id);
+        for (const it of (c.items || [])) {
+            if (trDecide(it.name, it.name_en, it.name_src, true) === "translate")
+                keys.push("item|" + c.id + "|" + it.id + "|name");
+            if (trDecide(it.desc, it.desc_en, it.desc_src, false) === "translate")
+                keys.push("item|" + c.id + "|" + it.id + "|desc");
+            for (const part of normalizePrice(it.price).parts)
+                if (trDecide(part.name, part.name_en, part.name_src, false) === "translate")
+                    keys.push("part|" + c.id + "|" + it.id + "|" + part.id);
+        }
+    }
+    return keys;
+}
 async function aiTranslateText(text, type = "general") { return (await aiTranslateResult(text, type)).text; }
 /* Çakışmasız önbellek anahtarı: metnin tamamının 2 x 32-bit karması + uzunluk (önceki btoa kısaltması uzun metinlerde çakışabiliyordu). */
 function cacheKey(text, type = "general") {
@@ -3906,6 +3959,27 @@ function App() {
                 autoTranslateMissing(dataRef.current, false).catch(() => { }); }, 15000);
         }
     }
+    /* "Eksik çevirileri tamamla": yalnızca İngilizcesi olmayan alanları kuyruğa alır ve çevirir; çevrilmişlere dokunmaz. */
+    function translateMissingNow() {
+        const d = dataRef.current;
+        if (!d)
+            return 0;
+        if (navigator.onLine === false) {
+            showToast("İnternet bağlantısı yok; bağlantı gelince tekrar deneyin.");
+            return 0;
+        }
+        const keys = trMissingKeys(d);
+        if (!keys.length) {
+            showToast("Eksik çeviri yok, hepsi çevrilmiş.");
+            return 0;
+        }
+        const set = trPendingLoad();
+        keys.forEach(k => set.add(k));
+        trPendingSave(set);
+        showToast(keys.length + " alan çevriliyor…");
+        autoTranslateMissing(d).catch(() => { });
+        return keys.length;
+    }
     async function autoTranslateRound(snapshot) {
         const snap = dataRef.current || snapshot;
         {
@@ -3937,6 +4011,14 @@ function App() {
                         jobs.push({ kind: "general", key: a1, tr, type: "general_" + a1, mode: "translate", pk });
                     else
                         trPendingRemove([pk]);
+                    continue;
+                }
+                if (kind === "cat") {
+                    const cc = (snap.categories || []).find(x => x.id === a1), tr = String(cc?.name ?? "").trim(), en = String(cc?.name_en ?? "").trim();
+                    if (!cc || !tr || (en && en !== tr && !/^new category$/i.test(en)))
+                        trPendingRemove([pk]);
+                    else
+                        jobs.push({ kind: "cat", cid: a1, tr, type: "category", mode: "translate", pk });
                     continue;
                 }
                 const cat = (snap.categories || []).find(x => x.id === a1), it = cat && (cat.items || []).find(x => x.id === b1);
@@ -3973,9 +4055,21 @@ function App() {
                kullanıcının kaydedilmemiş başka düzenlemeleri varsa onlar kaydedilmez, yalnız çeviriler geri-dönüş noktasına işlenir. */
             const applyJobs = (obj, done) => {
                 for (const j of done) {
+                    if (j.kind === "cat") {
+                        const cc = (obj.categories || []).find(x => x.id === j.cid);
+                        if (cc && String(cc.name ?? "").trim() === j.tr && j.en) {
+                            cc.name_en = j.en;
+                            if (j.en === j.tr)
+                                trSameAdd("cat|" + j.cid + "|" + j.tr);
+                        }
+                        continue;
+                    }
                     if (j.kind === "general") {
-                        if (String(obj[j.key] ?? "").trim() === j.tr && j.en)
+                        if (String(obj[j.key] ?? "").trim() === j.tr && j.en) {
                             obj[j.key + "_en"] = j.en;
+                            if (j.en === j.tr)
+                                trSameAdd("general|" + j.key + "|" + j.tr);
+                        }
                         continue;
                     }
                     const c = (obj.categories || []).find(x => x.id === j.cid);
@@ -5128,6 +5222,7 @@ function App() {
         const byType = {};
         issues.forEach(r => r.list.forEach(t => { (byType[t] = byType[t] || []).push(r); }));
         const pending = trPendingLoad().size;
+        const trMissing = trMissingKeys(data).length;
         const usedCats = categories.filter(c => (c.items || []).length).length;
         const recent = admRecentList().map(k => { const [cid, id] = k.split("/"); const c = categories.find(x => x.id === cid); const it = c && c.items.find(x => x.id === id); return c && it ? { c, it } : null; }).filter(Boolean).slice(0, 6);
         const now = new Date();
@@ -5148,8 +5243,9 @@ function App() {
                     React.createElement("div", { className: "adm-stat-s " + ((byType["Fotoğraf yok"] || []).length ? "adm-warn" : "adm-ok") }, (byType["Fotoğraf yok"] || []).length ? `${byType["Fotoğraf yok"].length} ürün fotoğrafsız` : "Fotoğrafsız ürün yok")),
                 React.createElement("div", { className: "adm-card adm-stat" },
                     React.createElement("div", { className: "adm-stat-l" }, "\u0130ngilizce \u00E7eviri"),
-                    React.createElement("div", { className: "adm-stat-v" }, pending ? pending : React.createElement(AdmIcon, { name: "check", size: 28 })),
-                    React.createElement("div", { className: "adm-stat-s " + (pending ? "adm-warn" : "adm-ok") }, pending ? "alan sırada bekliyor" : "Hepsi çevrildi")),
+                    React.createElement("div", { className: "adm-stat-v" }, trMissing ? trMissing : React.createElement(AdmIcon, { name: "check", size: 28 })),
+                    React.createElement("div", { className: "adm-stat-s " + (trMissing ? "adm-warn" : "adm-ok") }, trMissing ? "alanın çevirisi eksik" : "Hepsi çevrildi"),
+                    React.createElement("button", { type: "button", className: "adm-linkbtn", disabled: trBusy > 0, onClick: translateMissingNow }, trBusy > 0 ? "Çevriliyor… (" + trBusy + ")" : "Eksik çevirileri tamamla")),
                 React.createElement("div", { className: "adm-card adm-stat" },
                     React.createElement("div", { className: "adm-stat-l" }, "Kur (USD / EUR)"),
                     React.createElement("div", { className: "adm-stat-v" },
