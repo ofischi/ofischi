@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-zmCHESkGhYrRsfOf/y9mc5JXb6UCfNxz2PWUZmf7byQ=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-q38ioCZWvQMOTJrvflF5J3VgmXF4EDKckN0dR3loqiU=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -430,6 +430,20 @@ header{animation:luxuryEnter 1s cubic-bezier(.2,.75,.2,1) both}
 .adm-table tr.is-dropbad td{box-shadow:inset 0 3px 0 #B24A4A}
 body.adm-dragging{cursor:grabbing;user-select:none}
 
+/* Kategori yönetimi */
+.adm-catnote{margin:6px 0 16px;font-size:13px;line-height:1.5;max-width:720px}
+.adm-row-between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.adm-catlist{display:flex;flex-direction:column;gap:8px;max-width:860px}
+.adm-catrow{display:flex;align-items:center;gap:8px;background:var(--adm-card);border:1px solid var(--adm-line);border-radius:14px;padding:8px 10px}
+.adm-catrow.is-drop{box-shadow:0 0 0 3px var(--adm-accent,#C9A227);transform:scale(1.01);transition:transform .12s}
+.adm-catno{width:26px;text-align:center;font-size:12px;color:#7D786F;flex-shrink:0}
+.adm-catmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.adm-catname{font-weight:700;letter-spacing:.01em}
+.adm-catmain small{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adm-catbtns{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.adm-catadd{margin:14px 0 40px}
+@media (max-width:720px){.adm-catrow{flex-wrap:wrap}.adm-catmain{flex-basis:calc(100% - 80px)}.adm-catbtns{width:100%;justify-content:flex-end}}
+
 </style>
 <style id="admin-clean-final">
 .admin-panel-scroll{scrollbar-width:thin}
@@ -596,7 +610,7 @@ function sanitizeCatalogData(data) {
             clean.pdf[k] = safeShortText(clean.pdf[k], 200);
         clean.pdf.catalogTemplate = ["klasik", "vitrin", "izgara", "dergi"].includes(clean.pdf.catalogTemplate) ? clean.pdf.catalogTemplate : "vitrin";
         const lay = {}, srcLay = (clean.pdf.categoryLayouts && typeof clean.pdf.categoryLayouts === "object") ? clean.pdf.categoryLayouts : {};
-        for (const fc of FIXED_CATEGORIES) {
+        for (const fc of (clean.categories || [])) {
             const v = srcLay[fc.id];
             if (["table", "sizes", "models"].includes(v))
                 lay[fc.id] = v;
@@ -608,7 +622,8 @@ function sanitizeCatalogData(data) {
     if (clean.pdf?.coverLogo)
         clean.pdf.coverLogo.src = safeAssetSource(clean.pdf.coverLogo.src) || DEFAULT_PDF_COVER_LOGO;
     for (const c of clean.categories || []) {
-        /* ad ve İngilizce karşılık normalizeCategories tarafından sabit listeden atanır */
+        c.name = safeShortText(c.name, 120);
+        c.name_en = safeShortText(c.name_en, 120);
         c.coverImage = safeAssetSource(c.coverImage) || null;
         for (const item of c.items || []) {
             item.id = safeId(item.id) || uid();
@@ -812,7 +827,7 @@ function defaultData() {
         logo: { src: "./ofischi_logo_transparent.png", size: 110, width: 110, height: 110, position: "center" },
         theme: { ...THEMES[0], bgImage: null }, cardImgSize: 180,
         currency: { selected: "TRY", usdRate: 40, eurRate: 47 },
-        categories: createDefaultCategories().map(c => ({ ...c, coverImage: PRELOADED_COVERS[c.id] || null, items: JSON.parse(JSON.stringify(PRELOADED_ITEMS[c.id] || [])) })), language: "TR",
+        categoriesCustom: true, categories: createDefaultCategories().map(c => ({ ...c, coverImage: PRELOADED_COVERS[c.id] || null, items: JSON.parse(JSON.stringify(PRELOADED_ITEMS[c.id] || [])) })), language: "TR",
         pdf: { title: "2026-2 TL FİYAT LİSTESİ", footer: "www.ofishci.com", showPageNumbers: true, website: "www.ofishci.com", useCategoryCovers: true, catalogTitle: "ÜRÜN KATALOĞU", catalogTemplate: "vitrin", coverLogo: { src: DEFAULT_PDF_COVER_LOGO } }
     };
 }
@@ -887,7 +902,35 @@ function normalizeItem(item) {
         dims_en: typeof item.dims_en === "string" ? item.dims_en : "",
         image: item.image || null, images: Array.isArray(item.images) ? item.images.filter(Boolean) : (item.image ? [item.image] : []), price: normalizePrice(item.price) };
 }
-function normalizeCategories(categories) {
+function normalizeCategories(categories, custom = false) {
+    /* KULLANICI KATEGORİLERİ: kayıt "categoriesCustom" ise liste olduğu gibi (eklenen / silinen / yeniden adlandırılan / sıralanan)
+       korunur; yalnızca kimlik, ad ve ürünler güvenli hale getirilir. Eski kayıtlar bir kez sabit listeden dönüştürülür. */
+    if (custom) {
+        const out = [], ids = new Set(), seenItems = new Set();
+        for (const c of (Array.isArray(categories) ? categories : [])) {
+            if (!c || typeof c !== "object")
+                continue;
+            let id = safeId(c.id) || ("kat-" + uid());
+            if (ids.has(id))
+                id = "kat-" + uid();
+            ids.add(id);
+            const fc = FIXED_CATEGORIES.find(f => f.id === id);
+            let name = safeShortText(typeof c.name === "string" ? c.name : (c.name?.tr || ""), 120).trim();
+            if (!name)
+                name = fc ? fc.name : "Adsız Kategori";
+            const nameEn = typeof c.name_en === "string" ? safeShortText(c.name_en, 120).trim() : (fc && name === fc.name ? fc.name_en : "");
+            const cat = { id, name, name_en: nameEn, coverImage: c.coverImage || null, items: [] };
+            for (const raw of (Array.isArray(c.items) ? c.items : [])) {
+                const it = normalizeItem(raw);
+                if (seenItems.has(it.id))
+                    it.id = uid();
+                seenItems.add(it.id);
+                cat.items.push(it);
+            }
+            out.push(cat);
+        }
+        return out;
+    }
     /* Her zaman sabit listeyi, sabit sırayla döndürür. Mevcut ürünler ve kapak görselleri eşleşen kategoriye taşınır;
        hiçbir ürün kaybolmaz (eşleşmeyenler PROJE VE AKSESUAR'a gider). */
     const out = createDefaultCategories(), byId = new Map(out.map(c => [c.id, c])), seen = new Set();
@@ -936,7 +979,8 @@ function normalizeData(input) {
     r.pdf = { ...base.pdf, ...(input.pdf || {}) };
     if (!r.pdf.coverLogo || !r.pdf.coverLogo.src)
         r.pdf.coverLogo = { src: DEFAULT_PDF_COVER_LOGO };
-    r.categories = normalizeCategories(input.categories);
+    r.categories = normalizeCategories(input.categories, input.categoriesCustom === true);
+    r.categoriesCustom = true;
     r.language = input.language === "EN" ? "EN" : "TR";
     return r;
 }
@@ -3653,8 +3697,8 @@ function App() {
         return null;
     } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreview, setPdfPreview] = useState(null), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
     /* Yeni yönetim paneli durumu */
-    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false), [admDrag, setAdmDrag] = useState(null);
-    const admBaseRef = useRef(null);
+    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false), [admDrag, setAdmDrag] = useState(null), [admCatDrag, setAdmCatDrag] = useState(null);
+    const admBaseRef = useRef(null), catRenameTimer = useRef(null);
     useEffect(() => { document.documentElement.lang = language.toLowerCase(); }, [language]);
     useEffect(() => {
         /* Kart galerileri hepsi aynı anda değil, sırayla ve sakin bir tempoda döner.
@@ -5561,9 +5605,177 @@ function App() {
                         c.items.length,
                         " \u00FCr\u00FCn"))))));
     }
+    /* ================= KATEGORİLER: ekle · yeniden adlandır · sürükleyerek sırala · sil ================= */
+    function catAdd() {
+        const id = "kat-" + uid();
+        updateData(x => { x.categories = [...x.categories, { id, name: "Yeni Kategori", name_en: "", items: [], coverImage: null }]; });
+        trPendingAdd("cat|" + id);
+        showToast("Kategori eklendi. Adını yazın; İngilizcesi otomatik çevrilir.");
+        setTimeout(() => {
+            try {
+                const el = document.querySelector('[data-adm-catname="' + id + '"]');
+                if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    el.focus({ preventScroll: true });
+                    el.select();
+                }
+            }
+            catch (_) { }
+        }, 120);
+    }
+    function catRename(id, value) {
+        const v = String(value).slice(0, 120);
+        updateData(x => { x.categories = x.categories.map(c => c.id === id ? { ...c, name: v, name_en: "" } : c); });
+        if (catRenameTimer.current)
+            clearTimeout(catRenameTimer.current);
+        if (!v.trim()) {
+            trPendingRemove(["cat|" + id]);
+            return;
+        }
+        trPendingAdd("cat|" + id);
+        /* Yazmayı bırakınca (0,8 sn) yalnızca bu kategori çevrilir. */
+        catRenameTimer.current = setTimeout(() => {
+            if (dataRef.current)
+                autoTranslateMissing(dataRef.current).catch(() => { });
+        }, 800);
+    }
+    function catMoveTo(fromId, toId) {
+        if (fromId === toId)
+            return;
+        updateData(x => {
+            const l = [...x.categories], i = l.findIndex(c => c.id === fromId), j = l.findIndex(c => c.id === toId);
+            if (i < 0 || j < 0)
+                return;
+            const [m] = l.splice(i, 1);
+            l.splice(j, 0, m);
+            x.categories = l;
+        });
+    }
+    function catStep(id, dir) {
+        updateData(x => {
+            const l = [...x.categories], i = l.findIndex(c => c.id === id), j = i + dir;
+            if (i < 0 || j < 0 || j >= l.length)
+                return;
+            [l[i], l[j]] = [l[j], l[i]];
+            x.categories = l;
+        });
+    }
+    function catDelete(id) {
+        const c = categories.find(x => x.id === id);
+        if (!c)
+            return;
+        if (categories.length <= 1) {
+            showToast("Son kategori silinemez. Önce yeni bir kategori ekleyin.");
+            return;
+        }
+        const n = c.items.length;
+        const msg = n ? "\u201C" + c.name + "\u201D kategorisi ve içindeki " + n + " ürün silinecek.\n\nEmin misiniz?\n(Kaydet'e basmadan panelden çıkıp değişiklikleri atarsanız geri gelir.)" : "\u201C" + c.name + "\u201D kategorisi silinsin mi?";
+        if (!confirm(msg))
+            return;
+        updateData(x => {
+            x.categories = x.categories.filter(k => k.id !== id);
+            if (x.pdf && x.pdf.categoryLayouts)
+                delete x.pdf.categoryLayouts[id];
+        });
+        trPendingRemove(["cat|" + id]);
+        if (admCat === id)
+            setAdmCat("");
+        setAdmSel(prev => { const nx = new Set([...prev].filter(k => !k.startsWith(id + "/"))); return nx; });
+        showToast("Kategori silindi. Kalıcı olması için \u201CKaydet ve yayınla\u201D.");
+    }
+    function catDragStart(e, c) {
+        if (e.button !== undefined && e.button !== 0)
+            return;
+        e.preventDefault();
+        e.stopPropagation();
+        let over = null, lastY = e.clientY, raf = 0;
+        setAdmCatDrag({ from: c.id, over: null });
+        const scroller = document.querySelector(".adm-content");
+        const tick = () => {
+            if (!scroller)
+                return;
+            const r = scroller.getBoundingClientRect();
+            const edge = 80;
+            if (lastY < r.top + edge)
+                scroller.scrollTop -= Math.ceil((r.top + edge - lastY) / 6);
+            else if (lastY > r.bottom - edge)
+                scroller.scrollTop += Math.ceil((lastY - (r.bottom - edge)) / 6);
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        const move = ev => {
+            lastY = ev.clientY;
+            const el = document.elementFromPoint(ev.clientX, ev.clientY);
+            const t = el && el.closest ? el.closest("[data-adm-cat]") : null;
+            const id = t ? t.getAttribute("data-adm-cat") : null;
+            if (id !== over) {
+                over = id;
+                setAdmCatDrag({ from: c.id, over: id });
+            }
+            ev.preventDefault();
+        };
+        const end = () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", end);
+            window.removeEventListener("pointercancel", end);
+            setAdmCatDrag(null);
+            if (!over || over === c.id)
+                return;
+            catMoveTo(c.id, over);
+            showToast("Kategori sırası değişti. Kalıcı olması için \u201CKaydet ve yayınla\u201D.");
+        };
+        window.addEventListener("pointermove", move, { passive: false });
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+    }
+    function admRenderCategories() {
+        const cls = id => !admCatDrag ? "" : (admCatDrag.from === id ? " is-dragging" : admCatDrag.over === id ? " is-drop" : "");
+        return React.createElement("div", { className: "adm-page" },
+            React.createElement("div", { className: "adm-eyebrow" }, "Kategoriler"),
+            React.createElement("div", { className: "adm-row-between" },
+                React.createElement("h1", { className: "adm-h1" }, "Kategorileri d\u00FCzenleyin"),
+                React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold", onClick: catAdd },
+                    React.createElement(AdmIcon, { name: "plus", size: 16 }),
+                    "Kategori ekle")),
+            React.createElement("p", { className: "adm-muted adm-catnote" },
+                "Sol taraftaki tutama\u00E7tan ",
+                React.createElement("b", null, "s\u00FCr\u00FCkleyerek"),
+                " s\u0131ray\u0131 de\u011Fi\u015Ftirin; ad\u0131 do\u011Frudan yazarak de\u011Fi\u015Ftirin. S\u0131ra ve adlar sitede, fiyat listesinde ve katalogda ayn\u0131 olur. \u0130ngilizce kar\u015F\u0131l\u0131klar otomatik \u00E7evrilir."),
+            React.createElement("div", { className: "adm-catlist" }, categories.map((c, i) => {
+                const last = categories.length <= 1;
+                return React.createElement("div", { key: c.id, "data-adm-cat": c.id, className: "adm-catrow" + cls(c.id) },
+                    React.createElement("button", { type: "button", className: "adm-grip", "aria-label": (c.name || "Kategori") + " sırasını sürükleyerek değiştir", title: "S\u00FCr\u00FCkleyerek s\u0131rala", onPointerDown: e => catDragStart(e, c), onKeyDown: e => {
+                            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                                e.preventDefault();
+                                catStep(c.id, e.key === "ArrowUp" ? -1 : 1);
+                            }
+                        } },
+                        React.createElement(AdmIcon, { name: "grip", size: 16 })),
+                    React.createElement("span", { className: "adm-catno" }, i + 1),
+                    React.createElement("div", { className: "adm-catmain" },
+                        React.createElement("input", { className: "adm-input adm-catname", "data-adm-catname": c.id, "aria-label": "Kategori adı " + (i + 1), value: c.name, maxLength: 120, onChange: e => catRename(c.id, e.target.value), placeholder: "Kategori ad\u0131" }),
+                        React.createElement("small", { className: "adm-muted" },
+                            c.name_en ? "EN: " + c.name_en : (c.name.trim() ? "İngilizcesi çevriliyor…" : ""),
+                            " \u00B7 ",
+                            c.items.length,
+                            " \u00FCr\u00FCn")),
+                    React.createElement("div", { className: "adm-catbtns" },
+                        React.createElement("button", { type: "button", className: "adm-iconbtn adm-hide-sm", "aria-label": "Yukar\u0131 ta\u015F\u0131", disabled: i === 0, onClick: () => catStep(c.id, -1) },
+                            React.createElement(AdmIcon, { name: "up", size: 16 })),
+                        React.createElement("button", { type: "button", className: "adm-iconbtn adm-hide-sm", "aria-label": "A\u015Fa\u011F\u0131 ta\u015F\u0131", disabled: i === categories.length - 1, onClick: () => catStep(c.id, 1) },
+                            React.createElement(AdmIcon, { name: "down", size: 16 })),
+                        React.createElement("button", { type: "button", className: "adm-btn", onClick: () => { setAdmCat(c.id); admGo("urunler"); } }, "\u00DCr\u00FCnler"),
+                        React.createElement("button", { type: "button", className: "adm-iconbtn adm-danger-btn", "aria-label": (c.name || "Kategori") + " kategorisini sil", disabled: last, onClick: () => catDelete(c.id) },
+                            React.createElement(AdmIcon, { name: "trash", size: 16 }))));
+            })),
+            React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold adm-catadd", onClick: catAdd },
+                React.createElement(AdmIcon, { name: "plus", size: 16 }),
+                "Kategori ekle"));
+    }
     function admShell(legacy) {
         const NAV = [["panel", "Genel Bakış", "grid"], ["urunler", "Ürünler", "box"], ["fiyat", "Fiyatlar & Kurlar", "tag"], ["katalog", "Kategoriler & Kapaklar", "list"], ["pdf", "PDF & Katalog", "file"], ["genel", "Görünüm & Ayarlar", "palette"]];
-        const isNew = adminSection === "panel" || adminSection === "urunler";
+        const isNew = adminSection === "panel" || adminSection === "urunler" || adminSection === "katalog";
         return React.createElement("div", { className: "adm-shell", role: "dialog", "aria-modal": "true", "aria-label": "Y\u00F6netim Paneli", style: { accentColor: theme.accent, "--adm-accent": theme.accent, "--adm-ink": ink } },
             React.createElement("nav", { className: "adm-side", "aria-label": "Y\u00F6netim men\u00FCs\u00FC" },
                 React.createElement("div", { className: "adm-brand" },
@@ -5606,6 +5818,7 @@ function App() {
                 React.createElement("div", { className: "adm-content" },
                     adminSection === "panel" && admRenderDashboard(),
                     adminSection === "urunler" && admRenderProducts(),
+                    adminSection === "katalog" && admRenderCategories(),
                     React.createElement("div", { className: "adm-legacy" + (isNew ? " hidden" : "") }, legacy))),
             admRenderEditor(),
             admRenderAddPicker());
