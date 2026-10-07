@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-A0G+0ZWNSA2fPOMIzXdq0ac/YdUQcESDdua0BPsKXGk=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-c73JA2wcCvir7uXoBEuL7Xpw46dXc8smGRld722vNS8=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1255,6 +1255,27 @@ function preserveTechnicalTokens(source, target) {
   3) Safe fallback to Turkish.
   No secret API key is embedded.
 */
+/* Çeviri yardımcıları: hiçbir adım sonsuza kadar takılı kalmaz. */
+function trTimeout(promise, ms) {
+    return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("timeout")), ms);
+        Promise.resolve(promise).then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+    });
+}
+/* Cihaz içi dil modeli bazen yorum ekler ("Elbette, işte çeviri:" gibi); makul uzunlukta tek parça çıktıyı kabul et. */
+function trSaneOutput(source, out) {
+    const o = String(out || "").trim();
+    return !!o && o.length <= source.length * 3 + 40 && (/\n/.test(source) || !/\n/.test(o));
+}
+/* Çeviri servisi dakikada 60 istekle sınırlı: bütçe dolmaya yakınsa pencere yenilenene kadar bekler (hata vermez). */
+async function trWaitBudget() {
+    for (let i = 0; i < 70; i++) {
+        const st = rateState.get("translation");
+        if (!st || Date.now() - st.startedAt >= 60000 || st.count < 52)
+            return;
+        await new Promise(r => setTimeout(r, 1000));
+    }
+}
 async function aiTranslateResult(text, type = "general") {
     if (!text || !text.trim())
         return { text: "", good: false };
@@ -1262,10 +1283,10 @@ async function aiTranslateResult(text, type = "general") {
     /* 0) Chrome'un cihaz içi Translator API'si: ağ trafiği yok, anında. Model yüklüyse kullanılır. */
     try {
         if (window.Translator && typeof window.Translator.create === "function" && typeof window.Translator.availability === "function") {
-            const av = await window.Translator.availability({ sourceLanguage: "tr", targetLanguage: "en" });
+            const av = await trTimeout(window.Translator.availability({ sourceLanguage: "tr", targetLanguage: "en" }), 3000);
             if (av === "available") {
-                window.__ofTranslator = window.__ofTranslator || await window.Translator.create({ sourceLanguage: "tr", targetLanguage: "en" });
-                const out = await window.__ofTranslator.translate(source);
+                window.__ofTranslator = window.__ofTranslator || await trTimeout(window.Translator.create({ sourceLanguage: "tr", targetLanguage: "en" }), 6000);
+                const out = await trTimeout(window.__ofTranslator.translate(source), 8000);
                 if (out && out.trim())
                     return { text: out.trim(), good: true };
             }
@@ -1276,14 +1297,14 @@ async function aiTranslateResult(text, type = "general") {
     }
     /* Browser AI APIs where available */
     try {
-        if (window.LanguageModel && typeof window.LanguageModel.create === "function") {
-            const session = await window.LanguageModel.create({
+        if (window.LanguageModel && typeof window.LanguageModel.create === "function" && typeof window.LanguageModel.availability === "function" && (await trTimeout(window.LanguageModel.availability(), 3000)) === "available") {
+            const session = await trTimeout(window.LanguageModel.create({
                 systemPrompt: "You are a professional Turkish-to-English translator for an office furniture catalog. " +
                     "Translate naturally, not word-for-word. Preserve brand names, product codes, numbers, dimensions, units and technical specifications exactly. " +
                     "Use concise premium catalog English. Return translation only."
-            });
-            const result = await session.prompt(source);
-            if (result && result.trim())
+            }), 6000);
+            const result = await trTimeout(session.prompt(source), 12000);
+            if (trSaneOutput(source, result))
                 return { text: preserveTechnicalTokens(source, result.trim()), good: true };
         }
     }
@@ -1291,12 +1312,12 @@ async function aiTranslateResult(text, type = "general") {
         console.warn("Browser AI unavailable:", e);
     }
     try {
-        if (window.ai && window.ai.languageModel && typeof window.ai.languageModel.create === "function") {
-            const session = await window.ai.languageModel.create({
+        if (window.ai && window.ai.languageModel && typeof window.ai.languageModel.create === "function" && typeof window.ai.languageModel.capabilities === "function" && (await trTimeout(window.ai.languageModel.capabilities(), 3000))?.available === "readily") {
+            const session = await trTimeout(window.ai.languageModel.create({
                 systemPrompt: "Translate Turkish to professional English for an office furniture catalog. Preserve brands, codes, dimensions, numbers and units. Translation only."
-            });
-            const result = await session.prompt(source);
-            if (result && result.trim())
+            }), 6000);
+            const result = await trTimeout(session.prompt(source), 12000);
+            if (trSaneOutput(source, result))
                 return { text: preserveTechnicalTokens(source, result.trim()), good: true };
         }
     }
@@ -1350,7 +1371,14 @@ async function aiTranslateResult(text, type = "general") {
         const translationSource = safeText(source, SECURITY_LIMITS.text);
         await enforceClientRateLimit("translation", 60, 60 * 1000);
         const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=tr&tl=en&dt=t&q=" + encodeURIComponent(translationSource);
-        const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, cache: "force-cache" });
+        const ctl = typeof AbortController === "function" ? new AbortController() : null, abortTimer = setTimeout(() => ctl && ctl.abort(), 10000);
+        let response;
+        try {
+            response = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, cache: "force-cache", signal: ctl ? ctl.signal : undefined });
+        }
+        finally {
+            clearTimeout(abortTimer);
+        }
         if (response.ok) {
             const json = await response.json();
             const translated = Array.isArray(json?.[0]) ? json[0].map(x => Array.isArray(x) ? x[0] : "").join("").trim() : "";
@@ -3846,13 +3874,41 @@ function App() {
         window.addEventListener("online", run);
         return () => { clearTimeout(tm); window.removeEventListener("online", run); };
     }, [!!data]);
-    async function autoTranslateMissing(snapshot) {
-        if (autoTranslateRunning.current || !snapshot)
+    /* İngilizce çeviri çalıştırıcısı. Kaydet'ten hemen sonra başlar; çalışırken yeni kayıt gelirse (veya iş kaldıysa)
+       kuyruk bitene kadar tekrar döner. Aynı anda 4 istek; dakikada 60 sınırını bekleyerek aşmaz. */
+    const autoTranslateAgain = useRef(false), autoTranslateRetries = useRef(0), [trBusy, setTrBusy] = useState(0);
+    async function autoTranslateMissing(snapshot, fresh = true) {
+        if (!snapshot)
             return;
-        if (!consumeClientRateLimit("auto-translate", 6, 5 * 60 * 1000))
+        if (fresh)
+            autoTranslateRetries.current = 0;
+        if (autoTranslateRunning.current) {
+            autoTranslateAgain.current = true;
             return;
+        }
         autoTranslateRunning.current = true;
+        let rounds = 0;
         try {
+            do {
+                autoTranslateAgain.current = false;
+                await autoTranslateRound(snapshot);
+                rounds++;
+            } while (autoTranslateAgain.current && rounds < 6);
+        }
+        finally {
+            autoTranslateRunning.current = false;
+            setTrBusy(0);
+        }
+        /* Başarısız kalanlar (çevrimdışı / servis meşgul) 15 sn arayla en fazla 3 kez daha denenir. */
+        if (trPendingLoad().size && navigator.onLine !== false && autoTranslateRetries.current < 3) {
+            autoTranslateRetries.current++;
+            setTimeout(() => { if (dataRef.current)
+                autoTranslateMissing(dataRef.current, false).catch(() => { }); }, 15000);
+        }
+    }
+    async function autoTranslateRound(snapshot) {
+        const snap = dataRef.current || snapshot;
+        {
             /* Çeviri sadece YENİ veya DEĞİŞEN Türkçe metinler için yapılır. Her alanın çevrildiği Türkçe kaynak metin
                (name_src/desc_src/part.name_src) saklanır; kaynak değişmediyse alan bir daha çevrilmez, ağa hiç istek gitmez. */
             const isModelText = (tr) => /^[^\s]+$/.test(tr) && tr === tr.toLocaleUpperCase("tr-TR");
@@ -3876,14 +3932,14 @@ function App() {
             for (const pk of trPendingLoad()) {
                 const [kind, a1, b1, c1] = pk.split("|");
                 if (kind === "general") {
-                    const tr = String(snapshot[a1] ?? "").trim();
+                    const tr = String(snap[a1] ?? "").trim();
                     if (tr)
                         jobs.push({ kind: "general", key: a1, tr, type: "general_" + a1, mode: "translate", pk });
                     else
                         trPendingRemove([pk]);
                     continue;
                 }
-                const cat = (snapshot.categories || []).find(x => x.id === a1), it = cat && (cat.items || []).find(x => x.id === b1);
+                const cat = (snap.categories || []).find(x => x.id === a1), it = cat && (cat.items || []).find(x => x.id === b1);
                 if (!it) {
                     trPendingRemove([pk]);
                     continue;
@@ -3912,20 +3968,17 @@ function App() {
             }
             if (!jobs.length)
                 return;
-            /* Sonuçları güncel veriye yazar; sadece Türkçe kaynağı hâlâ aynı olan alanlara (arada düzenlenenler korunur).
-               Panel açıkken kalıcı kayıt bir sonraki Kaydet'te yapılır. */
-            const applyBatch = async (done) => {
-                const prev = dataRef.current;
-                if (!prev || !done.length)
-                    return;
-                const next = JSON.parse(JSON.stringify(prev));
+            /* Sonuçları EN GÜNCEL veriye yazar (kullanıcı arada başka şey düzenlese de parti atlanmaz); sadece Türkçe kaynağı
+               hâlâ aynı olan alanlara yazılır. Çeviriler panel açıkken de HEMEN kalıcı kaydedilir:
+               kullanıcının kaydedilmemiş başka düzenlemeleri varsa onlar kaydedilmez, yalnız çeviriler geri-dönüş noktasına işlenir. */
+            const applyJobs = (obj, done) => {
                 for (const j of done) {
                     if (j.kind === "general") {
-                        if (String(next[j.key] ?? "").trim() === j.tr && j.en)
-                            next[j.key + "_en"] = j.en;
+                        if (String(obj[j.key] ?? "").trim() === j.tr && j.en)
+                            obj[j.key + "_en"] = j.en;
                         continue;
                     }
-                    const c = (next.categories || []).find(x => x.id === j.cid);
+                    const c = (obj.categories || []).find(x => x.id === j.cid);
                     if (!c)
                         continue;
                     const it = (c.items || []).find(x => x.id === j.iid);
@@ -3948,51 +4001,84 @@ function App() {
                         it.price = pr;
                     }
                 }
-                if (dataRef.current !== prev)
-                    return; /* arada veri değiştiyse bu partiyi atla, sonraki kayıtta tekrar denenir */
+            };
+            const applyBatch = async (done) => {
+                const prev = dataRef.current;
+                if (!prev || !done.length)
+                    return;
+                const baseRef = (typeof admBaseRef !== "undefined") ? admBaseRef : null;
+                const wasClean = !panelOpenRef.current || !panelSnapshot.current || (baseRef ? prev === baseRef.current : JSON.stringify(prev) === JSON.stringify(panelSnapshot.current));
+                const next = JSON.parse(JSON.stringify(prev));
+                applyJobs(next, done);
+                dataRef.current = next;
                 setData(next);
-                trPendingRemove(done.map(j => j.pk).filter(Boolean));
-                if (!panelOpenRef.current)
-                    await saveLocal(next).catch(() => { });
+                let toSave = next;
+                if (panelOpenRef.current && panelSnapshot.current) {
+                    if (wasClean) {
+                        panelSnapshot.current = JSON.parse(JSON.stringify(next));
+                        if (baseRef)
+                            baseRef.current = next;
+                    }
+                    else {
+                        const snapCopy = JSON.parse(JSON.stringify(panelSnapshot.current));
+                        applyJobs(snapCopy, done);
+                        panelSnapshot.current = snapCopy;
+                        toSave = snapCopy;
+                    }
+                }
+                try {
+                    await saveLocal(toSave);
+                    trPendingRemove(done.map(j => j.pk).filter(Boolean));
+                }
+                catch (_) { /* kayıt başarısızsa anahtarlar kuyrukta kalır, tekrar denenir */ }
             };
             /* Ağ isteği gerektirmeyen "işaretle" kayıtları tek seferde yazılır. */
             await applyBatch(jobs.filter(j => j.mode === "mark"));
-            /* Gerçek çeviri: servis dakikada 60 istekle sınırlı; ~1,1 sn arayla ilerler, 30 sonuçta bir kaydeder.
-               Art arda 6 hata olursa (çevrimdışı) durur; kalanlar sonraki kayıtta denenir. */
             const queue = jobs.filter(j => j.mode === "translate");
-            let batch = [], fails = 0, lastApply = Date.now();
-            for (const job of queue) {
-                let cached = false;
-                try {
-                    cached = !!lsGet(cacheKey(job.tr, job.type));
-                }
-                catch (_) { }
-                try {
-                    const r = await translateCachedResult(job.tr, job.type);
-                    if (r.good && r.text && r.text.trim()) {
-                        batch.push({ ...job, en: r.text.trim() });
-                        fails = 0;
-                    }
-                    else
-                        fails++;
-                }
-                catch (_) {
-                    fails++;
-                }
-                if (fails >= 6)
-                    break;
-                if (batch.length >= 30 || (batch.length && Date.now() - lastApply > 3000)) {
-                    await applyBatch(batch);
+            if (!queue.length)
+                return;
+            setTrBusy(queue.length);
+            let batch = [], fails = 0, idx = 0, doneN = 0, lastApply = Date.now(), stop = false;
+            const flushBatch = async (force) => {
+                if (batch.length && (force || batch.length >= 20 || Date.now() - lastApply > 1200)) {
+                    const b = batch;
                     batch = [];
                     lastApply = Date.now();
+                    await applyBatch(b);
                 }
-                if (!cached)
-                    await new Promise(r => setTimeout(r, 1100));
-            }
-            await applyBatch(batch);
-        }
-        finally {
-            autoTranslateRunning.current = false;
+            };
+            const worker = async () => {
+                while (!stop && idx < queue.length) {
+                    const job = queue[idx++];
+                    let cached = false;
+                    try {
+                        cached = !!lsGet(cacheKey(job.tr, job.type));
+                    }
+                    catch (_) { }
+                    if (!cached)
+                        await trWaitBudget();
+                    try {
+                        const r = await translateCachedResult(job.tr, job.type);
+                        if (r.good && r.text && r.text.trim()) {
+                            batch.push({ ...job, en: r.text.trim() });
+                            fails = 0;
+                        }
+                        else if (++fails >= 6)
+                            stop = true;
+                    }
+                    catch (_) {
+                        if (++fails >= 6)
+                            stop = true;
+                    }
+                    doneN++;
+                    setTrBusy(Math.max(0, queue.length - doneN));
+                    await flushBatch(false);
+                    if (!cached)
+                        await new Promise(r => setTimeout(r, 120));
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
+            await flushBatch(true);
         }
     }
     function showToast(message) { setToast(message); if (toastTimerRef.current)
@@ -5388,7 +5474,8 @@ function App() {
                 React.createElement("div", { className: "adm-status" },
                     React.createElement("div", null,
                         React.createElement("span", { className: "adm-dot" + (admDirty ? " is-warn" : "") }),
-                        admDirty ? "Kaydedilmemiş değişiklik var" : "Her şey kaydedildi"),
+                        admDirty ? "Kaydedilmemiş değişiklik var" : "Her şey kaydedildi",
+                        trBusy > 0 ? " · İngilizce çeviri yapılıyor (" + trBusy + ")" : ""),
                     React.createElement("small", null, "De\u011Fi\u015Fiklikler \u201CKaydet ve yay\u0131nla\u201D ile bu cihaza kaydedilir."))),
             React.createElement("div", { className: "adm-main" },
                 React.createElement("header", { className: "adm-top" },
