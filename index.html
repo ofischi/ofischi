@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Z31DCXwOF7sO74vdL9qAkuX6sc96Ly1ZCRqILaophcE=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-tSdSIPnPJPMh5rZFD/Ikk/Ckq3XGH5uZ5TmEuYK4u5Y=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1176,6 +1176,87 @@ function normalizeData(input) {
 /* Safe image loader: keep the real URL immediately visible. Browser HTTP cache + lazy loading handle repeat downloads. */
 function getCachedImageObjectUrl(src) {
     return Promise.resolve(src);
+}
+/* ===== Açık / koyu tema uyumu =====
+   themeLuminance: hex rengin parlaklığı. fixAccentContrast: vurgu rengi (fiyat, etiket) kart/zemin üzerinde okunmuyorsa
+   zemin açıksa koyulaştırılır, koyuysa açılır. AdaptiveLogo: varsayılan (beyaz yazılı) logo açık zeminde görünmezdi;
+   açık temada beyaz kısımlar koyu mürekkep rengine çevrilir (altın kısım aynı kalır). */
+function themeLuminance(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+    if (!m)
+        return 0;
+    const ch = [0, 2, 4].map(i => { const v = parseInt(m[1].slice(i, i + 2), 16) / 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
+    return .2126 * ch[0] + .7152 * ch[1] + .0722 * ch[2];
+}
+function themeContrast(a, b) { const x = themeLuminance(a), y = themeLuminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); }
+function fixAccentContrast(theme) {
+    try {
+        const acc = String(theme.accent || ""), bg = theme.bg, card = theme.card || theme.bg;
+        if (!/^#[0-9a-f]{6}$/i.test(acc) || !/^#[0-9a-f]{6}$/i.test(bg))
+            return theme;
+        const need = 3.2, light = themeLuminance(bg) > .4;
+        const ok = c => Math.min(themeContrast(c, bg), themeContrast(c, /^#[0-9a-f]{6}$/i.test(card) ? card : bg)) >= need;
+        if (ok(acc))
+            return theme;
+        const target = light ? [20, 20, 22] : [255, 255, 255];
+        const rgb = [0, 2, 4].map(i => parseInt(acc.slice(1 + i, 3 + i), 16));
+        let cur = acc;
+        for (let k = 1; k <= 24 && !ok(cur); k++) {
+            cur = "#" + rgb.map((v, i) => Math.round(v + (target[i] - v) * k * .06).toString(16).padStart(2, "0")).join("");
+        }
+        return { ...theme, accent: cur };
+    }
+    catch (_) {
+        return theme;
+    }
+}
+const __adaptiveLogoCache = new Map();
+function AdaptiveLogo({ src, light, ink, onError, ...props }) {
+    const isDefault = typeof src === "string" && /ofischi_logo_transparent/i.test(src);
+    const useAdapt = isDefault && light;
+    const key = useAdapt ? src + "|" + ink : "";
+    const [adapted, setAdapted] = React.useState(() => key && __adaptiveLogoCache.get(key) || null);
+    React.useEffect(() => {
+        if (!useAdapt) {
+            setAdapted(null);
+            return;
+        }
+        const hit = __adaptiveLogoCache.get(key);
+        if (hit) {
+            setAdapted(hit);
+            return;
+        }
+        let dead = false;
+        const im = new Image();
+        im.onload = () => {
+            try {
+                const W = Math.min(1400, im.naturalWidth || 1400), H = Math.max(1, Math.round(W * (im.naturalHeight || 1) / (im.naturalWidth || 1)));
+                const c = document.createElement("canvas");
+                c.width = W;
+                c.height = H;
+                const x = c.getContext("2d");
+                x.drawImage(im, 0, 0, W, H);
+                const d = x.getImageData(0, 0, W, H), px = d.data;
+                const m = /^#?([0-9a-f]{6})$/i.exec(ink || ""), r = m ? parseInt(m[1].slice(0, 2), 16) : 42, g = m ? parseInt(m[1].slice(2, 4), 16) : 32, b = m ? parseInt(m[1].slice(4, 6), 16) : 22;
+                for (let i = 0; i < px.length; i += 4) {
+                    if (px[i + 3] > 0 && Math.min(px[i], px[i + 1], px[i + 2]) > 170) {
+                        px[i] = r;
+                        px[i + 1] = g;
+                        px[i + 2] = b;
+                    }
+                }
+                x.putImageData(d, 0, 0);
+                const url = c.toDataURL("image/png");
+                __adaptiveLogoCache.set(key, url);
+                if (!dead)
+                    setAdapted(url);
+            }
+            catch (_) { }
+        };
+        im.src = src;
+        return () => { dead = true; };
+    }, [key]);
+    return React.createElement(CachedImage, { ...props, src: useAdapt && adapted ? adapted : src, onError });
 }
 function CachedImage({ src, ...props }) {
     const raw = safeAssetSource(src);
@@ -5216,7 +5297,7 @@ function App() {
         return qWords.every(w => tr.includes(w) || en.includes(w));
     }) : (activeCategory?.items || []).map(i => ({ ...i, categoryName: activeCategory.name, categoryName_en: activeCategory.name_en }));
     /* Marka adı çevrilmez: EN alanı yalnızca yöneticinin elle girdiği farklı bir değer varsa ve otomatik bozulma değilse kullanılır. */
-    const theme = data.theme, ink = inkOn(data.theme?.accent), currency = getCurrency(), siteName = data.siteName || data.siteName_en || "";
+    const theme = fixAccentContrast(data.theme), themeLight = themeLuminance(data.theme?.bg) > .4, ink = inkOn(theme?.accent), currency = getCurrency(), siteName = data.siteName || data.siteName_en || "";
     const subtitle = getText(language, data.subtitle, data.subtitle_en, data.subtitle);
     const eyebrow = getText(language, data.eyebrow, data.eyebrow_en, data.eyebrow);
     const categoryDisplay = c => getText(language, c.name, c.name_en, c.name);
@@ -6064,7 +6145,7 @@ function App() {
                     } }, placeholder: t(language, "search"), className: "search-input", style: { color: theme.text, background: theme.card + "f2" } }))),
         React.createElement("header", { className: "px-6 pt-28 pb-8 max-w-5xl mx-auto" },
             React.createElement("div", { onPointerDown: e => { if (e.pointerType === "mouse" && e.button !== 0)
-                    return; e.preventDefault(); startLogoLongPress(e); }, onPointerUp: cancelLogoLongPress, onPointerCancel: cancelLogoLongPress, onPointerLeave: cancelLogoLongPress, onContextMenu: e => e.preventDefault(), title: "", style: { width: "100%", display: "flex", justifyContent: data.logo.position === "left" ? "flex-start" : data.logo.position === "right" ? "flex-end" : "center", marginBottom: 18, cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "manipulation" } }, data.logo.src && !logoFailed ? React.createElement(CachedImage, { loading: "eager", decoding: "async", src: data.logo.src, onError: () => setLogoFailed(true), alt: siteName || "Logo", draggable: "false", style: { width: data.logo.width || data.logo.size || 110, height: data.logo.height || data.logo.size || 110, maxWidth: "70vw", objectFit: "contain", display: "block", pointerEvents: "none" } }) : React.createElement("div", { "aria-hidden": "true", style: { width: 64, height: 64, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, color: theme.accent, border: `1px solid ${theme.accent}55`, background: theme.accent + "14", pointerEvents: "none" } }, (siteName || "O").trim().charAt(0).toLocaleUpperCase("tr-TR"))),
+                    return; e.preventDefault(); startLogoLongPress(e); }, onPointerUp: cancelLogoLongPress, onPointerCancel: cancelLogoLongPress, onPointerLeave: cancelLogoLongPress, onContextMenu: e => e.preventDefault(), title: "", style: { width: "100%", display: "flex", justifyContent: data.logo.position === "left" ? "flex-start" : data.logo.position === "right" ? "flex-end" : "center", marginBottom: 18, cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "manipulation" } }, data.logo.src && !logoFailed ? React.createElement(AdaptiveLogo, { light: themeLight, ink: theme.text, loading: "eager", decoding: "async", src: data.logo.src, onError: () => setLogoFailed(true), alt: siteName || "Logo", draggable: "false", style: { width: data.logo.width || data.logo.size || 110, height: data.logo.height || data.logo.size || 110, maxWidth: "70vw", objectFit: "contain", display: "block", pointerEvents: "none" } }) : React.createElement("div", { "aria-hidden": "true", style: { width: 64, height: 64, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, color: theme.accent, border: `1px solid ${theme.accent}55`, background: theme.accent + "14", pointerEvents: "none" } }, (siteName || "O").trim().charAt(0).toLocaleUpperCase("tr-TR"))),
             React.createElement("div", { className: "text-center" },
                 React.createElement("div", { className: "text-[10px] font-bold tracking-[.28em] mb-2", style: { color: theme.accent } }, eyebrow),
                 React.createElement("h1", { className: "text-3xl font-bold leading-tight" }, siteName),
