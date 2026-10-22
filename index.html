@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Zg2L/q+CKCgYBWeXTaxVA9xNHfUOwuEXdOAS4gCkgEY=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-9o1LfId+Om9FVRhZ5j5SOyEz5hiC6kgkXPoLw/d5dgY=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -512,7 +512,10 @@ const SECURITY_LIMITS = Object.freeze({
 function safeText(value, max = SECURITY_LIMITS.text) {
     return String(value ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/[\u2028\u2029]/g, " ").slice(0, max);
 }
-function safeShortText(value, max = SECURITY_LIMITS.shortText) { return safeText(value, max).trim(); }
+/* SAFE_LIVE: yazarken (updateData) baştaki/sondaki boşluklar silinmez; aksi halde kullanıcı kelime arasına boşluk koyamaz.
+   Kaydetme / yükleme sırasında SAFE_LIVE kapalıdır ve metinler kırpılır. */
+let SAFE_LIVE = false;
+function safeShortText(value, max = SECURITY_LIMITS.shortText) { const t = safeText(value, max); return SAFE_LIVE ? t : t.trim(); }
 function safeSearchText(value) { return safeText(value, SECURITY_LIMITS.search).trim(); }
 function safeId(value) {
     const s = safeShortText(value, SECURITY_LIMITS.id);
@@ -1052,8 +1055,9 @@ function normalizeCategories(categories, custom = false) {
                 id = "kat-" + uid();
             ids.add(id);
             const fc = FIXED_CATEGORIES.find(f => f.id === id);
-            let name = safeShortText(typeof c.name === "string" ? c.name : (c.name?.tr || ""), 120).trim();
-            if (!name)
+            let name = safeShortText(typeof c.name === "string" ? c.name : (c.name?.tr || ""), 120);
+            if (!SAFE_LIVE) name = name.trim();
+            if (!name && !SAFE_LIVE)
                 name = fc ? fc.name : "Adsız Kategori";
             const nameEn = typeof c.name_en === "string" ? safeShortText(c.name_en, 120).trim() : (fc && name === fc.name ? fc.name_en : "");
             const cat = { id, name, name_en: nameEn, coverImage: c.coverImage || null, items: [] };
@@ -4380,7 +4384,9 @@ function App() {
                normalizeData tekrar varsayılan değeri yazar ve input sabitmiş gibi görünür. */
             const copy = JSON.parse(JSON.stringify(p));
             callback(copy);
-            const protectedCopy = sanitizeCatalogData(copy);
+            SAFE_LIVE = true;
+            let protectedCopy;
+            try { protectedCopy = sanitizeCatalogData(copy); } finally { SAFE_LIVE = false; }
             setSaved(false);
             /* Kalıcı kayıt yalnızca explicit Save ile yapılır. */
             return protectedCopy;
