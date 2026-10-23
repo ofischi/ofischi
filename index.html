@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Qa5Ajgtu7GOeEVIl7ZZ0AJ6hemGGi96wRaWkzE/ytQI=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-ZF+9S0ShlUrIBlN8pCk5t7olVTSO8i6XewVyM5TipGE=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -646,6 +646,8 @@ function sanitizeCatalogData(data) {
                 lay[fc.id] = v;
         }
         clean.pdf.categoryLayouts = lay;
+        clean.pdf.coverImage = safeAssetSource(clean.pdf.coverImage) || null;
+        clean.pdf.closingImage = safeAssetSource(clean.pdf.closingImage) || null;
         clean.pdf.showPageNumbers = !!clean.pdf.showPageNumbers;
         clean.pdf.useCategoryCovers = !!clean.pdf.useCategoryCovers;
     }
@@ -1010,7 +1012,7 @@ function defaultData() {
         theme: { ...THEMES[0], bgImage: null }, cardImgSize: 180,
         currency: { selected: "TRY", usdRate: 40, eurRate: 47 },
         categoriesCustom: true, categories: createDefaultCategories().map(c => ({ ...c, coverImage: PRELOADED_COVERS[c.id] || null, items: JSON.parse(JSON.stringify(PRELOADED_ITEMS[c.id] || [])) })), language: "TR",
-        pdf: { title: "2026-2 TL FİYAT LİSTESİ", footer: "www.ofishci.com", showPageNumbers: true, website: "www.ofishci.com", useCategoryCovers: true, catalogTitle: "ÜRÜN KATALOĞU", instagram: "", email: "", catalogTemplate: "vitrin", coverLogo: { src: DEFAULT_PDF_COVER_LOGO } }
+        pdf: { title: "2026-2 TL FİYAT LİSTESİ", footer: "www.ofishci.com", showPageNumbers: true, website: "www.ofishci.com", useCategoryCovers: true, catalogTitle: "ÜRÜN KATALOĞU", instagram: "", email: "", coverImage: null, closingImage: null, catalogTemplate: "vitrin", coverLogo: { src: DEFAULT_PDF_COVER_LOGO } }
     };
 }
 function priceNumber(value) {
@@ -2632,6 +2634,18 @@ function pdfProductBlock(data, category, item, lang, x, y, w, h, asset, id) {
     c += pdfTextOp(total, setX + T.setW / 2, mid - 9, isMoney ? 12.4 : 8.6, { align: "center", bold: true, maxWidth: T.setW - 8, maxLines: 1, color: isMoney ? [acc[0] * .72, acc[1] * .72, acc[2] * .72] : [0.45, 0.45, 0.45] });
     return c;
 }
+/* Kullanıcının yüklediği tam sayfa kapak / kapanış görseli: sayfayı kaplar (orantı korunur, taşan kısım kırpılır). */
+async function pdfFullPageImagePage(src) {
+    const key = pdfImageSource(src);
+    if (!key)
+        return null;
+    const asset = await pdfImageAsset(key, { max: 2400, quality: .9 });
+    if (!asset)
+        return null;
+    const L = PDF_LAYOUT, a = { ...asset, id: 1 }, images = new Map();
+    images.set("__fullPageImage__", a);
+    return { content: pdfRect(0, 0, L.W, L.H, [0, 0, 0]) + pdfDrawImageCover("Im1", a, 0, 0, L.W, L.H, .5), images, pageNo: null };
+}
 /* ===== KATALOG KAPANIŞ SAYFASI (taslak A: sade, kapakla aynı çerçeve) =====
    Logo + teşekkür + ikonlu iletişim satırları: telefon, web sitesi, Instagram, e-posta (boş olanlar gösterilmez).
    İkonlar PDF vektör komutlarıyla çizilir (görsel dosyası yok, her boyutta keskin). */
@@ -2684,6 +2698,9 @@ function pdfClosingContacts(data) {
 }
 async function renderPdfClosingPage(data, lang) {
     const L = PDF_LAYOUT, W = L.W, H = L.H, GOLD = [0.878, 0.675, 0.169];
+    const custom = await pdfFullPageImagePage(data.pdf?.closingImage);
+    if (custom)
+        return custom;
     let content = pdfRect(0, 0, W, H, [0.02, 0.02, 0.02]);
     content += pdfRect(7, 7, W - 14, H - 14, null, [0.55, 0.55, 0.55], .55);
     content += pdfRect(11, 11, W - 22, H - 22, null, [0.22, 0.22, 0.22], .55);
@@ -2709,6 +2726,9 @@ async function renderPdfClosingPage(data, lang) {
 }
 async function renderPdfCoverPage(data, lang, titleOverride) {
     const L = PDF_LAYOUT, W = L.W, H = L.H;
+    const custom = await pdfFullPageImagePage(data.pdf?.coverImage);
+    if (custom)
+        return custom;
     let content = pdfRect(0, 0, W, H, [0.02, 0.02, 0.02]);
     content += pdfRect(7, 7, W - 14, H - 14, null, [0.55, 0.55, 0.55], .55);
     content += pdfRect(11, 11, W - 22, H - 22, null, [0.22, 0.22, 0.22], .55);
@@ -5012,6 +5032,31 @@ function App() {
         ctx.putImageData(d, 0, 0);
         return c.toDataURL("image/png");
     }
+    async function uploadPdfPageImage(field, label, e) { const file = e.target.files?.[0]; if (!file)
+        return; try {
+        const src = await fileToOptimizedDataURL(file, 2400, 900);
+        updateData(x => { x.pdf = { ...x.pdf, [field]: src }; });
+        showToast(label + " yüklendi. Kaydet'e basın.");
+    }
+    catch (err) {
+        showToast(label + " yüklenemedi.");
+    }
+    finally {
+        e.target.value = "";
+    } }
+    async function removePdfPageImage(field, label) { if (!(await askConfirm(label + " kaldırılsın mı? Varsayılan tasarım kullanılır.", { title: label + " sil", ok: "Kaldır", danger: true })))
+        return; setPath(["pdf", field], null); }
+    function pdfPageImageCard(field, title, hint) {
+        const src = data.pdf?.[field], inputId = "pdf-img-" + field;
+        return React.createElement("div", { className: "border-t border-neutral-800 pt-4 mb-5" },
+            React.createElement("div", { className: "text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-2" }, title),
+            React.createElement("div", { className: "text-[10px] text-neutral-500 mb-3" }, hint),
+            React.createElement("div", { className: "rounded-lg bg-black border border-neutral-800 overflow-hidden flex items-center justify-center mb-3", style: { height: 190 } }, src ? React.createElement(CachedImage, { loading: "lazy", decoding: "async", src: src, alt: title, style: { height: "100%", width: "auto", objectFit: "contain" } }) : React.createElement("span", { className: "text-[10px] text-neutral-600" }, "Varsay\u0131lan tasar\u0131m kullan\u0131l\u0131yor")),
+            React.createElement("div", { className: "grid grid-cols-2 gap-2" },
+                React.createElement("button", { type: "button", onClick: () => document.getElementById(inputId)?.click(), className: "py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-[10px] font-bold" }, src ? "G\u00F6rseli De\u011Fi\u015Ftir" : "G\u00F6rsel Y\u00FCkle"),
+                React.createElement("button", { type: "button", disabled: !src, onClick: () => removePdfPageImage(field, title), className: "py-2.5 rounded-lg bg-red-950 text-red-400 text-[10px] font-bold disabled:opacity-30" }, "Varsay\u0131lana D\u00F6n")),
+            React.createElement("input", { id: inputId, type: "file", accept: "image/png,image/jpeg,image/webp", className: "hidden", onChange: e => uploadPdfPageImage(field, title, e) }));
+    }
     async function removePdfCoverLogo() { if (!(await askConfirm("PDF kapak logosu kaldırılsın mı?", { title: "Logoyu kaldır", ok: "Kaldır", danger: true })))
         return; setPath(["pdf", "coverLogo"], null); }
     /* Fotoğraf sıkıştırma: WebP, uzun kenar en fazla maxSize px; kalite 0,92’den 0,76’ya kadar düşürülerek hedef boyuta (KB) inilir.
@@ -6631,6 +6676,8 @@ function App() {
                                     React.createElement("button", { onClick: () => document.getElementById("pdf-cover-logo-input")?.click(), className: "py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-[10px] font-bold" }, data.pdf?.coverLogo?.src ? "Logoyu Değiştir" : "Logo Ekle"),
                                     React.createElement("button", { disabled: !data.pdf?.coverLogo?.src, onClick: removePdfCoverLogo, className: "py-2.5 rounded-lg bg-red-950 text-red-400 text-[10px] font-bold disabled:opacity-30" }, "Logoyu Sil")),
                                 React.createElement("input", { id: "pdf-cover-logo-input", type: "file", accept: "image/png,image/jpeg,image/webp,image/svg+xml", className: "hidden", onChange: uploadPdfCoverLogo })),
+                            pdfPageImageCard("coverImage", "Giri\u015F Kapa\u011F\u0131 (tam sayfa g\u00F6rsel)", "Katalog ve fiyat listesinin ilk sayfas\u0131. A4 dikey (2480\u00D73508 px) JPG/PNG/WEBP \u00F6nerilir; g\u00F6rsel sayfay\u0131 tamamen kaplar, logo ve ba\u015Fl\u0131k eklenmez (g\u00F6rselin i\u00E7inde olmal\u0131). Y\u00FCklemezsen siyah logolu kapak kullan\u0131l\u0131r."),
+                            pdfPageImageCard("closingImage", "Kapan\u0131\u015F Kapa\u011F\u0131 (tam sayfa g\u00F6rsel)", "Katalog ve fiyat listesinin son sayfas\u0131. Y\u00FCklersen ileti\u015Fim sat\u0131rlar\u0131 yerine bu g\u00F6rsel kullan\u0131l\u0131r (bilgiler g\u00F6rselin i\u00E7inde olmal\u0131). Y\u00FCklemezsen ikonlu kapan\u0131\u015F sayfas\u0131 kullan\u0131l\u0131r."),
                             React.createElement("div", { className: "border-t border-neutral-800 pt-4" },
                                 React.createElement("div", { className: "text-[10px] uppercase tracking-widest font-bold text-amber-500 mb-3" }, "Kategori Kapaklar\u0131"),
                                 React.createElement("div", { className: "text-[11px] text-neutral-400 mb-3" },
