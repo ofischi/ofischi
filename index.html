@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-y/mnGabjby8pkBSJcfx4oRUeeZzgMH3lZluqJ81gH3w=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Qa5Ajgtu7GOeEVIl7ZZ0AJ6hemGGi96wRaWkzE/ytQI=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2673,8 +2673,9 @@ function pdfClosingContacts(data) {
     const web = String(data.pdf?.website || data.pdf?.footer || "").trim();
     if (web)
         out.push({ kind: "web", text: web.replace(/^https?:\/\//i, "").replace(/\/+$/, "") });
-    let ig = String(data.pdf?.instagram || "").trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/[/?#].*$/, "").replace(/^@+/, "");
-    if (/^[A-Za-z0-9._]{1,30}$/.test(ig))
+    /* Instagram: tam adres, www'lu adres, @'li veya düz kullanıcı adı kabul edilir; Türkçe harf / tire de gizlenmez. */
+    let ig = String(data.pdf?.instagram || "").replace(/[\u0000-\u001F\u007F<>"']/g, "").trim().replace(/^(?:https?:\/\/)?(?:www\.|m\.)?instagram\.com\//i, "").replace(/[/?#].*$/, "").replace(/^@+/, "").trim();
+    if (ig && ig.length <= 40)
         out.push({ kind: "instagram", text: "@" + ig });
     const mail = String(data.pdf?.email || "").trim();
     if (/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(mail) && mail.length <= 120)
