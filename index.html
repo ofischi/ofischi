@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-CaAQkeY/Y/nv+ERZWgyi+FSextxrMr222a+uUZSqqhQ=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-y/mnGabjby8pkBSJcfx4oRUeeZzgMH3lZluqJ81gH3w=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3037,6 +3037,8 @@ async function buildPriceListPDF(rawData, lang) {
     const prepared = await pdfPrepareImages(source), data = prepared.data;
     const pages = [await renderPdfCoverPage(data, pdfLang)];
     await pdfFlowPages(data, pdfLang, prepared.images, pages);
+    if (source.pdf?.closingPage !== false)
+        pages.push(await renderPdfClosingPage(data, pdfLang));
     return await pdfCreateVectorDocument(pages);
 }
 /* ==================== KATALOG PDF (FİYATSIZ) ==================== */
@@ -6559,7 +6561,7 @@ function App() {
                                     React.createElement("div", { className: "text-[11px] text-neutral-400 leading-snug mt-0.5" }, tp.desc));
                             })),
                             React.createElement("div", { className: "mb-4 rounded-xl p-3", style: { background: theme.accent + "10", border: "1px solid " + theme.accent + "25" } },
-                                React.createElement("div", { className: "text-[10px] uppercase tracking-widest opacity-60 mb-2" }, "Katalog Kapan\u0131\u015F Sayfas\u0131 \u0130leti\u015Fim Bilgileri"),
+                                React.createElement("div", { className: "text-[10px] uppercase tracking-widest opacity-60 mb-2" }, "Kapan\u0131\u015F Sayfas\u0131 \u0130leti\u015Fim Bilgileri (Katalog ve Fiyat Listesi)"),
                                 React.createElement("label", { className: "block mb-3" },
                                     React.createElement(AdminLabel, null, "Instagram (\u00F6r. ofischi)"),
                                     React.createElement("input", { className: "admin-input", maxLength: 80, value: data.pdf?.instagram ?? "", onChange: e => setPath(["pdf", "instagram"], e.target.value), placeholder: "@kullaniciadi" })),
