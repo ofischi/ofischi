@@ -471,6 +471,18 @@ body.adm-dragging{cursor:grabbing;user-select:none}
 body:has(.adm-shell)::before,body:has(.adm-shell)::after,body:has(.adm-shell) #root::before,body:has(.adm-shell) #root::after,body:has(.adm-shell) .category-chip::after{animation:none!important}
 body:has(.adm-shell) #root::before,body:has(.adm-shell) #root::after{display:none}
 
+/* TELEFON: panel kaydırma + otomatik yakınlaştırma düzeltmesi
+   - .adm-main flex sütununda min-height:0 yoktu → içerik kutusu ekrandan taşıp kaydırılamıyordu.
+   - iOS/Android, yazı boyutu 16 px'ten küçük alana dokununca sayfayı kendiliğinden yakınlaştırır → mobilde alanlar 16 px.
+   - touch-action:manipulation çift dokunuşla yakınlaştırmayı kapatır (iki parmakla yakınlaştırma çalışmaya devam eder). */
+.adm-shell{overflow:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+.adm-main{min-height:0}
+.adm-content{-webkit-overflow-scrolling:touch;min-height:0}
+@media (max-width:900px){
+ .adm-shell input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]),.adm-shell select,.adm-shell textarea,.admin-input{font-size:16px!important}
+ .adm-shell{height:100dvh}
+}
+
 </style>
 <style id="admin-clean-final">
 .admin-panel-scroll{scrollbar-width:thin}
