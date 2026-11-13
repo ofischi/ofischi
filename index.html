@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-JIcDZKmVPRLLnxyTRcJB95agOZbH/6qlmvZsQSdjwIg=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-yIbTrR/tJTvbMbyCtYwadeVIm/E0C6TgQBQZ4dXPTX4=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -649,8 +649,10 @@ function sanitizeCatalogData(data) {
         eurRate: (n => Number.isFinite(n) && n > 0 && n < 1000000 ? n : base.currency.eurRate)(Number(clean.currency?.eurRate))
     };
     if (clean.pdf) {
-        for (const k of ["title", "footer", "website", "catalogTitle", "instagram", "email"])
+        for (const k of ["title", "footer", "website", "catalogTitle", "instagram", "email", "addr1Title", "addr2Title", "addr3Title"])
             clean.pdf[k] = safeShortText(clean.pdf[k], 200);
+        for (const k of ["addr1", "addr2", "addr3"])
+            clean.pdf[k] = safeShortText(String(clean.pdf[k] ?? "").replace(/[\u0000-\u001F\u007F]+/g, " "), 300);
         clean.pdf.catalogTemplate = ["klasik", "vitrin", "izgara", "dergi"].includes(clean.pdf.catalogTemplate) ? clean.pdf.catalogTemplate : "vitrin";
         const lay = {}, srcLay = (clean.pdf.categoryLayouts && typeof clean.pdf.categoryLayouts === "object") ? clean.pdf.categoryLayouts : {};
         for (const fc of (clean.categories || [])) {
@@ -1025,7 +1027,7 @@ function defaultData() {
         theme: { ...THEMES[0], bgImage: null }, cardImgSize: 180,
         currency: { selected: "TRY", usdRate: 40, eurRate: 47 },
         categoriesCustom: true, categories: createDefaultCategories().map(c => ({ ...c, coverImage: PRELOADED_COVERS[c.id] || null, items: JSON.parse(JSON.stringify(PRELOADED_ITEMS[c.id] || [])) })), language: "TR",
-        pdf: { title: "2026-2 TL FİYAT LİSTESİ", footer: "www.ofishci.com", showPageNumbers: true, website: "www.ofishci.com", useCategoryCovers: true, catalogTitle: "ÜRÜN KATALOĞU", instagram: "", email: "", coverImage: null, closingImage: null, catalogTemplate: "vitrin", coverLogo: { src: DEFAULT_PDF_COVER_LOGO } }
+        pdf: { title: "2026-2 TL FİYAT LİSTESİ", footer: "www.ofishci.com", showPageNumbers: true, website: "www.ofishci.com", useCategoryCovers: true, catalogTitle: "ÜRÜN KATALOĞU", instagram: "", email: "", addr1Title: "PREMİUM MAĞAZA", addr1: "Yeniceköy Mahallesi Mobilya Caddesi Bursa İnegöl Karayolu 7.Km İnegöl / Bursa / TÜRKİYE", addr2Title: "OUTLET MAĞAZA", addr2: "Huzur Mahallesi Zambak Cd. No: 2 İnegöl / Bursa / TÜRKİYE", addr3Title: "FABRİKA", addr3: "Süleymaniye Mahallesi Organize Sanayi Bölgesi 4. Cadde No: 32 İnegöl / Bursa / TÜRKİYE", coverImage: null, closingImage: null, catalogTemplate: "vitrin", coverLogo: { src: DEFAULT_PDF_COVER_LOGO } }
     };
 }
 function priceNumber(value) {
@@ -2711,6 +2713,31 @@ function pdfClosingContacts(data) {
         out.push({ kind: "mail", text: mail });
     return out;
 }
+/* Kapanış sayfası adresleri (taslak C: alt bant, en fazla 3 sütun). Boş adres gösterilmez. */
+function pdfClosingAddresses(data, lang) {
+    const out = [];
+    for (const i of [1, 2, 3]) {
+        const text = String(data.pdf?.["addr" + i] || "").replace(/\s+/g, " ").trim();
+        if (!text)
+            continue;
+        let title = String(data.pdf?.["addr" + i + "Title"] || "").replace(/\s+/g, " ").trim();
+        if (lang === "EN")
+            title = title.replace(/MAĞAZA/gi, "STORE").replace(/FABRİKA/gi, "FACTORY").replace(/PREMİUM/gi, "PREMIUM").replace(/DEPO/gi, "WAREHOUSE").replace(/MERKEZ/gi, "HEADQUARTERS");
+        out.push({ title, text, kind: /FABR[İI]KA|FACTORY|[ÜU]RET[İI]M/i.test(title) ? "factory" : "pin" });
+    }
+    return out;
+}
+function pdfSmallIcon(kind, cx, cy, col) {
+    const c = `${col[0]} ${col[1]} ${col[2]}`, f = n => n.toFixed(2);
+    let s = `${c} RG ${c} rg 0.9 w `;
+    if (kind === "factory") {
+        s += `${f(cx - 4.6)} ${f(cy - 3.6)} m ${f(cx - 4.6)} ${f(cy + 1.4)} l ${f(cx - 1.6)} ${f(cy - 0.4)} l ${f(cx - 1.6)} ${f(cy + 1.4)} l ${f(cx + 1.4)} ${f(cy - 0.4)} l ${f(cx + 1.4)} ${f(cy + 3.8)} l ${f(cx + 4.6)} ${f(cy + 3.8)} l ${f(cx + 4.6)} ${f(cy - 3.6)} l h S\n`;
+    }
+    else {
+        s += `${f(cx - 3.3)} ${f(cy + 1.2)} m ${f(cx)} ${f(cy - 4.4)} l ${f(cx + 3.3)} ${f(cy + 1.2)} l S\n${pdfPathCircle(cx, cy + 1.9, 3.5)}S\n${pdfPathCircle(cx, cy + 1.9, 1.15)}f\n`;
+    }
+    return s;
+}
 async function renderPdfClosingPage(data, lang) {
     const L = PDF_LAYOUT, W = L.W, H = L.H, GOLD = [0.878, 0.675, 0.169];
     const custom = await pdfFullPageImagePage(data.pdf?.closingImage);
@@ -2728,15 +2755,35 @@ async function renderPdfClosingPage(data, lang) {
     }
     content += pdfRect(W / 2 - 24, 436, 48, 2, GOLD);
     content += pdfTextOp(lang === "EN" ? "THANK YOU FOR CHOOSING US" : "BİZİ TERCİH ETTİĞİNİZ İÇİN TEŞEKKÜR EDERİZ", W / 2, 404, 8.5, { align: "center", bold: true, color: [0.72, 0.72, 0.72], maxWidth: W - 120 });
-    const rows = pdfClosingContacts(data);
-    const rowH = 46, blockW = 250, x0 = (W - blockW) / 2;
-    let y = 356;
+    const rows = pdfClosingContacts(data), addrs = pdfClosingAddresses(data, lang);
+    const rowH = addrs.length ? 40 : 46, blockW = 250, x0 = (W - blockW) / 2;
+    let y = addrs.length ? 352 : 356;
     for (const r of rows) {
         content += pdfContactIcon(r.kind, x0 + 15, y, GOLD);
         content += pdfTextOp(r.text, x0 + 42, y - 4.6, 13, { color: [1, 1, 1], maxWidth: blockW - 42 });
         y -= rowH;
     }
-    content += pdfTextOp("İNEGÖL · BURSA · TÜRKİYE", W / 2, 52, 7.5, { align: "center", color: [0.5, 0.5, 0.5] });
+    if (addrs.length) {
+        /* Alt bant: altın çizgi + sütunlar (ince dikey ayraçlı). */
+        const bx = 36, bw = W - 72, gap = 16, colW = (bw - gap * (addrs.length - 1)) / addrs.length, lineY = 150;
+        content += pdfRect(bx, lineY, bw, .8, GOLD);
+        addrs.forEach((a, i) => {
+            const cx = bx + i * (colW + gap);
+            if (i > 0)
+                content += pdfRect(cx - gap / 2, 44, .5, lineY - 58, [0.25, 0.25, 0.26]);
+            content += pdfSmallIcon(a.kind, cx + 5, lineY - 22, GOLD);
+            content += pdfTextOp(a.title.toLocaleUpperCase("tr-TR"), cx + 15, lineY - 25, 7.6, { bold: true, color: GOLD, maxWidth: colW - 15, maxLines: 1 });
+            /* "İlçe / İl / Ülke" kısmı ayrı satıra alınır, sokak kısmı sütuna sarılır. */
+            const m = a.text.match(/^(.*?)\s*([^\s\/]+\s*\/\s*[^\/]+\/\s*[^\/]+)$/);
+            const street = m ? m[1].trim() : a.text, city = m ? m[2].replace(/\s*\/\s*/g, " / ").trim() : "";
+            const sl = pdfWrapText(street, colW, 7.8, 4);
+            content += pdfTextOp(street, cx, lineY - 42, 7.8, { color: [0.85, 0.85, 0.85], maxWidth: colW, maxLines: 4, leading: 11 });
+            if (city)
+                content += pdfTextOp(city, cx, lineY - 42 - sl.length * 11, 7.8, { color: [0.85, 0.85, 0.85], maxWidth: colW, maxLines: 1 });
+        });
+    }
+    else
+        content += pdfTextOp("İNEGÖL · BURSA · TÜRKİYE", W / 2, 52, 7.5, { align: "center", color: [0.5, 0.5, 0.5] });
     return { content, images, pageNo: null };
 }
 async function renderPdfCoverPage(data, lang, titleOverride) {
@@ -6634,6 +6681,11 @@ function App() {
                                 React.createElement("label", { className: "block" },
                                     React.createElement(AdminLabel, null, "E-posta"),
                                     React.createElement("input", { className: "admin-input", type: "email", maxLength: 120, value: data.pdf?.email ?? "", onChange: e => setPath(["pdf", "email"], e.target.value), placeholder: "info@ornek.com" })),
+                                React.createElement("div", { style: { marginTop: 14 } },
+                                    React.createElement(AdminLabel, null, "Adresler (kapan\u0131\u015F sayfas\u0131n\u0131n en alt\u0131nda, en fazla 3)"),
+                                    [1, 2, 3].map(i => React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2fr)", gap: 8, marginBottom: 8 } },
+                                        React.createElement("input", { className: "admin-input", maxLength: 60, "aria-label": i + ". adres ba\u015Fl\u0131\u011F\u0131", value: data.pdf?.["addr" + i + "Title"] ?? "", onChange: e => setPath(["pdf", "addr" + i + "Title"], e.target.value), placeholder: "Ba\u015Fl\u0131k (\u00F6r. FABR\u0130KA)" }),
+                                        React.createElement("input", { className: "admin-input", maxLength: 300, "aria-label": i + ". adres", value: data.pdf?.["addr" + i] ?? "", onChange: e => setPath(["pdf", "addr" + i], e.target.value), placeholder: "A\u00E7\u0131k adres" })))),
                                 React.createElement("div", { className: "text-[10px] opacity-50 mt-2" }, "Telefon \u201CGenel\u201D ayarlardan, web sitesi PDF ayarlar\u0131ndan al\u0131n\u0131r. Bo\u015F b\u0131rak\u0131lan bilgi sayfada g\u00F6sterilmez.")),
                             React.createElement("label", { className: "block mb-4" },
                                 React.createElement(AdminLabel, null, "Katalog Kapak Ba\u015Fl\u0131\u011F\u0131"),
