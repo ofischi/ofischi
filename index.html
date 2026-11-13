@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-8mDk0H0I9iE30F3xGfPrzEjM60O7kTKQIzJMfVRFoG0=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-JIcDZKmVPRLLnxyTRcJB95agOZbH/6qlmvZsQSdjwIg=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2575,7 +2575,9 @@ function pdfPageChrome(data, pageNo) {
     let c = pdfRect(0, 0, L.rail, H, [0.05, 0.05, 0.05]);
     const site = data.pdf?.website || data.pdf?.footer || "www.ofishci.com";
     const hex = pdfUnicodeHex(site);
-    c += `q\n1 0 0 1 ${(L.rail / 2).toFixed(2)} ${(H / 2).toFixed(2)} cm\n0 1 -1 0 0 0 cm\nBT /F1 8.5 Tf 1 0 0 1 0 0 Tm <${hex}> Tj ET\nQ\n`;
+    /* Dikey site adı: koyu şerit üstünde açık renkle ve şeridin ortasında (önceden renk verilmediği için siyah üstüne siyah çıkıyordu). */
+    const sw = pdfFontWidth(site, 8.5);
+    c += `q\n0.86 0.86 0.86 rg 0.86 0.86 0.86 RG\n1 0 0 1 ${(L.rail / 2 + 3).toFixed(2)} ${(H / 2 - sw / 2).toFixed(2)} cm\n0 1 -1 0 0 0 cm\nBT /F1 8.5 Tf 1 0 0 1 0 0 Tm <${hex}> Tj ET\nQ\n`;
     if (data.pdf?.showPageNumbers !== false)
         c += pdfTextOp(String(pageNo), L.rail / 2, 13, 8.5, { align: "center", bold: true, color: [1, 1, 1] });
     return c;
@@ -2638,15 +2640,13 @@ function pdfProductBlock(data, category, item, lang, x, y, w, h, asset, id) {
         const price = muted ? (lang === "EN" ? "Contact us" : "İletişime geçin") : pdfMoney(data, part.amount);
         c += pdfTextOp(price, ux, cy, muted ? fs - 1 : fs + .2, { align: "right", bold: !muted, maxWidth: unitW - 2, maxLines: 1, color: muted ? [0.5, 0.5, 0.5] : [0.06, 0.06, 0.06] });
     }
-    /* Takım fiyatı: krem panel, koyu ve büyük fiyat (temanın vurgu renginden bağımsız, kağıtta net okunur) */
+    /* Takım fiyatı: sağda ayrı, altın vurgulu panel */
     const ph = h - 12, py = y + 6, mid = py + ph / 2;
-    c += pdfRoundRect(setX, py, T.setW, ph, 6, [0.965, 0.957, 0.937], [0.86, 0.85, 0.82], .6);
-    c += pdfTextOp(lang === "EN" ? "SET PRICE" : "TAKIM FİYATI", setX + T.setW / 2, mid + 9, 6.5, { align: "center", bold: true, color: [0.4, 0.4, 0.4], maxWidth: T.setW - 8, maxLines: 1 });
+    c += pdfRoundRect(setX, py, T.setW, ph, 6, [0.99, 0.982, 0.958], [acc[0] * .6 + .4, acc[1] * .6 + .4, acc[2] * .6 + .4], .6);
+    c += pdfTextOp(lang === "EN" ? "SET PRICE" : "TAKIM FİYATI", setX + T.setW / 2, mid + 9, 6.5, { align: "center", bold: true, color: [0.5, 0.47, 0.4], maxWidth: T.setW - 8, maxLines: 1 });
+    c += pdfRect(setX + T.setW / 2 - 8, mid + 4.5, 16, 1.1, acc);
     const total = pdfTotal(data, item, lang), isMoney = /\d/.test(total);
-    let ts = isMoney ? 14.5 : 8.6;
-    while (isMoney && ts > 9 && pdfFontWidth(total, ts) > T.setW - 10)
-        ts -= .5;
-    c += pdfTextOp(total, setX + T.setW / 2, mid - 9, ts, { align: "center", bold: true, maxWidth: T.setW - 8, maxLines: 1, color: isMoney ? [0.07, 0.07, 0.07] : [0.4, 0.4, 0.4] });
+    c += pdfTextOp(total, setX + T.setW / 2, mid - 9, isMoney ? 12.4 : 8.6, { align: "center", bold: true, maxWidth: T.setW - 8, maxLines: 1, color: isMoney ? [acc[0] * .72, acc[1] * .72, acc[2] * .72] : [0.45, 0.45, 0.45] });
     return c;
 }
 /* Kullanıcının yüklediği tam sayfa kapak / kapanış görseli: sayfayı kaplar (orantı korunur, taşan kısım kırpılır). */
@@ -2833,7 +2833,7 @@ async function renderPdfCatalogPage(data, lang, blocks, pageNo, preparedImages, 
             continue;
         }
         if (block.type === "sizeRow" || block.type === "modelRow") {
-            const acc = pdfHexToRgb(data?.theme?.accent), useImg = src => { if (!src)
+            const acc = pdfCatalogAccent(data), useImg = src => { if (!src)
                 return null; const prep = imageMap.get(src); if (!prep)
                 return null; let a = images.get(src); if (!a) {
                 a = { ...prep, id: imageId++ };
@@ -3087,7 +3087,12 @@ function pdfHexToRgb(hex, fallback = [0.79, 0.64, 0.15]) {
         h = h.split("").map(c => c + c).join("");
     return [0, 2, 4].map(i => Math.round(parseInt(h.slice(i, i + 2), 16) / 255 * 1000) / 1000);
 }
-function pdfCatalogAccent(data) { return pdfHexToRgb(data?.theme?.accent); }
+function pdfCatalogAccent(data) {
+    /* Tema vurgusu çok açıksa (beyaz/açık gri) beyaz kağıtta görünmez: PDF'te altın renge dön. */
+    const rgb = pdfHexToRgb(data?.theme?.accent);
+    const lum = Array.isArray(rgb) ? .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2] : 1;
+    return lum > .62 ? [0.79, 0.64, 0.15] : rgb;
+}
 function pdfItemImages(item) {
     const list = [], add = v => { const s = pdfImageSource(v); if (s && !list.includes(s))
         list.push(s); };
