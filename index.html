@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-yIbTrR/tJTvbMbyCtYwadeVIm/E0C6TgQBQZ4dXPTX4=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-5BvVGblizdxKGJEeZFyk6CHR4sh7bZ0nF96JKh0VeoA=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -207,6 +207,18 @@ header{animation:luxuryEnter 1s cubic-bezier(.2,.75,.2,1) both}
 </style>
 
 <style id="adm-new">
+.adm-chips{display:flex;flex-wrap:wrap;gap:8px}
+.adm-chip{min-height:38px;padding:0 14px;border-radius:999px;border:1px solid #3A3A40!important;border-style:solid!important;background:transparent;color:#CFCAC0;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+.adm-chip small{opacity:.55;font-weight:600;font-size:11px}
+.adm-chip[aria-pressed="true"]{border-color:var(--adm-gold)!important;color:var(--adm-gold);background:rgba(226,189,69,.12)}
+.adm-pick-info{font-size:13px;color:var(--adm-muted)}.adm-pick-info b{color:var(--adm-gold)}
+.adm-pick-row{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center}.adm-pick-l{font-size:12px;color:var(--adm-muted);font-weight:700}
+.adm-seg{display:inline-flex;background:#111114;border:1px solid var(--adm-line);border-radius:12px;padding:3px;gap:3px}
+.adm-seg button{min-height:36px;padding:0 14px;border-radius:9px;border:0;background:transparent;color:var(--adm-muted);font-weight:800;cursor:pointer}
+.adm-seg button[aria-pressed="true"]{background:var(--adm-gold);color:#141414}
+.adm-pick-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}.adm-pick-btns .adm-btn[disabled]{opacity:.45}
+@media (max-width:640px){.adm-pick-btns{grid-template-columns:1fr}.adm-chips{gap:6px}.adm-chip{min-height:34px;padding:0 11px;font-size:12px}}
+
 /* ===== YENİ YÖNETİM PANELİ ===== */
 .adm-shell{position:fixed;inset:0;z-index:180;display:flex;background:#0E0E10;color:#F3F0E8;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;--adm-line:#26262B;--adm-card:#18181C;--adm-muted:#A7A297;--adm-gold:#E2BD45}
 .adm-shell *{box-sizing:border-box}
@@ -4143,7 +4155,19 @@ function App() {
         return null;
     } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreview, setPdfPreview] = useState(null), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
     /* Yeni yönetim paneli durumu */
-    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false), [admDrag, setAdmDrag] = useState(null), [admCatDrag, setAdmCatDrag] = useState(null);
+    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false), [admDrag, setAdmDrag] = useState(null), [admCatDrag, setAdmCatDrag] = useState(null), [pdfPick, setPdfPick] = useState(() => {
+        /* "Seçerek PDF al" son seçimi (sadece bu tarayıcıda hatırlanır). */
+        const def = { ids: [], cur: "TRY", lang: "TR" };
+        try {
+            const v = JSON.parse(localStorage.getItem("ofischi_pdf_pick") || "null");
+            if (!v || typeof v !== "object")
+                return def;
+            return { ids: Array.isArray(v.ids) ? v.ids.filter(x => typeof x === "string" && x.length <= 120).slice(0, 200) : [], cur: ["TRY", "USD", "EUR"].includes(v.cur) ? v.cur : "TRY", lang: v.lang === "EN" ? "EN" : "TR" };
+        }
+        catch (_) {
+            return def;
+        }
+    });
     const admBaseRef = useRef(null), catRenameTimer = useRef(null);
     useEffect(() => { document.documentElement.lang = language.toLowerCase(); }, [language]);
     useEffect(() => {
@@ -5354,7 +5378,21 @@ function App() {
         showToast(language === "EN" ? "PDF downloaded." : "PDF indirildi.");
     }
     /* PDF her zaman sitenin ŞU ANKİ dilinde üretilir; indirmeden önce ön izleme penceresi açılır. */
-    async function createPDF(openPreview = false, kind = "price") {
+    function updatePdfPick(fn) {
+        setPdfPick(prev => {
+            const next = fn(prev);
+            try {
+                localStorage.setItem("ofischi_pdf_pick", JSON.stringify(next));
+            }
+            catch (_) { }
+            return next;
+        });
+    }
+    /* PDF dosya adı için Türkçe harfleri sadeleştirir: "FİLELİ OFİS" → "FILELI-OFIS". */
+    function pdfFileSlug(s) {
+        return String(s || "").toLocaleUpperCase("tr-TR").replace(/İ/g, "I").replace(/Ş/g, "S").replace(/Ğ/g, "G").replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C").replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "KATEGORI";
+    }
+    async function createPDF(openPreview = false, kind = "price", pick = null) {
         if (pdfBusy || !data)
             return;
         kind = kind === "catalog" ? "catalog" : "price";
@@ -5362,22 +5400,38 @@ function App() {
             showToast(language === "EN" ? "Too many PDF requests. Please wait a minute." : "Çok fazla PDF isteği. Lütfen bir dakika bekleyin.");
             return;
         }
-        setPdfBusy(kind);
-        const siteLang = language === "EN" ? "EN" : "TR";
+        /* Seçerek PDF: verinin kopyasında sadece seçili kategoriler bırakılır; asıl veri değişmez. */
+        let src = data, pickTag = "";
+        if (pick) {
+            const ids = new Set(Array.isArray(pick.ids) ? pick.ids : []);
+            const cats = (data.categories || []).filter(c => ids.has(c.id));
+            if (!cats.length) {
+                showToast("Önce en az bir kategori seçin.");
+                return;
+            }
+            src = { ...data, categories: cats };
+            pickTag = cats.length <= 2 ? cats.map(c => pdfFileSlug(c.name)).join("-") : cats.length + "-KATEGORI";
+        }
+        setPdfBusy(pick ? "pick-" + kind : kind);
+        const siteLang = pick ? (pick.lang === "EN" ? "EN" : "TR") : (language === "EN" ? "EN" : "TR");
         try {
             let blob, fileName, title;
             if (kind === "catalog") {
-                blob = await buildCatalogPDF(data, siteLang, data.pdf?.catalogTemplate);
+                blob = await buildCatalogPDF(src, siteLang, data.pdf?.catalogTemplate);
                 fileName = siteLang === "EN" ? "OFISCHI-PRODUCT-CATALOG.pdf" : "OFISCHI-URUN-KATALOGU.pdf";
                 title = siteLang === "EN" ? "Product Catalog" : "Ürün Kataloğu";
             }
             else {
-                const pdfData = viewCurrencyData();
+                const pdfData = pick ? { ...src, currency: { ...(src.currency || {}), selected: ["TRY", "USD", "EUR"].includes(pick.cur) ? pick.cur : "TRY" } } : viewCurrencyData();
                 const cur = pdfData.currency?.selected || "TRY";
                 blob = await buildPriceListPDF(pdfData, siteLang);
                 const curTag = cur === "TRY" ? "TL" : cur;
                 fileName = siteLang === "EN" ? `OFISCHI-2026-2-${curTag}-PRICE-LIST.pdf` : `OFISCHI-2026-2-${curTag}-FIYAT-LISTESI.pdf`;
                 title = siteLang === "EN" ? `Price List (${curTag})` : `Fiyat Listesi (${curTag})`;
+            }
+            if (pickTag) {
+                fileName = fileName.replace(/^OFISCHI-/, "OFISCHI-" + pickTag + "-");
+                title = title + " · " + (src.categories.length === 1 ? src.categories[0].name : src.categories.length + " kategori");
             }
             const pages = pdfLastPages;
             if (!blob || blob.size <= 0)
@@ -5798,6 +5852,35 @@ function App() {
                     React.createElement(AdmIcon, { name: "book", size: 22 }),
                     React.createElement("span", { className: "adm-action-t" }, pdfBusy === "catalog" ? "Hazırlanıyor…" : "Katalog PDF"),
                     React.createElement("span", { className: "adm-action-s" }, "Fiyats\u0131z, se\u00E7ili \u015Fablonla"))),
+            (() => {
+                /* Seçerek PDF al (taslak C): kategori çipleri + dil + kur + iki tuş */
+                const cats = (data.categories || []).filter(c => c && c.id);
+                const sel = new Set(pdfPick.ids.filter(id => cats.some(c => c.id === id)));
+                const selCats = cats.filter(c => sel.has(c.id));
+                const nItems = selCats.reduce((n, c) => n + (Array.isArray(c.items) ? c.items.length : 0), 0);
+                const toggle = id => updatePdfPick(p => ({ ...p, ids: sel.has(id) ? [...sel].filter(x => x !== id) : [...sel, id] }));
+                const seg = (items, value, key) => React.createElement("div", { className: "adm-seg", role: "group" }, items.map(([v, label]) => React.createElement("button", { key: v, type: "button", "aria-pressed": value === v, onClick: () => updatePdfPick(p => ({ ...p, [key]: v })) }, label)));
+                const busy = !!pdfBusy, none = selCats.length === 0;
+                return React.createElement("section", { className: "adm-card adm-pick" },
+                    React.createElement("div", { className: "adm-card-h" },
+                        React.createElement("h2", null, "Se\u00E7erek PDF al"),
+                        React.createElement("div", { style: { display: "flex", gap: 14 } },
+                            React.createElement("button", { type: "button", className: "adm-linkbtn", onClick: () => updatePdfPick(p => ({ ...p, ids: cats.map(c => c.id) })) }, "T\u00FCm\u00FCn\u00FC se\u00E7"),
+                            React.createElement("button", { type: "button", className: "adm-linkbtn", disabled: none, onClick: () => updatePdfPick(p => ({ ...p, ids: [] })) }, "Temizle"))),
+                    React.createElement("div", { className: "adm-chips" }, cats.map(c => React.createElement("button", { key: c.id, type: "button", className: "adm-chip", "aria-pressed": sel.has(c.id), onClick: () => toggle(c.id) },
+                        c.name || "Adsız",
+                        React.createElement("small", null, Array.isArray(c.items) ? c.items.length : 0)))),
+                    React.createElement("div", { className: "adm-pick-info" }, none ? "PDF almak istedi\u011Finiz kategorilere dokunun." : React.createElement(React.Fragment, null, React.createElement("b", null, selCats.length, " kategori"), " \u00B7 ", nItems, " \u00FCr\u00FCn")),
+                    React.createElement("div", { className: "adm-pick-row" },
+                        React.createElement("span", { className: "adm-pick-l" }, "Dil"),
+                        seg([["TR", "T\u00FCrk\u00E7e"], ["EN", "English"]], pdfPick.lang, "lang"),
+                        React.createElement("span", { className: "adm-pick-l" }, "Kur"),
+                        seg([["TRY", "TL \u20BA"], ["USD", "USD $"], ["EUR", "EUR \u20AC"]], pdfPick.cur, "cur")),
+                    pdfPick.cur !== "TRY" && React.createElement("div", { className: "adm-pick-info" }, "Fiyatlar g\u00FCncel kurla \u00E7evrilir: 1 ", pdfPick.cur, " = ", pdfPick.cur === "USD" ? data.currency.usdRate : data.currency.eurRate, " TL. Katalog fiyats\u0131z oldu\u011Fu i\u00E7in kur sadece fiyatl\u0131 PDF'i etkiler."),
+                    React.createElement("div", { className: "adm-pick-btns" },
+                        React.createElement("button", { type: "button", className: "adm-btn adm-btn-gold", disabled: busy || none, onClick: () => createPDF(false, "price", pdfPick) }, pdfBusy === "pick-price" ? "Haz\u0131rlan\u0131yor\u2026" : "Fiyatl\u0131 PDF"),
+                        React.createElement("button", { type: "button", className: "adm-btn adm-btn-ghost", disabled: busy || none, onClick: () => createPDF(false, "catalog", pdfPick) }, pdfBusy === "pick-catalog" ? "Haz\u0131rlan\u0131yor\u2026" : "Fiyats\u0131z Katalog")));
+            })(),
             React.createElement("div", { className: "adm-grid-2-1" },
                 React.createElement("section", { className: "adm-card" },
                     React.createElement("div", { className: "adm-card-h" },
