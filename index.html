@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-ZF+9S0ShlUrIBlN8pCk5t7olVTSO8i6XewVyM5TipGE=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-8mDk0H0I9iE30F3xGfPrzEjM60O7kTKQIzJMfVRFoG0=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2638,13 +2638,15 @@ function pdfProductBlock(data, category, item, lang, x, y, w, h, asset, id) {
         const price = muted ? (lang === "EN" ? "Contact us" : "İletişime geçin") : pdfMoney(data, part.amount);
         c += pdfTextOp(price, ux, cy, muted ? fs - 1 : fs + .2, { align: "right", bold: !muted, maxWidth: unitW - 2, maxLines: 1, color: muted ? [0.5, 0.5, 0.5] : [0.06, 0.06, 0.06] });
     }
-    /* Takım fiyatı: sağda ayrı, altın vurgulu panel */
+    /* Takım fiyatı: krem panel, koyu ve büyük fiyat (temanın vurgu renginden bağımsız, kağıtta net okunur) */
     const ph = h - 12, py = y + 6, mid = py + ph / 2;
-    c += pdfRoundRect(setX, py, T.setW, ph, 6, [0.99, 0.982, 0.958], [acc[0] * .6 + .4, acc[1] * .6 + .4, acc[2] * .6 + .4], .6);
-    c += pdfTextOp(lang === "EN" ? "SET PRICE" : "TAKIM FİYATI", setX + T.setW / 2, mid + 9, 6.5, { align: "center", bold: true, color: [0.5, 0.47, 0.4], maxWidth: T.setW - 8, maxLines: 1 });
-    c += pdfRect(setX + T.setW / 2 - 8, mid + 4.5, 16, 1.1, acc);
+    c += pdfRoundRect(setX, py, T.setW, ph, 6, [0.965, 0.957, 0.937], [0.86, 0.85, 0.82], .6);
+    c += pdfTextOp(lang === "EN" ? "SET PRICE" : "TAKIM FİYATI", setX + T.setW / 2, mid + 9, 6.5, { align: "center", bold: true, color: [0.4, 0.4, 0.4], maxWidth: T.setW - 8, maxLines: 1 });
     const total = pdfTotal(data, item, lang), isMoney = /\d/.test(total);
-    c += pdfTextOp(total, setX + T.setW / 2, mid - 9, isMoney ? 12.4 : 8.6, { align: "center", bold: true, maxWidth: T.setW - 8, maxLines: 1, color: isMoney ? [acc[0] * .72, acc[1] * .72, acc[2] * .72] : [0.45, 0.45, 0.45] });
+    let ts = isMoney ? 14.5 : 8.6;
+    while (isMoney && ts > 9 && pdfFontWidth(total, ts) > T.setW - 10)
+        ts -= .5;
+    c += pdfTextOp(total, setX + T.setW / 2, mid - 9, ts, { align: "center", bold: true, maxWidth: T.setW - 8, maxLines: 1, color: isMoney ? [0.07, 0.07, 0.07] : [0.4, 0.4, 0.4] });
     return c;
 }
 /* Kullanıcının yüklediği tam sayfa kapak / kapanış görseli: sayfayı kaplar (orantı korunur, taşan kısım kırpılır). */
