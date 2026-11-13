@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-5BvVGblizdxKGJEeZFyk6CHR4sh7bZ0nF96JKh0VeoA=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-VEfvRIZiSjBqk7v+E6OXJmSxW9Prl7XijUXL5Aclp7c=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -32,6 +32,8 @@ button,input,textarea{font-family:inherit}
 .luxury-bg button,.luxury-bg button *,.luxury-bg a,.luxury-bg a *,.luxury-bg .product-card,.luxury-bg .product-card *{cursor:pointer}
 .luxury-bg input,.luxury-bg textarea,.luxury-bg select{cursor:text;caret-color:auto;-webkit-user-select:text;user-select:text}
 .luxury-bg [contenteditable="true"]{cursor:text;caret-color:auto;-webkit-user-select:text;user-select:text}
+.luxury-bg .copy-text,.luxury-bg .copy-text *{-webkit-user-select:text;user-select:text;cursor:auto}
+.luxury-bg .copy-text button,.luxury-bg .copy-text button *{-webkit-user-select:none;user-select:none;cursor:pointer}
 .luxury-bg input[type="checkbox"],.luxury-bg input[type="radio"],.luxury-bg input[type="range"],.luxury-bg input[type="color"]{cursor:pointer}
 .luxury-bg .category-scroll{cursor:grab}
 .luxury-bg .category-scroll *{cursor:pointer}
@@ -6455,7 +6457,11 @@ function App() {
         React.createElement("div", { ref: productsTopRef, "aria-hidden": "true", style: { height: 0 } }),
         React.createElement("main", { key: q ? `search-${q}` : activeCat, className: "product-grid px-4 pt-4 pb-28 max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-3" },
             visibleProducts.length === 0 && React.createElement("div", { className: "col-span-full text-center py-16 opacity-60" }, q ? t(language, "notFound") : t(language, "empty")),
-            visibleProducts.map((item, index) => React.createElement("article", { key: item.id, role: "button", tabIndex: 0, "aria-label": productDisplay(item), onClick: () => { setSelectedProduct(item); setDetailGalleryIndex(0); }, onKeyDown: e => { if (e.key === "Enter" || e.key === " ") {
+            visibleProducts.map((item, index) => React.createElement("article", { key: item.id, role: "button", tabIndex: 0, "aria-label": productDisplay(item), onClick: () => { try {
+                    if (String(window.getSelection?.() || "").trim())
+                        return;
+                }
+                catch (_) { } setSelectedProduct(item); setDetailGalleryIndex(0); }, onKeyDown: e => { if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     setSelectedProduct(item);
                     setDetailGalleryIndex(0);
@@ -6473,7 +6479,7 @@ function App() {
                     } }, style: { touchAction: "pan-y" } },
                     React.createElement(CachedImage, { key: `${item.id}-${idx}`, className: "product-gallery-img", src: g[idx], alt: productDisplay(item), loading: "lazy", decoding: "async", fetchpriority: "low", draggable: "false" }),
                     g.length > 1 && React.createElement("div", { className: "gallery-dots" }, g.slice(0, 7).map((_, i) => React.createElement("span", { key: i, className: 'gallery-dot ' + (i === idx ? 'active' : '') })))); })()),
-                React.createElement("div", { className: "p-3 flex flex-col" },
+                React.createElement("div", { className: "p-3 flex flex-col copy-text" },
                     q && React.createElement("div", { className: "text-[9px] uppercase tracking-wider font-bold mb-1 truncate", style: { color: theme.accent } }, getText(language, item.categoryName, item.categoryName_en, item.categoryName)),
                     React.createElement("div", { className: "font-semibold text-sm leading-tight line-clamp-3" }, productDisplay(item)),
                     productDims(item) && React.createElement("div", { className: "text-[11px] opacity-70 mt-1 tabular-nums" }, productDims(item)),
@@ -6501,7 +6507,7 @@ function App() {
                         } }, style: { backgroundColor: theme.accent + "12", touchAction: "pan-y" } }, (() => { const g = Array.isArray(selectedProduct.images) && selectedProduct.images.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : []); const idx = (detailGalleryIndex || 0) % Math.max(g.length, 1); return g.length ? React.createElement(CachedImage, { key: `detail-${selectedProduct.id}-${idx}`, loading: "lazy", src: g[idx], alt: productDisplay(selectedProduct), className: "detail-gallery-img", decoding: "async", draggable: "false" }) : React.createElement("div", { style: { height: "100%", display: "flex", alignItems: "center", justifyContent: "center" } },
                         React.createElement(Icon, { type: "image", size: 40 })); })()),
                     (() => { const g = Array.isArray(selectedProduct.images) && selectedProduct.images.length ? selectedProduct.images : (selectedProduct.image ? [selectedProduct.image] : []); return g.length > 1 && React.createElement("div", { className: "detail-gallery-dots" }, g.map((_, i) => React.createElement("span", { key: i, className: 'detail-gallery-dot ' + (i === detailGalleryIndex ? 'active' : '') }))); })()),
-                React.createElement("div", { className: "p-5" },
+                React.createElement("div", { className: "p-5 copy-text" },
                     React.createElement("div", { className: "text-[11px] uppercase tracking-widest font-bold mb-2", style: { color: theme.accent } }, productCategoryName(selectedProduct) || t(language, "premium")),
                     React.createElement("h2", { className: "text-2xl font-bold" }, productDisplay(selectedProduct)),
                     productDims(selectedProduct) && React.createElement("div", { className: "text-sm mt-2" },
