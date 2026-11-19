@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-VEfvRIZiSjBqk7v+E6OXJmSxW9Prl7XijUXL5Aclp7c=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Q6FholzeWP6HYV0+i3vb1D3tSlX/xAAVSroG3PXY7NU=' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -209,6 +209,22 @@ header{animation:luxuryEnter 1s cubic-bezier(.2,.75,.2,1) both}
 </style>
 
 <style id="adm-new">
+.adm-namecell{display:flex;align-items:center;gap:8px}
+.adm-mini{display:inline-flex;gap:4px;flex:none}
+.adm-namecell .adm-mini{margin-left:auto;opacity:.45;transition:opacity .15s}
+.adm-table tr:hover .adm-mini,.adm-namecell .adm-mini:focus-within{opacity:1}
+.adm-mini-btn{width:30px;height:30px;border-radius:8px;border:1px solid #3A3A40;background:transparent;color:#CFCAC0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.adm-mini-btn:hover{border-color:var(--adm-gold);color:var(--adm-gold)}
+.adm-pcard-mini{position:absolute;top:8px;right:54px;z-index:2}
+.adm-pcard-mini .adm-mini-btn{width:34px;height:34px;border:0;border-radius:10px;background:rgba(14,14,16,.72);color:#E8E3D8}
+.adm-move-ov{position:fixed;inset:0;z-index:60}
+.adm-move-menu{position:fixed;overflow:auto;background:#1E1E23;border:1px solid #3A3A40;border-radius:12px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.55)}
+.adm-move-h{font-size:12px;color:var(--adm-muted);padding:6px 8px 8px;font-weight:700}
+.adm-move-menu button{display:flex;width:100%;align-items:center;gap:8px;min-height:38px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#E8E3D8;font-weight:700;font-size:13px;text-align:left;cursor:pointer}
+.adm-move-menu button:hover,.adm-move-menu button:focus{background:rgba(226,189,69,.14);color:var(--adm-gold);outline:none}
+.adm-move-menu button small{margin-left:auto;opacity:.5;font-weight:600}
+@media (hover:none){.adm-namecell .adm-mini{opacity:1}}
+
 .adm-chips{display:flex;flex-wrap:wrap;gap:8px}
 .adm-chip{min-height:38px;padding:0 14px;border-radius:999px;border:1px solid #3A3A40!important;border-style:solid!important;background:transparent;color:#CFCAC0;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer}
 .adm-chip small{opacity:.55;font-weight:600;font-size:11px}
@@ -4061,6 +4077,13 @@ function clearPinLock() {
 function AdmIcon({ name, size = 18 }) {
     const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true", focusable: "false" };
     switch (name) {
+        case "copy": return React.createElement("svg", { ...p },
+            React.createElement("rect", { x: "9", y: "9", width: "12", height: "12", rx: "2" }),
+            React.createElement("path", { d: "M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" }));
+        case "move": return React.createElement("svg", { ...p },
+            React.createElement("path", { d: "M3 7h4l2 2h8a1 1 0 0 1 1 1v1" }),
+            React.createElement("path", { d: "M3 7v11a1 1 0 0 0 1 1h8" }),
+            React.createElement("path", { d: "M15 17h6M18 14l3 3-3 3" }));
         case "grid": return React.createElement("svg", { ...p },
             React.createElement("rect", { x: "3", y: "3", width: "7", height: "9", rx: "1.5" }),
             React.createElement("rect", { x: "14", y: "3", width: "7", height: "5", rx: "1.5" }),
@@ -4157,7 +4180,7 @@ function App() {
         return null;
     } }), [adminSearch, setAdminSearch] = useState(""), [selectedProduct, setSelectedProduct] = useState(null), [detailGalleryIndex, setDetailGalleryIndex] = useState(0), [fullScreenImage, setFullScreenImage] = useState(null), [lightboxZoom, setLightboxZoom] = useState(1), [galleryIndex, setGalleryIndex] = useState({}), [panelOpen, setPanelOpen] = useState(false), [unlocked, setUnlocked] = useState(false), [pinModal, setPinModal] = useState(false), [pinInput, setPinInput] = useState(""), [pinError, setPinError] = useState(false), [logoFailed, setLogoFailed] = useState(false), [newPinInput, setNewPinInput] = useState(""), [busy, setBusy] = useState(false), [pdfBusy, setPdfBusy] = useState(false), [pdfPreview, setPdfPreview] = useState(null), [pdfPreviewUrl, setPdfPreviewUrl] = useState(null), [importRef, setImportRef] = useState(null);
     /* Yeni yönetim paneli durumu */
-    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false), [admDrag, setAdmDrag] = useState(null), [admCatDrag, setAdmCatDrag] = useState(null), [pdfPick, setPdfPick] = useState(() => {
+    const [admView, setAdmView] = useState("table"), [admSel, setAdmSel] = useState(() => new Set()), [admEdit, setAdmEdit] = useState(null), [admTab, setAdmTab] = useState("bilgi"), [admCat, setAdmCat] = useState(""), [admQuery, setAdmQuery] = useState(""), [admIssues, setAdmIssues] = useState(false), [admBulk, setAdmBulk] = useState({ mode: "pct", value: "" }), [admLimit, setAdmLimit] = useState(80), [admAddPick, setAdmAddPick] = useState(false), [admDrag, setAdmDrag] = useState(null), [admCatDrag, setAdmCatDrag] = useState(null), [admMove, setAdmMove] = useState(null), [pdfPick, setPdfPick] = useState(() => {
         /* "Seçerek PDF al" son seçimi (sadece bu tarayıcıda hatırlanır). */
         const def = { ids: [], cur: "TRY", lang: "TR" };
         try {
@@ -5642,6 +5665,74 @@ function App() {
         if (id)
             setTimeout(() => admOpenEditor(cid, id, "bilgi"), 30);
     }
+    /* Ürünü kopyala: tam kopya, yeni kimlik (ürün + kalemler), orijinalin hemen altına. Görseller paylaşılır. */
+    function admCopyItem(cid, id) {
+        const cat = (data.categories || []).find(c => c.id === cid), src = cat && cat.items.find(a => a.id === id);
+        if (!src)
+            return;
+        const nid = uid(), name = String(src.name || "Ürün").slice(0, 180) + " (KOPYA)";
+        updateData(x => {
+            x.categories = x.categories.map(c => {
+                if (c.id !== cid)
+                    return c;
+                const i = c.items.findIndex(a => a.id === id);
+                if (i < 0)
+                    return c;
+                const cp = fastClone(c.items[i]);
+                cp.id = nid;
+                cp.name = name;
+                if ("name_src" in cp)
+                    cp.name_src = name;
+                if (cp.name_en)
+                    cp.name_en = String(cp.name_en).slice(0, 180) + " (COPY)";
+                cp.isDemo = false;
+                if (cp.price && Array.isArray(cp.price.parts))
+                    cp.price = { ...cp.price, parts: cp.price.parts.map(p => ({ ...p, id: uid() })) };
+                const l = [...c.items];
+                l.splice(i + 1, 0, cp);
+                return { ...c, items: l };
+            });
+        });
+        showToast(`"${name}" oluşturuldu.`);
+        setTimeout(() => admOpenEditor(cid, nid, "bilgi"), 40);
+    }
+    /* Ürünü başka kategoriye taşı: kimlik, fiyat ve görseller aynen kalır, hedefin sonuna eklenir. */
+    function admMoveItem(cid, id, toCid) {
+        setAdmMove(null);
+        if (!toCid || cid === toCid)
+            return;
+        const from = (data.categories || []).find(c => c.id === cid), to = (data.categories || []).find(c => c.id === toCid);
+        const it = from && from.items.find(a => a.id === id);
+        if (!it || !to)
+            return;
+        const clash = to.items.some(a => a.id === id), newId = clash ? uid() : id;
+        updateData(x => {
+            let moved = null;
+            x.categories = x.categories.map(c => {
+                if (c.id !== cid)
+                    return c;
+                moved = c.items.find(a => a.id === id) || null;
+                return moved ? { ...c, items: c.items.filter(a => a.id !== id) } : c;
+            });
+            if (!moved)
+                return;
+            x.categories = x.categories.map(c => c.id === toCid ? { ...c, items: [...c.items, { ...moved, id: newId }] } : c);
+        });
+        setAdmSel(prev => {
+            const n = new Set(prev);
+            n.delete(admKey(cid, id));
+            return n;
+        });
+        setAdmEdit(prev => prev && prev.id === id && prev.cid === cid ? { cid: toCid, id: newId } : prev);
+        showToast(`${it.name || "Ürün"} → ${to.name || "kategori"} kategorisine taşındı. Kaydetmeden kapatırsanız geri alınır.`);
+    }
+    function admMiniTools(c, it) {
+        const nm = it.name || "Ürün";
+        return [
+            React.createElement("button", { key: "cp", type: "button", className: "adm-mini-btn", title: "Kopyala", "aria-label": nm + " kopyala", onClick: e => { e.stopPropagation(); admCopyItem(c.id, it.id); } }, React.createElement(AdmIcon, { name: "copy", size: 15 })),
+            React.createElement("button", { key: "mv", type: "button", className: "adm-mini-btn", title: "Kategoriyi değiştir", "aria-label": nm + " kategorisini değiştir", onClick: e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setAdmMove({ cid: c.id, id: it.id, x: r.right, y: r.bottom }); } }, React.createElement(AdmIcon, { name: "move", size: 15 }))
+        ];
+    }
     function admToggleSel(k) {
         setAdmSel(prev => {
             const n = new Set(prev);
@@ -5988,7 +6079,9 @@ function App() {
                             React.createElement("td", null,
                                 React.createElement("button", { type: "button", className: "adm-cellbtn", "aria-label": (it.name || "Ürün") + " düzenle", onClick: () => admOpenEditor(c.id, it.id, "foto") }, admThumb(it, 48))),
                             React.createElement("td", null,
-                                React.createElement("button", { type: "button", className: "adm-namebtn", onClick: () => admOpenEditor(c.id, it.id) }, it.name || "Adsız ürün")),
+                                React.createElement("div", { className: "adm-namecell" },
+                                    React.createElement("button", { type: "button", className: "adm-namebtn", onClick: () => admOpenEditor(c.id, it.id) }, it.name || "Adsız ürün"),
+                                    React.createElement("span", { className: "adm-mini" }, admMiniTools(c, it)))),
                             React.createElement("td", { className: "adm-muted" }, c.name),
                             React.createElement("td", { className: "adm-muted adm-ellipsis" }, parts.length ? parts.slice(0, 3).map(p => p.name).join(" · ") + (parts.length > 3 ? ` +${parts.length - 3}` : "") : "—"),
                             React.createElement("td", null, single ? React.createElement("span", { className: "adm-priceedit" },
@@ -6010,6 +6103,7 @@ function App() {
                         const k = admKey(c.id, it.id), pi = admPriceInfo(c, it), iss = admIssuesOf(c, it), src = admImgs(it)[0];
                         return React.createElement("div", { key: k, "data-adm-key": k, className: "adm-pcard" + (admEdit && admEdit.id === it.id && admEdit.cid === c.id ? " is-open" : "") + (admSel.has(k) ? " is-sel" : "") + admDragCls(k) },
                             React.createElement("span", { className: "adm-pcard-grip" }, admGrip(c, it)),
+                            React.createElement("span", { className: "adm-mini adm-pcard-mini" }, admMiniTools(c, it)),
                             React.createElement("label", { className: "adm-pcard-check" },
                                 React.createElement("input", { type: "checkbox", "aria-label": (it.name || "Ürün") + " seç", checked: admSel.has(k), onChange: () => admToggleSel(k) })),
                             React.createElement("button", { type: "button", className: "adm-pcard-btn", onClick: () => admOpenEditor(c.id, it.id) },
@@ -6026,6 +6120,19 @@ function App() {
                     "Daha fazla g\u00F6ster (",
                     admRows.length - shown.length,
                     " \u00FCr\u00FCn daha)")),
+            admMove && (() => {
+                const vw = window.innerWidth || 1024, vh = window.innerHeight || 768, w = Math.min(280, vw - 20);
+                const left = Math.max(10, Math.min(admMove.x - w, vw - w - 10)), top = Math.min(admMove.y + 6, vh - 120);
+                const cur = (data.categories || []).find(c => c.id === admMove.cid);
+                const it = cur && cur.items.find(a => a.id === admMove.id);
+                return React.createElement("div", { className: "adm-move-ov", onClick: () => setAdmMove(null), onKeyDown: e => { if (e.key === "Escape")
+                        setAdmMove(null); } },
+                    React.createElement("div", { className: "adm-move-menu", role: "menu", "aria-label": "Taşınacak kategori", style: { left, top, width: w, maxHeight: Math.max(160, vh - top - 16) }, onClick: e => e.stopPropagation() },
+                        React.createElement("div", { className: "adm-move-h" }, (it && it.name ? it.name + " → " : "") + "hangi kategoriye?"),
+                        (data.categories || []).filter(c => c.id !== admMove.cid).map((c, i) => React.createElement("button", { key: c.id, type: "button", role: "menuitem", autoFocus: i === 0, onClick: () => admMoveItem(admMove.cid, admMove.id, c.id) },
+                            c.name || "Adsız",
+                            React.createElement("small", null, (c.items || []).length)))));
+            })(),
             selKeys.length > 0 && React.createElement("div", { className: "adm-bulk", role: "region", "aria-label": "Toplu i\u015Flem" },
                 React.createElement("b", null,
                     selKeys.length,
